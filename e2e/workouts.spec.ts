@@ -101,7 +101,7 @@ test('suggests exercise names used before', async ({ page }) => {
 	await expect(page.locator(`datalist#exercise-names option[value="Deadlift ${id}"]`)).toHaveCount(1);
 });
 
-test('a running workout can be resumed from the start screen', async ({ page }) => {
+test('a running workout can be resumed from the start screen', async ({ page, request }) => {
 	const id = uid();
 	await newWorkout(page, `Arms ${id}`);
 	await addExercise(page, `Curl ${id}`);
@@ -122,9 +122,17 @@ test('a running workout can be resumed from the start screen', async ({ page }) 
 	await page.getByRole('button', { name: 'Finish', exact: true }).click();
 	await expect(page).toHaveURL('/profile');
 	await expect(page.getByRole('status')).toContainText('Workout finished');
+	const serverFinishedAt = async () => {
+		const data = await serverData(request);
+		const w = data.workouts?.find((r) => r.name === `Arms ${id}`);
+		return w ? w.finished_at : 'missing';
+	};
+	await expect.poll(serverFinishedAt).toEqual(expect.any(Number));
 	await page.getByRole('button', { name: 'Undo' }).click();
 	await expect(page).toHaveURL(/\/workouts\//);
 	await expect(page.getByRole('button', { name: 'Finish', exact: true })).toBeVisible();
+	// The undo reaches the server too, so the webhook won't send a running workout.
+	await expect.poll(serverFinishedAt).toBeNull();
 
 	await page.getByRole('button', { name: 'Finish', exact: true }).click();
 	await page.getByRole('link', { name: 'Workout', exact: true }).click();
