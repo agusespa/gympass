@@ -348,7 +348,8 @@ export async function addExercise(kind: Kind, parentId: string, name: string): P
 		const position = (existing.at(-1)?.position ?? 0) + 1;
 		const ex = fresh({ name: name.trim(), position, superset_id: null, [t.exParent]: parentId });
 		await t.ex.add(ex);
-		await t.sets.add(newSet(t.setParent, ex.id));
+		// The only set is the last one, so no rest after it.
+		await t.sets.add(newSet(t.setParent, ex.id, { rest_seconds: 0 }));
 		return ex.id;
 	});
 }
@@ -386,17 +387,20 @@ export async function addSet(kind: Kind, exerciseId: string) {
 	await write(async () => {
 		const sets = live(await t.sets.where(t.setParent).equals(exerciseId).toArray()).sort(byPosition);
 		const last = sets.at(-1);
-		// Copy the last set's numbers and rest; new sets are working sets (warm-ups are marked from the set menu).
+		// The new set is the last one, so it gets no rest. The old last set had none by default;
+		// it now needs one, taken from the set before it (or the default).
+		if (last && (last.rest_seconds ?? DEFAULT_REST_SECONDS) === 0) {
+			const prev = sets.at(-2)?.rest_seconds ?? DEFAULT_REST_SECONDS;
+			await patch(t.sets, last.id, { rest_seconds: prev || DEFAULT_REST_SECONDS });
+		}
+		// Copy the last set's numbers; new sets are working sets (warm-ups are marked from the set menu).
 		await t.sets.add(
 			newSet(
 				t.setParent,
 				exerciseId,
-				last && {
-					position: last.position + 1,
-					reps: last.reps,
-					weight_kg: last.weight_kg,
-					rest_seconds: last.rest_seconds ?? DEFAULT_REST_SECONDS
-				}
+				last
+					? { position: last.position + 1, reps: last.reps, weight_kg: last.weight_kg, rest_seconds: 0 }
+					: { rest_seconds: 0 }
 			)
 		);
 	});
