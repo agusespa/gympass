@@ -242,7 +242,7 @@
 						</button>
 						<!-- In a superset you only rest after the last exercise of the round. -->
 						{#if !block.superset || ei === block.items.length - 1}
-							<label class="rest" class:warmup={set.warmup}>
+							<label class="rest" class:warmup={set.warmup} class:none={set.rest_seconds === 0}>
 								<span class="rest-pill">
 									<svg viewBox="0 0 24 24" aria-hidden="true">
 										<circle cx="12" cy="13" r="8" /><path d="M12 9v4l2.5 2.5M10 2.5h4" />
@@ -533,6 +533,10 @@
 
 	.rest.warmup .rest-pill {
 		color: var(--warmup);
+	}
+
+	.rest.none .rest-pill {
+		color: var(--muted);
 	}
 
 	.rest-pill svg {
