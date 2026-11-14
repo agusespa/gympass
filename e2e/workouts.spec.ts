@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { addExercise, exercise, fillSet, newWorkout, serverData, uid } from './helpers';
+import { addExercise, exercise, fillSet, finishWorkout, newWorkout, serverData, uid } from './helpers';
 
 test('log a workout, see previous values, edit and delete', async ({ page, request }) => {
 	const id = uid();
@@ -16,8 +16,17 @@ test('log a workout, see previous values, edit and delete', async ({ page, reque
 	await fillSet(page, bench, 2, '82,5', '6'); // decimal comma from the iPhone keyboard
 	await expect(exercise(page, bench).getByLabel('Weight set 2')).toHaveValue('82.5');
 
-	// Finishing goes to history; the workout is no longer in progress.
+	// Finish opens a summary of the session; warm-ups aside, every logged set counts.
 	await page.getByRole('button', { name: 'Finish', exact: true }).click();
+	await expect(page).toHaveURL(/\/finish$/);
+	await expect(page.getByText('Sets', { exact: true }).locator('..')).toContainText('2');
+	await expect(page.getByText('Volume', { exact: true }).locator('..')).toContainText('1135 kg');
+	await expect(page.getByRole('list', { name: 'Exercises done' })).toContainText(
+		`${bench} 2 sets · best 82.5 kg × 6`
+	);
+
+	// Saving goes to history; the workout is no longer in progress.
+	await page.getByRole('button', { name: 'Save', exact: true }).click();
 	await expect(page).toHaveURL('/profile');
 	const entry = page.getByRole('link', { name: new RegExp(`Push ${id}`) });
 	await expect(entry).toContainText(bench);
@@ -46,9 +55,13 @@ test('log a workout, see previous values, edit and delete', async ({ page, reque
 	await again.getByRole('button', { name: 'Confirm delete' }).click();
 	await expect(again).toHaveCount(0);
 
-	// Discard the running workout.
+	// The running screen has no bottom buttons; discarding is on the Finish screen.
+	await expect(page.getByRole('button', { name: 'Discard workout' })).toHaveCount(0);
+	await page.getByRole('button', { name: 'Finish', exact: true }).click();
 	await page.getByRole('button', { name: 'Discard workout' }).click();
-	await page.getByRole('button', { name: 'Confirm discard' }).click();
+	const confirmDiscard = page.getByRole('dialog', { name: 'Discard workout?' });
+	await expect(confirmDiscard).toBeVisible();
+	await confirmDiscard.getByRole('button', { name: 'Confirm discard' }).click();
 	await expect(page).toHaveURL('/');
 	await page.getByRole('link', { name: 'Profile', exact: true }).click();
 	await expect(page.getByRole('link', { name: new RegExp(`Push ${id}`) })).toBeVisible();
@@ -84,10 +97,18 @@ test('log a workout, see previous values, edit and delete', async ({ page, reque
 test('rename a workout and change its date', async ({ page }) => {
 	const id = uid();
 	await newWorkout(page, `Legs ${id}`);
-	await page.getByLabel('Workout date').fill('2026-01-02');
-	await page.getByLabel('Workout date').blur();
+	// A running workout is today, so there is no date to change yet.
+	await expect(page.getByLabel('Workout date')).toHaveCount(0);
 	await page.getByLabel('Workout name').fill(`Legs day ${id}`);
 	await page.getByLabel('Workout name').blur();
+	await addExercise(page, `Squat ${id}`);
+	await fillSet(page, `Squat ${id}`, 1, '60', '5');
+
+	// Once finished, the date can be fixed from history.
+	await finishWorkout(page);
+	await page.getByRole('link', { name: new RegExp(`Legs day ${id}`) }).click();
+	await page.getByLabel('Workout date').fill('2026-01-02');
+	await page.getByLabel('Workout date').blur();
 	await page.reload();
 	await expect(page.getByLabel('Workout name')).toHaveValue(`Legs day ${id}`);
 	await expect(page.getByLabel('Workout date')).toHaveValue('2026-01-02');
@@ -118,8 +139,17 @@ test('a running workout can be resumed from the start screen', async ({ page, re
 	await page.getByRole('link', { name: 'Workout', exact: true }).click();
 	await resume.click();
 
-	// Finish is one tap; the toast's Undo puts the workout back in progress.
+	// Saving with nothing filled in offers to discard or keep logging.
 	await page.getByRole('button', { name: 'Finish', exact: true }).click();
+	await page.getByRole('button', { name: 'Save', exact: true }).click();
+	const empty = page.getByRole('dialog', { name: 'Nothing logged yet' });
+	await expect(empty).toBeVisible();
+	await empty.getByRole('button', { name: 'Keep logging' }).click();
+	await expect(page).toHaveURL(/\/workouts\/[^/]+$/);
+	await fillSet(page, `Curl ${id}`, 1, '12', '10');
+
+	// Saving needs no confirmation; the toast's Undo puts the workout back in progress.
+	await finishWorkout(page);
 	await expect(page).toHaveURL('/profile');
 	await expect(page.getByRole('status')).toContainText('Workout finished');
 	const serverFinishedAt = async () => {
@@ -134,7 +164,7 @@ test('a running workout can be resumed from the start screen', async ({ page, re
 	// The undo reaches the server too, so the webhook won't send a running workout.
 	await expect.poll(serverFinishedAt).toBeNull();
 
-	await page.getByRole('button', { name: 'Finish', exact: true }).click();
+	await finishWorkout(page);
 	await page.getByRole('link', { name: 'Workout', exact: true }).click();
 	await expect(resume).toHaveCount(0);
 });

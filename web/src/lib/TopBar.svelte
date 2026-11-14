@@ -6,7 +6,7 @@
 	 * Sticky screen header with a back button; `fallback` is used when there is no history to go back to.
 	 * `action` renders on the right (e.g. a Finish button).
 	 */
-	let { title, fallback, action }: { title: string; fallback: string; action?: Snippet } = $props();
+	let { title = '', fallback, action }: { title?: string; fallback: string; action?: Snippet } = $props();
 
 	function back() {
 		if (history.length > 1) history.back();

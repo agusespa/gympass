@@ -5,15 +5,7 @@
 	import ExerciseEditor from '#lib/ExerciseEditor.svelte';
 	import TopBar from '#lib/TopBar.svelte';
 	import { live } from '#lib/live.svelte.ts';
-	import {
-		deleteWorkout,
-		finishWorkout,
-		getWorkout,
-		resumeWorkout,
-		saveWorkoutAsRoutine,
-		updateWorkout
-	} from '#lib/repo.ts';
-	import { showToast } from '#lib/toast.svelte.ts';
+	import { deleteWorkout, getWorkout, saveWorkoutAsRoutine, updateWorkout } from '#lib/repo.ts';
 	import type { Workout } from '#lib/db.ts';
 
 	const id = $derived(page.params.id ?? '');
@@ -28,37 +20,19 @@
 		await goto(`/routines/${routineId}`);
 	}
 
-	/** No confirmation: finishing is one tap, and the toast offers an undo instead. */
-	async function finish() {
-		const finished = id;
-		await finishWorkout(finished);
-		await goto('/profile');
-		showToast({
-			message: 'Workout finished',
-			action: {
-				label: 'Undo',
-				run: async () => {
-					await resumeWorkout(finished);
-					await goto(`/workouts/${finished}`);
-				}
-			}
-		});
-	}
-
-	/** Delete; a discarded workout that was still running goes back to the start screen. */
-	async function remove(to: string) {
+	async function remove() {
 		await deleteWorkout(id);
-		await goto(to);
+		await goto('/profile');
 	}
 </script>
 
 {#if workout.current}
 	{@const w = workout.current}
 	{@const running = w.finished_at == null}
-	<TopBar title={running ? 'Log workout' : 'Workout'} fallback={running ? '/' : '/profile'}>
+	<TopBar fallback={running ? '/' : '/profile'}>
 		{#snippet action()}
 			{#if running}
-				<button class="primary finish" onclick={finish}>Finish</button>
+				<button class="primary finish" onclick={() => goto(`/workouts/${id}/finish`)}>Finish</button>
 			{/if}
 		{/snippet}
 	</TopBar>
@@ -72,30 +46,32 @@
 				if (v) updateWorkout(id, { name: v });
 			}}
 		/>
-		<input
-			class="date"
-			type="date"
-			aria-label="Workout date"
-			value={w.date}
-			onchange={(e) => {
-				if (e.currentTarget.value) updateWorkout(id, { date: e.currentTarget.value });
-			}}
-		/>
+		<!-- A running workout is always today; the date is only editable once it is in history. -->
+		{#if !running}
+			<input
+				class="date"
+				type="date"
+				aria-label="Workout date"
+				value={w.date}
+				onchange={(e) => {
+					if (e.currentTarget.value) updateWorkout(id, { date: e.currentTarget.value });
+				}}
+			/>
+		{/if}
 	</div>
 
 	{#key id}
 		<ExerciseEditor kind="workout" parentId={id} />
 	{/key}
 
-	<div class="row page-actions">
-		<button onclick={saveAsRoutine}>Save as routine</button>
-		<span class="spacer"></span>
-		{#if running}
-			<ConfirmButton label="Discard workout" confirmLabel="Confirm discard" onconfirm={() => remove('/')} />
-		{:else}
-			<ConfirmButton label="Delete workout" onconfirm={() => remove('/profile')} />
-		{/if}
-	</div>
+	<!-- A running workout is saved or discarded from the Finish screen. -->
+	{#if !running}
+		<div class="row page-actions">
+			<button onclick={saveAsRoutine}>Save as routine</button>
+			<span class="spacer"></span>
+			<ConfirmButton label="Delete workout" onconfirm={remove} />
+		</div>
+	{/if}
 {:else if workout.loaded}
 	<p class="muted">Workout not found. <a href="/profile">Back to history</a></p>
 {/if}

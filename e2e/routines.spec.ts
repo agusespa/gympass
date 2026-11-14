@@ -8,6 +8,7 @@ test('save a workout as a routine and start a workout from it', async ({ page })
 	await newWorkout(page, `Legs ${id}`);
 	await addExercise(page, squat);
 	await fillSet(page, squat, 1, '100', '5');
+	await page.getByRole('button', { name: 'Finish', exact: true }).click();
 	await page.getByRole('button', { name: 'Save as routine' }).click();
 	await expect(page).toHaveURL(/\/routines\//);
 	await expect(page.getByLabel('Routine name')).toHaveValue(`Legs ${id}`);

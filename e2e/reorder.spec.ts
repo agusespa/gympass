@@ -32,6 +32,7 @@ test('reorder exercises and build supersets', async ({ page }) => {
 	await expect(page.getByText('Superset', { exact: true })).toBeVisible();
 
 	// Saving as a routine keeps the superset.
+	await page.getByRole('button', { name: 'Finish', exact: true }).click();
 	await page.getByRole('button', { name: 'Save as routine' }).click();
 	await expect(page).toHaveURL(/\/routines\//);
 	await expect.poll(() => exerciseOrder(page)).toEqual([b, c, a]);

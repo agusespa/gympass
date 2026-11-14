@@ -58,3 +58,10 @@ export async function fillSet(page: Page, ex: string, n: number, kg: string, rep
 export async function exerciseOrder(page: Page): Promise<string[]> {
 	return page.locator('section[aria-label]').evaluateAll((els) => els.map((e) => e.getAttribute('aria-label') ?? ''));
 }
+
+/** Tap Finish on a running workout, then Save on the summary screen. */
+export async function finishWorkout(page: Page) {
+	await page.getByRole('button', { name: 'Finish', exact: true }).click();
+	await expect(page).toHaveURL(/\/finish$/);
+	await page.getByRole('button', { name: 'Save', exact: true }).click();
+}

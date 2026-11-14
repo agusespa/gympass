@@ -1,41 +1,31 @@
 <script lang="ts">
+	import Modal from './Modal.svelte';
+
 	/**
-	 * Destructive button that asks for a second tap instead of using window.confirm,
+	 * Destructive button that asks in a modal instead of using window.confirm,
 	 * which some browsers (and embedded webviews) block.
 	 */
 	let {
 		label,
 		confirmLabel = 'Confirm delete',
+		message = "This can't be undone.",
 		onconfirm
-	}: { label: string; confirmLabel?: string; onconfirm: () => unknown } = $props();
+	}: { label: string; confirmLabel?: string; message?: string; onconfirm: () => unknown } = $props();
 
-	let asking = $state(false);
+	let modal: Modal;
 </script>
 
-{#if asking}
-	<span class="confirm">
-		<button onclick={() => (asking = false)}>Cancel</button>
+<button class="danger" onclick={() => modal.open()}>{label}</button>
+
+<Modal bind:this={modal} title={`${label}?`} {message}>
+	{#snippet buttons(close)}
+		<button onclick={close}>Cancel</button>
 		<button
-			class="yes"
+			class="destructive"
 			onclick={async () => {
-				asking = false;
+				close();
 				await onconfirm();
 			}}>{confirmLabel}</button
 		>
-	</span>
-{:else}
-	<button class="danger" onclick={() => (asking = true)}>{label}</button>
-{/if}
-
-<style>
-	.confirm {
-		display: inline-flex;
-		gap: 0.4rem;
-	}
-
-	.yes {
-		background: var(--danger);
-		color: #fff;
-		font-weight: 600;
-	}
-</style>
+	{/snippet}
+</Modal>
