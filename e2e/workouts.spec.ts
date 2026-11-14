@@ -6,6 +6,8 @@ test('log a workout, see previous values, edit and delete', async ({ page, reque
 	const bench = `Bench ${id}`;
 
 	await newWorkout(page, `Push ${id}`);
+	// Focused screen: no tab bar, just the back button.
+	await expect(page.getByRole('link', { name: 'Profile', exact: true })).toHaveCount(0);
 	await addExercise(page, bench);
 	await fillSet(page, bench, 1, '80', '8');
 	await exercise(page, bench).getByRole('button', { name: 'Add set' }).click();
@@ -15,6 +17,7 @@ test('log a workout, see previous values, edit and delete', async ({ page, reque
 	await expect(exercise(page, bench).getByLabel('Weight set 2')).toHaveValue('82.5');
 
 	// Shows in history.
+	await page.getByRole('button', { name: 'Back' }).click();
 	await page.getByRole('link', { name: 'Profile', exact: true }).click();
 	const entry = page.getByRole('link', { name: new RegExp(`Push ${id}`) });
 	await expect(entry).toContainText(bench);

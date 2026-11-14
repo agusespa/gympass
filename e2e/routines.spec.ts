@@ -18,7 +18,7 @@ test('save a workout as a routine and start a workout from it', async ({ page })
 
 	// The editor has no Start button; routines are started from the list.
 	await expect(page.getByRole('button', { name: 'Start', exact: true })).toHaveCount(0);
-	await page.getByRole('link', { name: 'Workout', exact: true }).click();
+	await page.goto('/');
 	await page.getByRole('button', { name: `Start Legs ${id}` }).click();
 	await expect(page).toHaveURL(/\/workouts\//);
 	const ex = exercise(page, squat);
@@ -36,7 +36,7 @@ test('create a routine from scratch, start it from the list, delete it', async (
 	await addExercise(page, `Curl ${id}`);
 	await fillSet(page, `Curl ${id}`, 1, '15', '12');
 
-	await page.getByRole('link', { name: 'Workout', exact: true }).click();
+	await page.getByRole('button', { name: 'Back' }).click();
 	await page.getByRole('button', { name: `Start Arms ${id}` }).click();
 	await expect(page.getByLabel('Workout name')).toHaveValue(`Arms ${id}`);
 	await expect(exercise(page, `Curl ${id}`).getByLabel('Reps set 1')).toHaveValue('12');
@@ -82,7 +82,7 @@ test('warm-up sets in a routine carry into the workout', async ({ page, request 
 		})
 		.toBeGreaterThan(0);
 
-	await page.getByRole('link', { name: 'Workout', exact: true }).click();
+	await page.getByRole('button', { name: 'Back' }).click();
 	await page.getByRole('button', { name: `Start Warm ${id}` }).click();
 	await expect(page).toHaveURL(/\/workouts\//);
 	const w = exercise(page, press);

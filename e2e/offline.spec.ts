@@ -17,6 +17,7 @@ test('works offline and syncs when back online', async ({ page, context, request
 	await fillSet(page, `Press ${id}`, 1, '40', '10');
 
 	// Navigating between screens still works offline.
+	await page.getByRole('button', { name: 'Back' }).click();
 	await page.getByRole('link', { name: 'Profile', exact: true }).click();
 	await page.getByRole('link', { name: 'Workout', exact: true }).click();
 	await page.getByRole('link', { name: 'Profile', exact: true }).click();
