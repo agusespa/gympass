@@ -1,0 +1,143 @@
+:root {
+	--bg: #f4f4f6;
+	--surface: #ffffff;
+	--text: #16161a;
+	--muted: #6b6b76;
+	--border: #e2e2e8;
+	--accent: #2f6fed;
+	--accent-text: #ffffff;
+	--danger: #d93636;
+	--superset: #8a4fff;
+	--radius: 12px;
+	color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+	:root {
+		--bg: #0f0f12;
+		--surface: #1b1b20;
+		--text: #f2f2f5;
+		--muted: #9a9aa6;
+		--border: #2c2c34;
+		--accent: #5b8cff;
+		--danger: #ff5c5c;
+		--superset: #a77bff;
+	}
+}
+
+* {
+	box-sizing: border-box;
+}
+
+html,
+body {
+	margin: 0;
+	background: var(--bg);
+	color: var(--text);
+	font-family:
+		-apple-system,
+		BlinkMacSystemFont,
+		system-ui,
+		sans-serif;
+	font-size: 16px;
+	-webkit-text-size-adjust: 100%;
+	-webkit-tap-highlight-color: transparent;
+}
+
+a {
+	color: var(--accent);
+	text-decoration: none;
+}
+
+h1 {
+	font-size: 1.6rem;
+	margin: 0 0 0.75rem;
+}
+
+h2 {
+	font-size: 1.1rem;
+	margin: 0;
+}
+
+input,
+button,
+select {
+	font: inherit;
+	color: inherit;
+}
+
+/* 16px+ inputs stop iOS from zooming on focus. */
+input {
+	font-size: 16px;
+	background: var(--bg);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	padding: 0.5rem 0.6rem;
+	min-width: 0;
+	width: 100%;
+}
+
+input:focus {
+	outline: 2px solid var(--accent);
+	outline-offset: -1px;
+}
+
+button {
+	border: none;
+	border-radius: 8px;
+	padding: 0.55rem 0.9rem;
+	background: var(--border);
+	cursor: pointer;
+	min-height: 40px;
+}
+
+button:disabled {
+	opacity: 0.35;
+}
+
+button.primary {
+	background: var(--accent);
+	color: var(--accent-text);
+	font-weight: 600;
+}
+
+button.danger {
+	background: transparent;
+	color: var(--danger);
+}
+
+button.ghost {
+	background: transparent;
+	color: var(--accent);
+}
+
+button.icon {
+	background: transparent;
+	padding: 0.4rem 0.6rem;
+	min-width: 40px;
+}
+
+.card {
+	background: var(--surface);
+	border-radius: var(--radius);
+	padding: 0.9rem;
+	margin-bottom: 0.75rem;
+}
+
+.muted {
+	color: var(--muted);
+}
+
+.row {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+}
+
+.spacer {
+	flex: 1;
+}
+
+.stack > * + * {
+	margin-top: 0.5rem;
+}

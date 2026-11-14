@@ -279,14 +279,14 @@ export function toBlocks(exercises: ExerciseView[]): Block[] {
 
 export async function addExercise(kind: Kind, parentId: string, name: string): Promise<string> {
 	const t = tables(kind);
-	const existing = await loadExercises(kind, parentId);
-	const position = (existing.at(-1)?.position ?? 0) + 1;
-	const ex = fresh({ name: name.trim(), position, superset_id: null, [t.exParent]: parentId });
-	await write(async () => {
+	return write(async () => {
+		const existing = await loadExercises(kind, parentId);
+		const position = (existing.at(-1)?.position ?? 0) + 1;
+		const ex = fresh({ name: name.trim(), position, superset_id: null, [t.exParent]: parentId });
 		await t.ex.add(ex);
 		await t.sets.add(fresh({ position: 1, reps: 0, weight_kg: 0, [t.setParent]: ex.id }));
+		return ex.id;
 	});
-	return ex.id;
 }
 
 export async function renameExercise(kind: Kind, id: string, name: string) {
@@ -319,9 +319,9 @@ export async function deleteExercise(kind: Kind, parentId: string, id: string) {
 
 export async function addSet(kind: Kind, exerciseId: string) {
 	const t = tables(kind);
-	const sets = live(await t.sets.where(t.setParent).equals(exerciseId).toArray()).sort(byPosition);
-	const last = sets.at(-1);
 	await write(async () => {
+		const sets = live(await t.sets.where(t.setParent).equals(exerciseId).toArray()).sort(byPosition);
+		const last = sets.at(-1);
 		await t.sets.add(
 			fresh({
 				position: (last?.position ?? 0) + 1,
