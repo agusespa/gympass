@@ -71,7 +71,11 @@ func TestSendsFinishedWorkout(t *testing.T) {
 	s, sender, rec := setup(t)
 	finishedAt := time.Date(2026, 11, 14, 18, 30, 0, 0, time.UTC).UnixMilli()
 	syncRows(t, s, map[string][]store.Row{
-		"workouts":          {workout(1, finishedAt, false)},
+		"workouts": {func() store.Row {
+			r := workout(1, finishedAt, false)
+			r["started_at"] = finishedAt - (72*time.Minute + 30*time.Second).Milliseconds()
+			return r
+		}()},
 		"workout_exercises": {{"id": "e1", "updated_at": int64(1), "deleted": false, "workout_id": "w1", "name": "Bench", "position": 1.0, "superset_id": nil}},
 		"sets": {
 			{"id": "s1", "updated_at": int64(1), "deleted": false, "workout_exercise_id": "e1", "position": 1.0, "reps": int64(10), "weight_kg": 40.0, "warmup": true},
@@ -89,7 +93,8 @@ func TestSendsFinishedWorkout(t *testing.T) {
 		t.Fatalf("event=%q auth=%q", p.Event, rec.auth[0])
 	}
 	w := p.Workout
-	if w.ID != "w1" || w.Name != "Push" || w.Date != "2026-11-14" || w.FinishedAt != "2026-11-14T18:30:00Z" {
+	if w.ID != "w1" || w.Name != "Push" || w.Date != "2026-11-14" || w.FinishedAt != "2026-11-14T18:30:00Z" ||
+		w.StartedAt != "2026-11-14T17:17:30Z" || w.DurationSeconds != 72*60+30 {
 		t.Fatalf("workout = %+v", w)
 	}
 	if len(w.Exercises) != 1 || len(w.Exercises[0].Sets) != 3 || !w.Exercises[0].Sets[0].Warmup {
@@ -169,5 +174,19 @@ func TestRunStopsOnCancel(t *testing.T) {
 	case <-done:
 	case <-time.After(time.Second):
 		t.Fatal("Run did not stop")
+	}
+}
+
+func TestUnknownStartOmitsDuration(t *testing.T) {
+	finished := int64(10_000)
+	p, ok := buildPayload(store.WorkoutSnapshot{ID: "w1", FinishedAt: &finished}, true, false)
+	if !ok || p.Workout.StartedAt != "" || p.Workout.DurationSeconds != 0 {
+		t.Fatalf("payload = %+v", p.Workout)
+	}
+	body, _ := json.Marshal(p)
+	var raw map[string]map[string]any
+	_ = json.Unmarshal(body, &raw)
+	if _, has := raw["workout"]["duration_seconds"]; has {
+		t.Fatalf("duration_seconds sent for unknown start: %s", body)
 	}
 }

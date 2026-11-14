@@ -36,7 +36,7 @@ type table struct {
 // tables lists every synced table. Each also has id, updated_at, deleted and seq.
 // The client (web/src/lib/db.ts) mirrors these definitions.
 var tables = []table{
-	{"workouts", []column{{"name", colText}, {"date", colDate}, {"finished_at", colIntNull}}},
+	{"workouts", []column{{"name", colText}, {"date", colDate}, {"started_at", colIntNull}, {"finished_at", colIntNull}}},
 	{"workout_exercises", []column{{"workout_id", colText}, {"name", colText}, {"position", colReal}, {"superset_id", colTextNull}}},
 	{"sets", []column{{"workout_exercise_id", colText}, {"position", colReal}, {"reps", colInt}, {"weight_kg", colReal}, {"warmup", colBool}, {"rest_seconds", colSeconds}}},
 	{"routines", []column{{"name", colText}}},

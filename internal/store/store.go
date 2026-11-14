@@ -89,6 +89,7 @@ func (s *Store) migrate() error {
 		addSetColumn("rest_seconds", colSeconds), // 3
 		addFinishedAt,                            // 4
 		createWebhookOutbox,                      // 5
+		addStartedAt,                             // 6
 	}
 	for i := version; i < len(migrations); i++ {
 		tx, err := s.db.Begin()
@@ -352,6 +353,12 @@ func addFinishedAt(tx *sql.Tx) error {
 	}
 	_, err := tx.Exec("UPDATE workouts SET finished_at = updated_at WHERE finished_at IS NULL")
 	return err
+}
+
+// addStartedAt adds workouts.started_at. Older workouts never recorded a
+// start, so theirs stays NULL (unknown).
+func addStartedAt(tx *sql.Tx) error {
+	return addColumnIfMissing(tx, "workouts", "started_at", sqlType(colIntNull))
 }
 
 func addColumnIfMissing(tx *sql.Tx, table, col, typ string) error {

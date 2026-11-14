@@ -45,12 +45,15 @@ type Payload struct {
 }
 
 type Workout struct {
-	ID         string     `json:"id"`
-	Name       string     `json:"name,omitempty"`
-	Date       string     `json:"date,omitempty"`
-	FinishedAt string     `json:"finished_at,omitempty"`
-	Exercises  []Exercise `json:"exercises,omitempty"`
-	Totals     *Totals    `json:"totals,omitempty"`
+	ID         string `json:"id"`
+	Name       string `json:"name,omitempty"`
+	Date       string `json:"date,omitempty"`
+	StartedAt  string `json:"started_at,omitempty"`
+	FinishedAt string `json:"finished_at,omitempty"`
+	// DurationSeconds is finished_at - started_at; omitted when the start is unknown.
+	DurationSeconds int64      `json:"duration_seconds,omitempty"`
+	Exercises       []Exercise `json:"exercises,omitempty"`
+	Totals          *Totals    `json:"totals,omitempty"`
 }
 
 type Exercise struct {
@@ -148,6 +151,12 @@ func buildPayload(w store.WorkoutSnapshot, found, sentBefore bool) (Payload, boo
 		FinishedAt: time.UnixMilli(*w.FinishedAt).UTC().Format(time.RFC3339),
 		Exercises:  make([]Exercise, 0, len(w.Exercises)),
 		Totals:     &Totals{Exercises: len(w.Exercises)},
+	}
+	if w.StartedAt != nil {
+		out.StartedAt = time.UnixMilli(*w.StartedAt).UTC().Format(time.RFC3339)
+		if d := *w.FinishedAt - *w.StartedAt; d > 0 {
+			out.DurationSeconds = d / 1000
+		}
 	}
 	for _, e := range w.Exercises {
 		ex := Exercise{Name: e.Name, SupersetID: e.SupersetID, Sets: make([]Set, 0, len(e.Sets))}

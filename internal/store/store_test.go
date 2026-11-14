@@ -248,7 +248,7 @@ func TestMigrateFromV1(t *testing.T) {
 		t.Fatalf("sets = %v", out["sets"])
 	}
 	// Existing workouts are history: finished at their last edit.
-	if len(out["workouts"]) != 1 || out["workouts"][0]["finished_at"] != int64(42) {
+	if len(out["workouts"]) != 1 || out["workouts"][0]["finished_at"] != int64(42) || out["workouts"][0]["started_at"] != nil {
 		t.Fatalf("workouts = %v", out["workouts"])
 	}
 }

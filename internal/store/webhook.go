@@ -42,6 +42,7 @@ type WorkoutSnapshot struct {
 	ID         string
 	Name       string
 	Date       string
+	StartedAt  *int64 // ms; nil for workouts from before it was recorded
 	FinishedAt *int64 // ms
 	Deleted    bool
 	Exercises  []ExerciseSnapshot
@@ -167,15 +168,18 @@ func (s *Store) RetryWebhook(ctx context.Context, p PendingWebhook, after time.D
 
 // Workout returns the current state of a workout, or ok=false if it is unknown.
 func (s *Store) Workout(ctx context.Context, id string) (w WorkoutSnapshot, ok bool, err error) {
-	var finished sql.NullInt64
+	var started, finished sql.NullInt64
 	var deleted int64
-	err = s.db.QueryRowContext(ctx, "SELECT id, name, date, finished_at, deleted FROM workouts WHERE id = ?", id).
-		Scan(&w.ID, &w.Name, &w.Date, &finished, &deleted)
+	err = s.db.QueryRowContext(ctx, "SELECT id, name, date, started_at, finished_at, deleted FROM workouts WHERE id = ?", id).
+		Scan(&w.ID, &w.Name, &w.Date, &started, &finished, &deleted)
 	if errors.Is(err, sql.ErrNoRows) {
 		return w, false, nil
 	}
 	if err != nil {
 		return w, false, err
+	}
+	if started.Valid {
+		w.StartedAt = &started.Int64
 	}
 	if finished.Valid {
 		w.FinishedAt = &finished.Int64

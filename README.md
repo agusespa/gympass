@@ -63,7 +63,8 @@ Set `WEBHOOK_URL` and the server POSTs each **finished** workout there (e.g. an 
   "event": "workout.saved",
   "sent_at": "2026-11-14T18:31:02Z",
   "workout": {
-    "id": "…", "name": "Push", "date": "2026-11-14", "finished_at": "2026-11-14T18:30:00Z",
+    "id": "…", "name": "Push", "date": "2026-11-14",
+    "started_at": "2026-11-14T17:17:30Z", "finished_at": "2026-11-14T18:30:00Z", "duration_seconds": 4350,
     "exercises": [{ "name": "Bench", "superset_id": null,
       "sets": [{ "reps": 8, "weight_kg": 82.5, "warmup": false, "rest_seconds": 120 }] }],
     "totals": { "exercises": 1, "working_sets": 1, "reps": 8, "volume_kg": 660 }
@@ -71,7 +72,7 @@ Set `WEBHOOK_URL` and the server POSTs each **finished** workout there (e.g. an 
 }
 ```
 
-`totals` count working sets only. A deletion is `{ "event": "workout.deleted", "workout": { "id": "…" } }`.
+`totals` count working sets only. `started_at` and `duration_seconds` are left out for workouts created before start times were recorded. A deletion is `{ "event": "workout.deleted", "workout": { "id": "…" } }`.
 
 ## Deployment
 
