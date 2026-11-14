@@ -30,7 +30,7 @@
 
 <nav class="tabbar">
 	<a href="/" class:active={!onProfile} aria-current={!onProfile ? 'page' : undefined}>
-		<svg viewBox="0 0 28 28" aria-hidden="true">
+		<svg viewBox="1 3.5 26 21.5" aria-hidden="true">
 			<rect x="5.25" y="8.25" width="2.5" height="11.5" rx="1.25" />
 			<rect x="20.25" y="8.25" width="2.5" height="11.5" rx="1.25" />
 			<rect x="9.25" y="5.75" width="2.5" height="16.5" rx="1.25" />
@@ -40,7 +40,7 @@
 		<span>Workout</span>
 	</a>
 	<a href="/profile" class:active={onProfile} aria-current={onProfile ? 'page' : undefined}>
-		<svg viewBox="0 0 28 28" aria-hidden="true">
+		<svg viewBox="1 3.5 26 21.5" aria-hidden="true">
 			<circle cx="14" cy="9.5" r="4.75" />
 			<path d="M5 24c.8-4.6 4.5-7.5 9-7.5s8.2 2.9 9 7.5" />
 		</svg>
@@ -88,12 +88,13 @@
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: 2px;
-		padding: 8px 0 6px;
+		gap: 3px;
+		padding: 5px 0 6px;
 		border-radius: 999px;
 		color: var(--text);
 		font-size: 12px;
 		font-weight: 500;
+		line-height: 1;
 		transition:
 			background-color 0.2s,
 			color 0.2s;
@@ -101,9 +102,10 @@
 		user-select: none;
 	}
 
+	/* viewBox is cropped to the drawing so padding alone sets the spacing. */
 	.tabbar svg {
-		width: 28px;
-		height: 28px;
+		width: 26px;
+		height: 21.5px;
 		fill: none;
 		stroke: currentColor;
 		stroke-width: 1.7;
