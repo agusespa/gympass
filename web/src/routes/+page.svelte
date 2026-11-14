@@ -270,7 +270,7 @@
 		padding: 0;
 		border-radius: 50%;
 		background: var(--accent);
-		color: #fff;
+		color: var(--accent-text);
 		transition: transform 0.12s;
 	}
 
