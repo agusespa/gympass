@@ -2,9 +2,13 @@
 	import '../app.css';
 	import favicon from '#lib/assets/favicon.svg';
 	import { page } from '$app/state';
+	import { onMount } from 'svelte';
+	import { startSync, sync } from '#lib/sync.svelte.ts';
 	import type { LayoutProps } from './$types';
 
 	let { children }: LayoutProps = $props();
+
+	onMount(startSync);
 
 	const onRoutines = $derived(page.url.pathname.startsWith('/routines'));
 </script>
@@ -15,6 +19,12 @@
 </svelte:head>
 
 <main>
+	{#if sync.status === 'auth-expired'}
+		<div class="banner" role="alert">
+			<span>Your login has expired. Your data is saved on this phone.</span>
+			<button class="primary" onclick={() => location.reload()}>Reload</button>
+		</div>
+	{/if}
 	{@render children()}
 </main>
 
@@ -29,6 +39,17 @@
 		margin: 0 auto;
 		padding: calc(env(safe-area-inset-top) + 1rem) 1rem
 			calc(env(safe-area-inset-bottom) + 5rem);
+	}
+
+	.banner {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		background: var(--surface);
+		border: 1px solid var(--danger);
+		border-radius: var(--radius);
+		padding: 0.75rem;
+		margin-bottom: 0.75rem;
 	}
 
 	nav {
