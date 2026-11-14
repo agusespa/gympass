@@ -3,35 +3,27 @@
 import { writeFileSync } from 'node:fs';
 import { chromium } from '@playwright/test';
 
-const FROM = '#ff9a4d';
-const TO = '#c2410c';
+const FROM = '#27272a';
+const TO = '#09090b';
+const INK = '#bef264';
 
-// White dumbbell on a 512×512 canvas: bar, collars and two plates a side, drawn
-// for the left half and mirrored. Tilted and scaled so its farthest point stays
-// inside the maskable safe zone (a circle of radius 204 around the centre).
-const HALF = `<rect x="96" y="234" width="22" height="44" rx="7"/>
-    <rect x="114" y="178" width="40" height="156" rx="14"/>
-    <rect x="160" y="146" width="48" height="220" rx="16"/>
-    <rect x="208" y="226" width="14" height="60" rx="5"/>
-    <rect x="131" y="196" width="6" height="120" rx="3" fill="#fbd5b8"/>
-    <rect x="181" y="166" width="6" height="180" rx="3" fill="#fbd5b8"/>`;
+// Flat lime dumbbell on a 512×512 canvas: bar plus two plates a side, drawn for
+// the left half and mirrored. Its farthest corner stays inside the maskable
+// safe zone (a circle of radius 204 around the centre).
+const HALF = `<rect x="58" y="200" width="38" height="112" rx="16"/>
+  <rect x="102" y="140" width="64" height="232" rx="22"/>`;
 
-const GLYPH = `<g transform="rotate(-30 256 256) translate(256 256) scale(1.12) translate(-256 -256)" fill="#fff" filter="url(#shadow)">
-  <rect x="200" y="241" width="112" height="30" rx="7"/>
-  <g>${HALF}</g>
+const GLYPH = `<g fill="${INK}">
+  <rect x="160" y="234" width="192" height="44" rx="10"/>
+  ${HALF}
   <g transform="translate(512 0) scale(-1 1)">${HALF}</g>
 </g>`;
 
 /** rounded: transparent corners (favicon, manifest "any"); otherwise a full square (iOS, maskable). */
 function svg(rounded) {
 	return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-<defs>
-<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${FROM}"/><stop offset="1" stop-color="${TO}"/></linearGradient>
-<radialGradient id="glow" cx="0.3" cy="0.2" r="0.8"><stop offset="0" stop-color="#fff" stop-opacity=".22"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
-<filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#7c2d12" flood-opacity=".45"/></filter>
-</defs>
+<defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${FROM}"/><stop offset="1" stop-color="${TO}"/></linearGradient></defs>
 <rect width="512" height="512"${rounded ? ' rx="112"' : ''} fill="url(#bg)"/>
-<rect width="512" height="512"${rounded ? ' rx="112"' : ''} fill="url(#glow)"/>
 ${GLYPH}
 </svg>
 `;
