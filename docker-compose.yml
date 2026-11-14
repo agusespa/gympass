@@ -1,0 +1,11 @@
+services:
+  gym-tracker:
+    image: ghcr.io/agusespa/gym-tracker:latest
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/app/data
+    environment:
+      DB_PATH: /app/data/gym.db
+      PORT: "8080"

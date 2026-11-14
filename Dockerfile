@@ -1,0 +1,31 @@
+# syntax=docker/dockerfile:1
+
+# Frontend: platform-independent output, so build it once on the build host.
+FROM --platform=$BUILDPLATFORM node:22-alpine AS web
+WORKDIR /src/web
+COPY web/package.json web/package-lock.json web/.npmrc ./
+RUN npm ci
+COPY web/ ./
+RUN npm run build
+
+# Go binary: pure Go (no cgo), cross-compiled for the target platform.
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS server
+ARG TARGETOS
+ARG TARGETARCH
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY cmd ./cmd
+COPY internal ./internal
+COPY --from=web /src/web/build ./internal/ui/dist
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
+    go build -trimpath -ldflags="-s -w" -o /out/gym-tracker ./cmd/gym-tracker
+
+FROM gcr.io/distroless/static-debian12:nonroot
+WORKDIR /app
+COPY --from=server /out/gym-tracker /app/gym-tracker
+ENV DB_PATH=/app/data/gym.db \
+    PORT=8080
+EXPOSE 8080
+VOLUME /app/data
+ENTRYPOINT ["/app/gym-tracker"]
