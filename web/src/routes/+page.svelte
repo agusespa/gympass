@@ -5,14 +5,22 @@
 		createRoutine,
 		createWorkout,
 		listRoutines,
+		listRunningWorkouts,
 		startWorkoutFromRoutine,
-		type RoutineSummary
+		type RoutineSummary,
+		type WorkoutSummary
 	} from '#lib/repo.ts';
 
 	const routines = live(
 		() => null,
 		() => listRoutines(),
 		[] as RoutineSummary[]
+	);
+
+	const running = live(
+		() => null,
+		() => listRunningWorkouts(),
+		[] as WorkoutSummary[]
 	);
 
 	const todayLabel = new Date().toLocaleDateString(undefined, {
@@ -54,6 +62,19 @@
 
 <p class="eyebrow">{todayLabel}</p>
 <h1 class="large-title">Workout</h1>
+
+{#each running.current as w (w.id)}
+	<a class="resume" href="/workouts/{w.id}">
+		<span class="info">
+			<span class="label">In progress</span>
+			<span class="name">{w.name}</span>
+			<span class="meta">
+				{w.exercises.length > 0 ? w.exercises.join(', ') : 'No exercises yet'}
+			</span>
+		</span>
+		<span class="go">Resume</span>
+	</a>
+{/each}
 
 <div class="section">
 	<h2>Routines</h2>
@@ -270,6 +291,39 @@
 		fill: currentColor;
 		stroke-width: 1.5;
 		margin-left: 2px;
+	}
+
+	.resume {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		margin-bottom: 1rem;
+		padding: 0.8rem 0.9rem;
+		border-radius: 16px;
+		background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+		color: inherit;
+	}
+
+	.resume:active {
+		opacity: 0.7;
+	}
+
+	.resume .label {
+		font-size: 0.72rem;
+		font-weight: 700;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--accent);
+	}
+
+	.go {
+		flex-shrink: 0;
+		padding: 0.4rem 0.85rem;
+		border-radius: 999px;
+		background: var(--accent);
+		color: var(--accent-text);
+		font-size: 0.85rem;
+		font-weight: 600;
 	}
 
 	.empty-workout {

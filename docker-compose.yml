@@ -9,3 +9,6 @@ services:
     environment:
       DB_PATH: /app/data/gym.db
       PORT: "8080"
+      # Optional: POST finished workouts to n8n (see README, "Webhook").
+      # WEBHOOK_URL: https://n8n.example.com/webhook/gym-tracker
+      # WEBHOOK_SECRET: change-me

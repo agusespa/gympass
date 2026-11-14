@@ -225,6 +225,7 @@ func TestMigrateFromV1(t *testing.T) {
 		"CREATE TABLE routine_exercises (id TEXT PRIMARY KEY, updated_at INTEGER NOT NULL, deleted INTEGER NOT NULL DEFAULT 0, seq INTEGER NOT NULL, routine_id TEXT NOT NULL DEFAULT '', name TEXT NOT NULL DEFAULT '', position REAL NOT NULL DEFAULT 0, superset_id TEXT)",
 		"CREATE TABLE routine_sets (id TEXT PRIMARY KEY, updated_at INTEGER NOT NULL, deleted INTEGER NOT NULL DEFAULT 0, seq INTEGER NOT NULL, routine_exercise_id TEXT NOT NULL DEFAULT '', position REAL NOT NULL DEFAULT 0, reps INTEGER NOT NULL DEFAULT 0, weight_kg REAL NOT NULL DEFAULT 0)",
 		"INSERT INTO sets VALUES ('s1', 1, 0, 1, 'e1', 1, 8, 80)",
+		"INSERT INTO workouts VALUES ('w1', 42, 0, 1, 'Old', '2026-01-01')",
 		"PRAGMA user_version = 1",
 	} {
 		if _, err := db.Exec(q); err != nil {
@@ -245,5 +246,9 @@ func TestMigrateFromV1(t *testing.T) {
 	if len(out["sets"]) != 1 || out["sets"][0]["warmup"] != false || out["sets"][0]["reps"] != int64(8) ||
 		out["sets"][0]["rest_seconds"] != int64(defaultRestSeconds) {
 		t.Fatalf("sets = %v", out["sets"])
+	}
+	// Existing workouts are history: finished at their last edit.
+	if len(out["workouts"]) != 1 || out["workouts"][0]["finished_at"] != int64(42) {
+		t.Fatalf("workouts = %v", out["workouts"])
 	}
 }

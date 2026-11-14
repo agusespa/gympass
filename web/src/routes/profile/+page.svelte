@@ -20,7 +20,10 @@
 
 {#each workouts.current as w (w.id)}
 	<a class="card workout" href="/workouts/{w.id}">
-		<strong>{w.name}</strong>
+		<strong>
+			{w.name}
+			{#if w.finished_at == null}<span class="badge">In progress</span>{/if}
+		</strong>
 		<span class="muted date">{longDate(w.date)}</span>
 		{#if w.exercises.length > 0}
 			<span class="muted summary">{w.exercises.join(', ')}</span>
@@ -49,6 +52,17 @@
 		display: block;
 		font-size: 1.15rem;
 		font-weight: 600;
+	}
+
+	.badge {
+		margin-left: 0.35rem;
+		padding: 0.1rem 0.45rem;
+		border-radius: 999px;
+		background: color-mix(in srgb, var(--accent) 15%, transparent);
+		color: var(--accent);
+		font-size: 0.72rem;
+		font-weight: 600;
+		vertical-align: middle;
 	}
 
 	.date {

@@ -42,11 +42,13 @@ test('create a routine from scratch, start it from the list, delete it', async (
 	await expect(exercise(page, `Curl ${id}`).getByLabel('Reps set 1')).toHaveValue('12');
 
 	await page.goto('/');
-	await page.getByRole('link', { name: `Arms ${id}` }).click();
+	// Scoped to the routine list: the workout started above also shows as "In progress".
+	const routine = page.getByRole('list').getByRole('link', { name: `Arms ${id}` });
+	await routine.click();
 	await page.getByRole('button', { name: 'Delete routine' }).click();
 	await page.getByRole('button', { name: 'Confirm delete' }).click();
 	await expect(page).toHaveURL('/');
-	await expect(page.getByRole('link', { name: `Arms ${id}` })).toHaveCount(0);
+	await expect(routine).toHaveCount(0);
 });
 
 test('warm-up sets in a routine carry into the workout', async ({ page, request }) => {

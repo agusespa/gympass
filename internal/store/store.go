@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"time"
 	"unicode/utf8"
 
 	_ "modernc.org/sqlite" // registers the "sqlite" driver
@@ -40,6 +41,10 @@ var dateRe = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
 
 type Store struct {
 	db *sql.DB
+
+	outboxOn    bool
+	outboxDelay time.Duration
+	now         func() time.Time // for tests; nil means time.Now
 }
 
 // Open opens (creating if needed) the database at path and applies migrations.
@@ -82,6 +87,8 @@ func (s *Store) migrate() error {
 		// already have the column from migration 1, so these skip existing ones.
 		addSetColumn("warmup", colBool),          // 2
 		addSetColumn("rest_seconds", colSeconds), // 3
+		addFinishedAt,                            // 4
+		createWebhookOutbox,                      // 5
 	}
 	for i := version; i < len(migrations); i++ {
 		tx, err := s.db.Begin()
@@ -140,6 +147,7 @@ func (s *Store) Sync(ctx context.Context, cursor int64, changes map[string][]Row
 		// Client is ahead of us (e.g. the database was replaced): resend everything.
 		cursor = 0
 	}
+	written := make(map[*table][][]any)
 	if len(prepared) > 0 {
 		next := seq + 1
 		wrote := false
@@ -162,6 +170,7 @@ func (s *Store) Sync(ctx context.Context, cursor int64, changes map[string][]Row
 				}
 				if n, _ := res.RowsAffected(); n > 0 {
 					wrote = true
+					written[t] = append(written[t], args)
 				}
 			}
 			_ = stmt.Close()
@@ -171,6 +180,11 @@ func (s *Store) Sync(ctx context.Context, cursor int64, changes map[string][]Row
 			if _, err := tx.ExecContext(ctx, "UPDATE sync_state SET seq = ? WHERE id = 1", seq); err != nil {
 				return 0, nil, err
 			}
+		}
+	}
+	if s.outboxOn && len(written) > 0 {
+		if err := s.scheduleWebhooks(ctx, tx, written); err != nil {
+			return 0, nil, err
 		}
 	}
 
@@ -235,6 +249,15 @@ func convert(c column, v any) (any, error) {
 			return nil, fmt.Errorf("%s must be null or a string of at most %d bytes", c.name, maxIDLen)
 		}
 		return s, nil
+	case colIntNull:
+		if v == nil {
+			return nil, nil
+		}
+		n, ok := toInt(v)
+		if !ok || n < 0 {
+			return nil, fmt.Errorf("%s must be null or a non-negative integer", c.name)
+		}
+		return n, nil
 	case colInt:
 		n, ok := toInt(v)
 		if !ok || n < 0 {
@@ -318,6 +341,17 @@ func addSetColumn(col string, typ colType) func(*sql.Tx) error {
 		}
 		return nil
 	}
+}
+
+// addFinishedAt adds workouts.finished_at. Workouts that already exist are
+// history, so they count as finished at their last edit. Clients backfill
+// their local copies the same way, so no seq bump is needed.
+func addFinishedAt(tx *sql.Tx) error {
+	if err := addColumnIfMissing(tx, "workouts", "finished_at", sqlType(colIntNull)); err != nil {
+		return err
+	}
+	_, err := tx.Exec("UPDATE workouts SET finished_at = updated_at WHERE finished_at IS NULL")
+	return err
 }
 
 func addColumnIfMissing(tx *sql.Tx, table, col, typ string) error {

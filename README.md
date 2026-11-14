@@ -12,6 +12,7 @@ A personal, offline-first workout logger for iPhone, installed via **Add to Home
 cmd/gym-tracker/     main: env config, HTTP server
 internal/store/      SQLite schema and sync logic (+ tests)
 internal/api/        /api/sync and static file serving (+ tests)
+internal/webhook/    sends finished workouts from the outbox to WEBHOOK_URL (+ tests)
 internal/ui/         embeds the built frontend from internal/ui/dist
 web/                 SvelteKit app (db.ts, repo.ts, sync.svelte.ts, service-worker/)
 e2e/                 Playwright tests
@@ -43,6 +44,34 @@ Requires Go 1.27.4+, Node 22+, and Docker for the image.
 | `make hooks` | Enables the pre-push hook |
 
 The server reads `DB_PATH` (default `data/gym.db`) and `PORT` (default `8080`).
+
+## Webhook
+
+Set `WEBHOOK_URL` and the server POSTs each **finished** workout there (e.g. an n8n Webhook node feeding Notion). A running workout is never sent, and neither is one you discard.
+
+| Variable | Default | |
+|---|---|---|
+| `WEBHOOK_URL` | (off) | Endpoint to POST to |
+| `WEBHOOK_SECRET` | (none) | Sent as `Authorization: Bearer <secret>` (n8n: Header Auth) |
+| `WEBHOOK_DELAY` | `30s` | Wait after the last change, so a burst of edits becomes one send |
+
+- Sends go through an outbox table in SQLite, so they survive restarts. Failed sends are retried with backoff (30 s doubling up to 1 h).
+- Editing a finished workout sends the whole workout again. Deleting a workout that was already delivered sends `workout.deleted`. Upsert on `workout.id` in the receiver.
+
+```json
+{
+  "event": "workout.saved",
+  "sent_at": "2026-11-14T18:31:02Z",
+  "workout": {
+    "id": "…", "name": "Push", "date": "2026-11-14", "finished_at": "2026-11-14T18:30:00Z",
+    "exercises": [{ "name": "Bench", "superset_id": null,
+      "sets": [{ "reps": 8, "weight_kg": 82.5, "warmup": false, "rest_seconds": 120 }] }],
+    "totals": { "exercises": 1, "working_sets": 1, "reps": 8, "volume_kg": 660 }
+  }
+}
+```
+
+`totals` count working sets only. A deletion is `{ "event": "workout.deleted", "workout": { "id": "…" } }`.
 
 ## Deployment
 

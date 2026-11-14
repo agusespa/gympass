@@ -188,12 +188,17 @@ export async function listWorkouts(): Promise<WorkoutSummary[]> {
 	return workouts.map((w) => ({ ...w, exercises: names.get(w.id) ?? [] }));
 }
 
+/** Workouts started but not finished yet, newest first. */
+export async function listRunningWorkouts(): Promise<WorkoutSummary[]> {
+	return (await listWorkouts()).filter((w) => w.finished_at == null);
+}
+
 export function getWorkout(id: string): Promise<Workout | undefined> {
 	return getLive<Workout>(db.workouts, id);
 }
 
 export async function createWorkout(name = 'Workout'): Promise<string> {
-	const w = fresh({ name, date: today() });
+	const w = fresh({ name, date: today(), finished_at: null });
 	await write(async () => {
 		await db.workouts.add(w);
 	});
@@ -202,6 +207,15 @@ export async function createWorkout(name = 'Workout'): Promise<string> {
 
 export async function updateWorkout(id: string, changes: Partial<Pick<Workout, 'name' | 'date'>>) {
 	await write(() => patch(db.workouts, id, changes));
+}
+
+export async function finishWorkout(id: string) {
+	await write(() => patch(db.workouts, id, { finished_at: Date.now() }));
+}
+
+/** Undo finishWorkout: the workout is in progress again. */
+export async function resumeWorkout(id: string) {
+	await write(() => patch(db.workouts, id, { finished_at: null }));
 }
 
 export async function deleteWorkout(id: string) {
@@ -279,7 +293,7 @@ export async function saveWorkoutAsRoutine(workoutId: string): Promise<string> {
 export async function startWorkoutFromRoutine(routineId: string): Promise<string> {
 	const r = await getRoutine(routineId);
 	if (!r) throw new Error('routine not found');
-	const w = fresh({ name: r.name, date: today() });
+	const w = fresh({ name: r.name, date: today(), finished_at: null });
 	await write(async () => {
 		await db.workouts.add(w);
 		await copyExercises('routine', routineId, 'workout', w.id);

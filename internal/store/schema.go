@@ -15,6 +15,7 @@ const (
 	colReal
 	colBool    // JSON boolean stored as 0/1; missing means false
 	colSeconds // rest duration, 0..maxRestSeconds; missing means defaultRestSeconds
+	colIntNull // non-negative integer or null (e.g. a ms timestamp not set yet)
 )
 
 const (
@@ -35,7 +36,7 @@ type table struct {
 // tables lists every synced table. Each also has id, updated_at, deleted and seq.
 // The client (web/src/lib/db.ts) mirrors these definitions.
 var tables = []table{
-	{"workouts", []column{{"name", colText}, {"date", colDate}}},
+	{"workouts", []column{{"name", colText}, {"date", colDate}, {"finished_at", colIntNull}}},
 	{"workout_exercises", []column{{"workout_id", colText}, {"name", colText}, {"position", colReal}, {"superset_id", colTextNull}}},
 	{"sets", []column{{"workout_exercise_id", colText}, {"position", colReal}, {"reps", colInt}, {"weight_kg", colReal}, {"warmup", colBool}, {"rest_seconds", colSeconds}}},
 	{"routines", []column{{"name", colText}}},
@@ -61,6 +62,8 @@ func sqlType(t colType) string {
 		return "REAL NOT NULL DEFAULT 0"
 	case colTextNull:
 		return "TEXT"
+	case colIntNull:
+		return "INTEGER"
 	default:
 		return "TEXT NOT NULL DEFAULT ''"
 	}

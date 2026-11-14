@@ -15,6 +15,8 @@ export interface Workout extends Synced {
 	name: string;
 	/** YYYY-MM-DD */
 	date: string;
+	/** ms when the workout was finished; null while it is in progress. */
+	finished_at: number | null;
 }
 
 export interface Exercise extends Synced {
@@ -92,6 +94,16 @@ export class GymDB extends Dexie {
 			routine_sets: 'id, routine_exercise_id, dirty',
 			meta: 'key'
 		});
+		// Workouts from before finishing existed are history: finished at their last edit.
+		// The server backfills the same way, so these rows are not marked dirty.
+		this.version(2).upgrade((tx) =>
+			tx
+				.table('workouts')
+				.toCollection()
+				.modify((w: Partial<Workout>) => {
+					if (w.finished_at === undefined) w.finished_at = w.updated_at;
+				})
+		);
 	}
 }
 

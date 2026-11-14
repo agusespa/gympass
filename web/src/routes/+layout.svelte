@@ -4,6 +4,7 @@
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import { startSync, sync } from '#lib/sync.svelte.ts';
+	import { runToastAction, toast } from '#lib/toast.svelte.ts';
 	import type { LayoutProps } from './$types';
 
 	let { children }: LayoutProps = $props();
@@ -29,6 +30,16 @@
 	{/if}
 	{@render children()}
 </main>
+
+{#if toast.current}
+	{@const t = toast.current}
+	<div class="toast" class:above-tabs={showTabs} role="status">
+		<span>{t.message}</span>
+		{#if t.action}
+			<button onclick={runToastAction}>{t.action.label}</button>
+		{/if}
+	</div>
+{/if}
 
 {#if showTabs}
 	<nav class="tabbar">
@@ -72,6 +83,39 @@
 		border-radius: var(--radius);
 		padding: 0.75rem;
 		margin-bottom: 0.75rem;
+	}
+
+	.toast {
+		position: fixed;
+		left: 50%;
+		bottom: calc(env(safe-area-inset-bottom) + 16px);
+		transform: translateX(-50%);
+		z-index: 20;
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		width: min(calc(100% - 32px), 400px);
+		padding: 0.4rem 0.4rem 0.4rem 1rem;
+		border-radius: 14px;
+		background: var(--bar);
+		-webkit-backdrop-filter: saturate(180%) blur(20px);
+		backdrop-filter: saturate(180%) blur(20px);
+		box-shadow: var(--bar-shadow);
+		font-size: 0.95rem;
+	}
+
+	.toast.above-tabs {
+		bottom: calc(env(safe-area-inset-bottom) + 84px);
+	}
+
+	.toast span {
+		flex: 1;
+	}
+
+	.toast button {
+		background: transparent;
+		color: var(--accent);
+		font-weight: 600;
 	}
 
 	/* Floating pill tab bar, centered above the home indicator. */
