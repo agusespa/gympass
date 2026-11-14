@@ -12,7 +12,7 @@ A personal, offline-first workout logger PWA for iPhone, installed via **Add to 
 - **History**: Every finished workout in the Profile tab.
 - **Offline-first**: The app and your data live on the phone, so it works with no connection.
 - **Sync**: Changes sync to your own server, so nothing is lost if you lose or reset the phone.
-- **Webhook**: Optionally send each finished workout to n8n (e.g. to log it in Notion).
+- **Webhook**: Optionally send each finished workout to an external service.
 
 ## Quick Start
 
@@ -36,7 +36,7 @@ The application is configured using environment variables. All are **optional**:
 - `DB_PATH`: Filesystem path to the SQLite database (default: `data/gym.db`; the compose file sets `/app/data/gym.db`).
 - `PORT`: The port to listen on (default: `8080`).
 - `WEBHOOK_URL`: Endpoint to POST finished workouts to. The webhook is off when unset.
-- `WEBHOOK_SECRET`: Sent as `Authorization: Bearer <secret>` (n8n: Header Auth).
+- `WEBHOOK_SECRET`: Sent as `Authorization: Bearer <secret>`.
 - `WEBHOOK_DELAY`: Wait after the last change before sending, so a burst of edits becomes one send (default: `30s`).
 
 Set them in the `environment` section of `docker-compose.yml`, or in a `.env` file next to it.
@@ -86,7 +86,7 @@ sqlite3 ./data/gym.db ".backup '/path/to/your/nas/gym_backup.db'"
 
 ## Webhook
 
-Set `WEBHOOK_URL` and the server POSTs each **finished** workout there (e.g. an n8n Webhook node feeding Notion). A running workout is never sent, and neither is one you discard.
+Set `WEBHOOK_URL` and the server POSTs each **finished** workout there. A running workout is never sent, and neither is one you discard.
 
 - Pending sends survive restarts. Failed sends are retried with backoff (30 s doubling up to 1 h).
 - Editing a finished workout sends the whole workout again. Deleting a workout that was already delivered sends `workout.deleted`. Upsert on `workout.id` in the receiver.
@@ -107,7 +107,7 @@ Set `WEBHOOK_URL` and the server POSTs each **finished** workout there (e.g. an 
 
 `totals` count working sets only. `started_at` and `duration_seconds` are left out for workouts created before start times were recorded. A deletion is `{ "event": "workout.deleted", "workout": { "id": "…" } }`.
 
-## Good to Know
+## Usage Notes
 
 - **Syncing**: The app syncs on start, shortly after each edit, when the phone comes back online, and when you return to it. If the same thing is edited on two devices, the newest edit wins.
 - **Offline use**: You can log a whole workout with no signal. Changes are queued on the phone and sent the next time the server is reachable.
