@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ConfirmButton from './ConfirmButton.svelte';
 	import { kg, parseReps, parseWeight } from './format';
 	import { live } from './live.svelte';
 	import {
@@ -54,10 +55,6 @@
 	function prevFor(ex: ExerciseView, i: number): string {
 		const s = previous.current.get(ex.name.trim().toLowerCase())?.[i];
 		return s ? `${s.reps} × ${kg(s.weight_kg)}` : '–';
-	}
-
-	async function remove(ex: ExerciseView) {
-		if (confirm(`Delete ${ex.name}?`)) await deleteExercise(kind, parentId, ex.id);
 	}
 </script>
 
@@ -142,7 +139,7 @@
 							<button class="ghost" onclick={() => unlink(kind, parentId, ex.id)}>Remove from superset</button>
 						{/if}
 						<span class="spacer"></span>
-						<button class="danger" onclick={() => remove(ex)}>Delete</button>
+						<ConfirmButton label="Delete" onconfirm={() => deleteExercise(kind, parentId, ex.id)} />
 					</div>
 				{:else}
 					<h2>{ex.name}</h2>

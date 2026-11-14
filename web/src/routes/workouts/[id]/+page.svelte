@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
+	import ConfirmButton from '#lib/ConfirmButton.svelte';
 	import ExerciseEditor from '#lib/ExerciseEditor.svelte';
 	import { live } from '#lib/live.svelte.ts';
 	import { deleteWorkout, getWorkout, saveWorkoutAsRoutine, updateWorkout } from '#lib/repo.ts';
@@ -19,7 +20,6 @@
 	}
 
 	async function remove() {
-		if (!confirm('Delete this workout?')) return;
 		await deleteWorkout(id);
 		await goto('/');
 	}
@@ -54,7 +54,7 @@
 	<div class="row actions">
 		<button onclick={saveAsRoutine}>Save as routine</button>
 		<span class="spacer"></span>
-		<button class="danger" onclick={remove}>Delete workout</button>
+		<ConfirmButton label="Delete workout" onconfirm={remove} />
 	</div>
 {:else if workout.loaded}
 	<p class="muted">Workout not found. <a href="/">Back to history</a></p>

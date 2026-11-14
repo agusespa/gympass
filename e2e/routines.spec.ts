@@ -16,7 +16,10 @@ test('save a workout as a routine and start a workout from it', async ({ page })
 	// Edit the routine template.
 	await setText(exercise(page, squat).getByLabel('Reps set 1'), '3');
 
-	await page.getByRole('button', { name: 'Start' }).click();
+	// The editor has no Start button; routines are started from the list.
+	await expect(page.getByRole('button', { name: 'Start', exact: true })).toHaveCount(0);
+	await page.getByRole('link', { name: 'Routines' }).click();
+	await page.getByRole('button', { name: `Start Legs ${id}` }).click();
 	await expect(page).toHaveURL(/\/workouts\//);
 	const ex = exercise(page, squat);
 	await expect(ex.getByLabel('Weight set 1')).toHaveValue('100');
@@ -40,8 +43,8 @@ test('create a routine from scratch, start it from the list, delete it', async (
 
 	await page.goto('/routines');
 	await page.getByRole('link', { name: `Arms ${id}` }).click();
-	page.once('dialog', (d) => d.accept());
 	await page.getByRole('button', { name: 'Delete routine' }).click();
+	await page.getByRole('button', { name: 'Confirm delete' }).click();
 	await expect(page).toHaveURL('/routines');
 	await expect(page.getByRole('link', { name: `Arms ${id}` })).toHaveCount(0);
 });

@@ -30,14 +30,18 @@ test('log a workout, see previous values, edit and delete', async ({ page, reque
 	// Delete a set and the exercise.
 	await again.getByRole('button', { name: 'Delete set 2' }).click();
 	await expect(again.getByLabel('Reps set 2')).toHaveCount(0);
-	page.once('dialog', (d) => d.accept());
 	await page.getByRole('button', { name: 'Edit order' }).click();
 	await again.getByRole('button', { name: 'Delete' }).click();
+	// Nothing is deleted until the second tap.
+	await again.getByRole('button', { name: 'Cancel' }).click();
+	await expect(again).toHaveCount(1);
+	await again.getByRole('button', { name: 'Delete' }).click();
+	await again.getByRole('button', { name: 'Confirm delete' }).click();
 	await expect(again).toHaveCount(0);
 
 	// Delete the whole workout.
-	page.once('dialog', (d) => d.accept());
 	await page.getByRole('button', { name: 'Delete workout' }).click();
+	await page.getByRole('button', { name: 'Confirm delete' }).click();
 	await expect(page).toHaveURL('/');
 	await expect(page.getByRole('link', { name: new RegExp(`Push again ${id}`) })).toHaveCount(0);
 
