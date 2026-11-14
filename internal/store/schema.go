@@ -88,16 +88,36 @@ func (t *table) colNames() []string {
 	return names
 }
 
-func (t *table) upsertSQL() string {
-	names := t.colNames()
-	placeholders := strings.TrimSuffix(strings.Repeat("?, ", len(names)), ", ")
-	sets := make([]string, 0, len(names)-1)
-	for _, n := range names[1:] {
-		sets = append(sets, fmt.Sprintf("%s = excluded.%s", n, n))
+// optional reports whether a column may be left out of a pushed row. Such a
+// column keeps its stored value on update and gets its SQL default on insert,
+// so an outdated client that does not know a newer column cannot erase it.
+// Columns added after the first release must use one of these types.
+func optional(t colType) bool {
+	switch t {
+	case colTextNull, colIntNull, colBool, colSeconds:
+		return true
 	}
+	return false
+}
+
+// upsertSQL writes the columns where present is true (in colNames order; the
+// first four are always present). Columns left out keep their stored value.
+func (t *table) upsertSQL(present []bool) string {
+	names := t.colNames()
+	var cols, sets []string
+	for i, n := range names {
+		if !present[i] {
+			continue
+		}
+		cols = append(cols, n)
+		if i > 0 {
+			sets = append(sets, fmt.Sprintf("%s = excluded.%s", n, n))
+		}
+	}
+	placeholders := strings.TrimSuffix(strings.Repeat("?, ", len(cols)), ", ")
 	return fmt.Sprintf(
 		"INSERT INTO %s (%s) VALUES (%s) ON CONFLICT(id) DO UPDATE SET %s WHERE excluded.updated_at > %s.updated_at",
-		t.name, strings.Join(names, ", "), placeholders, strings.Join(sets, ", "), t.name,
+		t.name, strings.Join(cols, ", "), placeholders, strings.Join(sets, ", "), t.name,
 	)
 }
 

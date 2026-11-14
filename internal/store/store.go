@@ -119,18 +119,22 @@ func (s *Store) Sync(ctx context.Context, cursor int64, changes map[string][]Row
 		return 0, nil, invalid("cursor must be >= 0")
 	}
 	// Validate everything before touching the database.
-	prepared := make(map[*table][][]any, len(changes))
+	type prepRow struct {
+		args    []any
+		present []bool
+	}
+	prepared := make(map[*table][]prepRow, len(changes))
 	for name, rows := range changes {
 		t, ok := tableByName[name]
 		if !ok {
 			return 0, nil, invalid("unknown table %q", name)
 		}
 		for i, r := range rows {
-			args, err := t.args(r)
+			args, present, err := t.args(r)
 			if err != nil {
 				return 0, nil, invalid("%s[%d]: %v", name, i, err)
 			}
-			prepared[t] = append(prepared[t], args)
+			prepared[t] = append(prepared[t], prepRow{args, present})
 		}
 	}
 
@@ -158,23 +162,36 @@ func (s *Store) Sync(ctx context.Context, cursor int64, changes map[string][]Row
 			if len(rows) == 0 {
 				continue
 			}
-			stmt, err := tx.PrepareContext(ctx, t.upsertSQL())
-			if err != nil {
-				return 0, nil, err
-			}
-			for _, args := range rows {
-				args[3] = next
-				res, err := stmt.ExecContext(ctx, args...)
+			// Rows usually carry the same columns, so statements are shared per column set.
+			stmts := map[string]*sql.Stmt{}
+			for _, row := range rows {
+				row.args[3] = next
+				query := t.upsertSQL(row.present)
+				stmt, ok := stmts[query]
+				if !ok {
+					if stmt, err = tx.PrepareContext(ctx, query); err != nil {
+						closeAll(stmts)
+						return 0, nil, err
+					}
+					stmts[query] = stmt
+				}
+				var vals []any
+				for j, v := range row.args {
+					if row.present[j] {
+						vals = append(vals, v)
+					}
+				}
+				res, err := stmt.ExecContext(ctx, vals...)
 				if err != nil {
-					_ = stmt.Close()
+					closeAll(stmts)
 					return 0, nil, err
 				}
 				if n, _ := res.RowsAffected(); n > 0 {
 					wrote = true
-					written[t] = append(written[t], args)
+					written[t] = append(written[t], row.args)
 				}
 			}
-			_ = stmt.Close()
+			closeAll(stmts)
 		}
 		if wrote {
 			seq = next
@@ -205,29 +222,45 @@ func (s *Store) Sync(ctx context.Context, cursor int64, changes map[string][]Row
 	return seq, out, nil
 }
 
-// args validates r and returns the values in colNames order (seq left as 0).
-func (t *table) args(r Row) ([]any, error) {
+// args validates r and returns the values in colNames order (seq left as 0)
+// and which of them r carries. Optional columns r leaves out are nil and
+// marked not present.
+func (t *table) args(r Row) ([]any, []bool, error) {
 	id, ok := r["id"].(string)
 	if !ok || id == "" || len(id) > maxIDLen {
-		return nil, errors.New("id must be a non-empty string of at most 64 bytes")
+		return nil, nil, errors.New("id must be a non-empty string of at most 64 bytes")
 	}
 	updatedAt, ok := toInt(r["updated_at"])
 	if !ok || updatedAt <= 0 {
-		return nil, errors.New("updated_at must be a positive integer")
+		return nil, nil, errors.New("updated_at must be a positive integer")
 	}
 	deleted, ok := r["deleted"].(bool)
 	if !ok {
-		return nil, errors.New("deleted must be a boolean")
+		return nil, nil, errors.New("deleted must be a boolean")
 	}
 	args := []any{id, updatedAt, boolInt(deleted), int64(0)}
+	present := []bool{true, true, true, true}
 	for _, c := range t.cols {
-		v, err := convert(c, r[c.name])
+		v, has := r[c.name]
+		if !has && optional(c.typ) {
+			args = append(args, nil)
+			present = append(present, false)
+			continue
+		}
+		v, err := convert(c, v)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		args = append(args, v)
+		present = append(present, true)
 	}
-	return args, nil
+	return args, present, nil
+}
+
+func closeAll(stmts map[string]*sql.Stmt) {
+	for _, s := range stmts {
+		_ = s.Close()
+	}
 }
 
 func convert(c column, v any) (any, error) {

@@ -252,3 +252,48 @@ func TestMigrateFromV1(t *testing.T) {
 		t.Fatalf("workouts = %v", out["workouts"])
 	}
 }
+
+// An outdated client that does not know a column must not erase it.
+func TestOmittedColumnsKeepStoredValue(t *testing.T) {
+	s := openTest(t)
+	ctx := context.Background()
+
+	full := Row{
+		"id": "s1", "updated_at": int64(100), "deleted": false,
+		"workout_exercise_id": "e1", "position": 1.0, "reps": int64(8), "weight_kg": 80.0, "warmup": true, "rest_seconds": int64(90),
+	}
+	w := workout("w1", 100, "Push")
+	w["started_at"] = int64(1000)
+	if _, _, err := s.Sync(ctx, 0, map[string][]Row{"sets": {full}, "workouts": {w}}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Newer edits that leave out warmup, rest_seconds and started_at.
+	old := Row{
+		"id": "s1", "updated_at": int64(200), "deleted": false,
+		"workout_exercise_id": "e1", "position": 1.0, "reps": int64(10), "weight_kg": 80.0,
+	}
+	_, out, err := s.Sync(ctx, 0, map[string][]Row{"sets": {old}, "workouts": {workout("w1", 200, "Push day")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	set := out["sets"][0]
+	if set["reps"] != int64(10) || set["warmup"] != true || set["rest_seconds"] != int64(90) {
+		t.Fatalf("set = %v", set)
+	}
+	wo := out["workouts"][0]
+	if wo["name"] != "Push day" || wo["started_at"] != int64(1000) {
+		t.Fatalf("workout = %v", wo)
+	}
+
+	// An explicit null still clears a nullable column (e.g. resuming a workout).
+	w3 := workout("w1", 300, "Push day")
+	w3["started_at"] = nil
+	_, out, err = s.Sync(ctx, 0, map[string][]Row{"workouts": {w3}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out["workouts"][0]["started_at"] != nil {
+		t.Fatalf("explicit null ignored: %v", out["workouts"][0])
+	}
+}
