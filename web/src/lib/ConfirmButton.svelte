@@ -7,7 +7,7 @@
 	 */
 	let {
 		label,
-		confirmLabel = 'Confirm delete',
+		confirmLabel = 'Delete',
 		message = "This can't be undone.",
 		onconfirm
 	}: { label: string; confirmLabel?: string; message?: string; onconfirm: () => unknown } = $props();

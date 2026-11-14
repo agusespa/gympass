@@ -71,7 +71,9 @@
 
 	/** No confirmation: the toast offers an undo instead. An empty workout asks first. */
 	async function save() {
-		if (done.length === 0) {
+		// Read the sets now rather than trusting `done`, which may not have loaded yet.
+		const current = await loadExercises('workout', id);
+		if (!current.some((e) => e.sets.some(logged))) {
 			nothingLogged?.open();
 			return;
 		}
@@ -158,7 +160,7 @@
 		<button onclick={saveAsRoutine}>Save as routine</button>
 		<ConfirmButton
 			label="Discard workout"
-			confirmLabel="Confirm discard"
+			confirmLabel="Discard"
 			message="Nothing from this workout will be saved."
 			onconfirm={discard}
 		/>

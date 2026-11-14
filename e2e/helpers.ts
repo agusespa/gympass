@@ -1,4 +1,31 @@
-import { expect, type APIRequestContext, type Page } from '@playwright/test';
+import { test as base, expect, type APIRequestContext, type Page } from '@playwright/test';
+
+export { expect };
+
+/**
+ * Tests share one server database, and a running workout takes over the start screen
+ * of every client that syncs it. So after each test, discard any workout left running.
+ */
+export const test = base.extend<{ discardRunning: void }>({
+	discardRunning: [
+		async ({ request }, use) => {
+			await use();
+			const running = ((await serverData(request)).workouts ?? []).filter(
+				(w) => !w.deleted && w.finished_at == null
+			);
+			if (running.length === 0) return;
+			const now = Date.now();
+			const res = await request.post('/api/sync', {
+				data: {
+					cursor: 0,
+					changes: { workouts: running.map((w) => ({ ...w, deleted: true, updated_at: now })) }
+				}
+			});
+			expect(res.ok()).toBe(true);
+		},
+		{ auto: true }
+	]
+});
 
 /** Unique suffix so tests sharing the server database don't see each other's data. */
 export function uid(): string {
@@ -64,4 +91,5 @@ export async function finishWorkout(page: Page) {
 	await page.getByRole('button', { name: 'Finish', exact: true }).click();
 	await expect(page).toHaveURL(/\/finish$/);
 	await page.getByRole('button', { name: 'Save', exact: true }).click();
+	await expect(page).toHaveURL('/profile');
 }

@@ -15,6 +15,8 @@ export interface Workout extends Synced {
 	name: string;
 	/** YYYY-MM-DD */
 	date: string;
+	/** ms when the workout was started; missing or null on workouts from before it was recorded. */
+	started_at?: number | null;
 	/** ms when the workout was finished; null while it is in progress. */
 	finished_at: number | null;
 }

@@ -1,5 +1,4 @@
-import { expect, test } from '@playwright/test';
-import { addExercise, exerciseOrder, newWorkout, uid } from './helpers';
+import { addExercise, exerciseOrder, expect, newWorkout, test, uid } from './helpers';
 
 test('reorder exercises and build supersets', async ({ page }) => {
 	const id = uid();

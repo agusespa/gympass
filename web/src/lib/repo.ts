@@ -198,7 +198,7 @@ export function getWorkout(id: string): Promise<Workout | undefined> {
 }
 
 export async function createWorkout(name = 'Workout'): Promise<string> {
-	const w = fresh({ name, date: today(), finished_at: null });
+	const w = fresh({ name, date: today(), started_at: Date.now(), finished_at: null });
 	await write(async () => {
 		await db.workouts.add(w);
 	});
@@ -293,7 +293,7 @@ export async function saveWorkoutAsRoutine(workoutId: string): Promise<string> {
 export async function startWorkoutFromRoutine(routineId: string): Promise<string> {
 	const r = await getRoutine(routineId);
 	if (!r) throw new Error('routine not found');
-	const w = fresh({ name: r.name, date: today(), finished_at: null });
+	const w = fresh({ name: r.name, date: today(), started_at: Date.now(), finished_at: null });
 	await write(async () => {
 		await db.workouts.add(w);
 		await copyExercises('routine', routineId, 'workout', w.id);

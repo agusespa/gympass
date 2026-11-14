@@ -4,9 +4,14 @@
 
 	/**
 	 * Sticky screen header with a back button; `fallback` is used when there is no history to go back to.
-	 * `action` renders on the right (e.g. a Finish button).
+	 * `action` renders on the right (e.g. a Finish button). `back={false}` hides the back button.
 	 */
-	let { title = '', fallback, action }: { title?: string; fallback: string; action?: Snippet } = $props();
+	let {
+		title = '',
+		fallback,
+		back: showBack = true,
+		action
+	}: { title?: string; fallback: string; back?: boolean; action?: Snippet } = $props();
 
 	function back() {
 		if (history.length > 1) history.back();
@@ -15,9 +20,11 @@
 </script>
 
 <div class="topbar">
-	<button class="back" aria-label="Back" onclick={back}>
-		<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
-	</button>
+	{#if showBack}
+		<button class="back" aria-label="Back" onclick={back}>
+			<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
+		</button>
+	{/if}
 	<span class="title">{title}</span>
 	{#if action}
 		<span class="action">{@render action()}</span>
@@ -63,8 +70,12 @@
 		stroke-linejoin: round;
 	}
 
+	/* Keeps the bar the same height when there is no back button. */
 	.title {
 		flex: 1;
+		display: flex;
+		align-items: center;
+		min-height: 44px;
 		font-size: 1.15rem;
 		font-weight: 500;
 	}

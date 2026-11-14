@@ -29,7 +29,8 @@
 {#if workout.current}
 	{@const w = workout.current}
 	{@const running = w.finished_at == null}
-	<TopBar fallback={running ? '/' : '/profile'}>
+	<!-- A running workout is left by finishing or discarding it, not by going back. -->
+	<TopBar fallback="/profile" back={!running}>
 		{#snippet action()}
 			{#if running}
 				<button class="primary finish" onclick={() => goto(`/workouts/${id}/finish`)}>Finish</button>

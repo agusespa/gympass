@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { longDate } from '#lib/format.ts';
+	import { duration, longDate } from '#lib/format.ts';
 	import { live } from '#lib/live.svelte.ts';
 	import { listWorkouts, type WorkoutSummary } from '#lib/repo.ts';
 
@@ -24,7 +24,12 @@
 			{w.name}
 			{#if w.finished_at == null}<span class="badge">In progress</span>{/if}
 		</strong>
-		<span class="muted date">{longDate(w.date)}</span>
+		<span class="muted date">
+			{longDate(w.date)}
+			{#if w.started_at && w.finished_at && duration(w.finished_at - w.started_at)}
+				· {duration(w.finished_at - w.started_at)}
+			{/if}
+		</span>
 		{#if w.exercises.length > 0}
 			<span class="muted summary">{w.exercises.join(', ')}</span>
 		{/if}

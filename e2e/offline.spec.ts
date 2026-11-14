@@ -1,5 +1,14 @@
-import { expect, test } from '@playwright/test';
-import { addExercise, fillSet, openApp, serverData, setText, uid } from './helpers';
+import {
+	addExercise,
+	expect,
+	fillSet,
+	finishWorkout,
+	openApp,
+	serverData,
+	setText,
+	test,
+	uid
+} from './helpers';
 
 test('works offline and syncs when back online', async ({ page, context, request }) => {
 	const id = uid();
@@ -16,9 +25,9 @@ test('works offline and syncs when back online', async ({ page, context, request
 	await addExercise(page, `Press ${id}`);
 	await fillSet(page, `Press ${id}`, 1, '40', '10');
 
-	// Navigating between screens still works offline.
-	await page.getByRole('button', { name: 'Back' }).click();
-	await page.getByRole('link', { name: 'Profile', exact: true }).click();
+	// Finishing and navigating between screens still work offline.
+	await finishWorkout(page);
+	await expect(page).toHaveURL('/profile');
 	await page.getByRole('link', { name: 'Workout', exact: true }).click();
 	await page.getByRole('link', { name: 'Profile', exact: true }).click();
 	await expect(page.getByRole('link', { name: new RegExp(`Offline ${id}`) })).toBeVisible();
@@ -45,7 +54,9 @@ test('pulls changes made elsewhere', async ({ page, request }) => {
 		data: {
 			cursor: 0,
 			changes: {
-				workouts: [{ id: `w-${id}`, updated_at: now, deleted: false, name: `Remote ${id}`, date: '2026-11-01' }]
+				workouts: [
+					{ id: `w-${id}`, updated_at: now, deleted: false, name: `Remote ${id}`, date: '2026-11-01' }
+				]
 			}
 		}
 	});
@@ -57,7 +68,9 @@ test('pulls changes made elsewhere', async ({ page, request }) => {
 		data: {
 			cursor: 0,
 			changes: {
-				workouts: [{ id: `w-${id}`, updated_at: now + 1, deleted: true, name: `Remote ${id}`, date: '2026-11-01' }]
+				workouts: [
+					{ id: `w-${id}`, updated_at: now + 1, deleted: true, name: `Remote ${id}`, date: '2026-11-01' }
+				]
 			}
 		}
 	});

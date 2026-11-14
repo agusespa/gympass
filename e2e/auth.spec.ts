@@ -1,5 +1,4 @@
-import { expect, test } from '@playwright/test';
-import { newWorkout, serverData, uid } from './helpers';
+import { addExercise, expect, fillSet, finishWorkout, newWorkout, serverData, test, uid } from './helpers';
 
 // page.route can't see requests that pass through a service worker.
 test.use({ serviceWorkers: 'block' });
@@ -16,8 +15,10 @@ for (const [kind, response] of Object.entries(accessResponses)) {
 
 		await newWorkout(page, `Kept ${id}`);
 		await expect(page.getByRole('alert')).toContainText('login has expired');
-		await page.getByRole('button', { name: 'Back' }).click();
-		await page.getByRole('link', { name: 'Profile', exact: true }).click();
+		await addExercise(page, `Row ${id}`);
+		await fillSet(page, `Row ${id}`, 1, '50', '10');
+		await finishWorkout(page);
+		await expect(page).toHaveURL('/profile');
 		await expect(page.getByRole('link', { name: new RegExp(`Kept ${id}`) })).toBeVisible();
 
 		// Logged in again: reload syncs what was kept.

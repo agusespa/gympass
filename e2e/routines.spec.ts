@@ -1,5 +1,15 @@
-import { expect, test } from '@playwright/test';
-import { addExercise, exercise, fillSet, newWorkout, serverData, setText, uid } from './helpers';
+import {
+	addExercise,
+	exercise,
+	expect,
+	fillSet,
+	finishWorkout,
+	newWorkout,
+	serverData,
+	setText,
+	test,
+	uid
+} from './helpers';
 
 test('save a workout as a routine and start a workout from it', async ({ page }) => {
 	const id = uid();
@@ -8,7 +18,8 @@ test('save a workout as a routine and start a workout from it', async ({ page })
 	await newWorkout(page, `Legs ${id}`);
 	await addExercise(page, squat);
 	await fillSet(page, squat, 1, '100', '5');
-	await page.getByRole('button', { name: 'Finish', exact: true }).click();
+	await finishWorkout(page);
+	await page.getByRole('link', { name: new RegExp(`Legs ${id}`) }).click();
 	await page.getByRole('button', { name: 'Save as routine' }).click();
 	await expect(page).toHaveURL(/\/routines\//);
 	await expect(page.getByLabel('Routine name')).toHaveValue(`Legs ${id}`);
@@ -42,12 +53,21 @@ test('create a routine from scratch, start it from the list, delete it', async (
 	await expect(page.getByLabel('Workout name')).toHaveValue(`Arms ${id}`);
 	await expect(exercise(page, `Curl ${id}`).getByLabel('Reps set 1')).toHaveValue('12');
 
-	await page.goto('/');
-	// Scoped to the routine list: the workout started above also shows as "In progress".
+	// Discarding the workout returns to the start screen.
+	await page.getByRole('button', { name: 'Finish', exact: true }).click();
+	await page.getByRole('button', { name: 'Discard workout' }).click();
+	await page
+		.getByRole('dialog', { name: 'Discard workout?' })
+		.getByRole('button', { name: 'Discard', exact: true })
+		.click();
+	await expect(page).toHaveURL('/');
 	const routine = page.getByRole('list').getByRole('link', { name: `Arms ${id}` });
 	await routine.click();
 	await page.getByRole('button', { name: 'Delete routine' }).click();
-	await page.getByRole('button', { name: 'Confirm delete' }).click();
+	await page
+		.getByRole('dialog', { name: 'Delete routine?' })
+		.getByRole('button', { name: 'Delete', exact: true })
+		.click();
 	await expect(page).toHaveURL('/');
 	await expect(routine).toHaveCount(0);
 });

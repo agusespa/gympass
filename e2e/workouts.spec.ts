@@ -1,5 +1,14 @@
-import { expect, test } from '@playwright/test';
-import { addExercise, exercise, fillSet, finishWorkout, newWorkout, serverData, uid } from './helpers';
+import {
+	addExercise,
+	exercise,
+	expect,
+	fillSet,
+	finishWorkout,
+	newWorkout,
+	serverData,
+	test,
+	uid
+} from './helpers';
 
 test('log a workout, see previous values, edit and delete', async ({ page, request }) => {
 	const id = uid();
@@ -52,7 +61,10 @@ test('log a workout, see previous values, edit and delete', async ({ page, reque
 	await again.getByRole('button', { name: 'Cancel' }).click();
 	await expect(again).toHaveCount(1);
 	await again.getByRole('button', { name: 'Delete exercise' }).click();
-	await again.getByRole('button', { name: 'Confirm delete' }).click();
+	await page
+		.getByRole('dialog', { name: 'Delete exercise?' })
+		.getByRole('button', { name: 'Delete', exact: true })
+		.click();
 	await expect(again).toHaveCount(0);
 
 	// The running screen has no bottom buttons; discarding is on the Finish screen.
@@ -61,7 +73,7 @@ test('log a workout, see previous values, edit and delete', async ({ page, reque
 	await page.getByRole('button', { name: 'Discard workout' }).click();
 	const confirmDiscard = page.getByRole('dialog', { name: 'Discard workout?' });
 	await expect(confirmDiscard).toBeVisible();
-	await confirmDiscard.getByRole('button', { name: 'Confirm discard' }).click();
+	await confirmDiscard.getByRole('button', { name: 'Discard', exact: true }).click();
 	await expect(page).toHaveURL('/');
 	await page.getByRole('link', { name: 'Profile', exact: true }).click();
 	await expect(page.getByRole('link', { name: new RegExp(`Push ${id}`) })).toBeVisible();
@@ -81,12 +93,14 @@ test('log a workout, see previous values, edit and delete', async ({ page, reque
 			return {
 				deleted: again?.deleted,
 				finished: typeof first?.finished_at === 'number',
+				timed: Number(first?.finished_at) >= Number(first?.started_at),
 				sets
 			};
 		})
 		.toEqual({
 			deleted: true,
 			finished: true,
+			timed: true,
 			sets: [
 				[80, 8],
 				[82.5, 6]
@@ -118,26 +132,24 @@ test('suggests exercise names used before', async ({ page }) => {
 	const id = uid();
 	await newWorkout(page, `Pull ${id}`);
 	await addExercise(page, `Deadlift ${id}`);
+	await fillSet(page, `Deadlift ${id}`, 1, '140', '3');
+	await finishWorkout(page);
 	await newWorkout(page, `Pull 2 ${id}`);
 	await expect(page.locator(`datalist#exercise-names option[value="Deadlift ${id}"]`)).toHaveCount(1);
 });
 
-test('a running workout can be resumed from the start screen', async ({ page, request }) => {
+test('a running workout takes over the app until it is finished', async ({ page, request }) => {
 	const id = uid();
 	await newWorkout(page, `Arms ${id}`);
 	await addExercise(page, `Curl ${id}`);
-	await page.getByRole('button', { name: 'Back' }).click();
-	await expect(page).toHaveURL('/');
+	const workoutUrl = page.url();
 
-	const resume = page.getByRole('link', {
-		name: new RegExp(`In progress Arms ${id}`)
-	});
-	await expect(resume).toContainText(`Curl ${id}`);
-	await page.getByRole('link', { name: 'Profile', exact: true }).click();
-	await expect(page.getByRole('link', { name: new RegExp(`Arms ${id}`) })).toContainText('In progress');
-
-	await page.getByRole('link', { name: 'Workout', exact: true }).click();
-	await resume.click();
+	// No back button and no tab bar: it is left by finishing or discarding it.
+	await expect(page.getByRole('button', { name: 'Back' })).toHaveCount(0);
+	// Reopening the app goes straight back to it.
+	await page.goto('/');
+	await expect(page).toHaveURL(workoutUrl);
+	await expect(page.getByLabel('Workout name')).toHaveValue(`Arms ${id}`);
 
 	// Saving with nothing filled in offers to discard or keep logging.
 	await page.getByRole('button', { name: 'Finish', exact: true }).click();
@@ -164,7 +176,9 @@ test('a running workout can be resumed from the start screen', async ({ page, re
 	// The undo reaches the server too, so the webhook won't send a running workout.
 	await expect.poll(serverFinishedAt).toBeNull();
 
+	// Once finished, the start screen is back.
 	await finishWorkout(page);
 	await page.getByRole('link', { name: 'Workout', exact: true }).click();
-	await expect(resume).toHaveCount(0);
+	await expect(page).toHaveURL('/');
+	await expect(page.getByRole('button', { name: 'Start empty workout' })).toBeVisible();
 });
