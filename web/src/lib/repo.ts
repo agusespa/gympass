@@ -19,6 +19,11 @@ export interface SetView {
 	position: number;
 	reps: number;
 	weight_kg: number;
+	warmup: boolean;
+}
+
+function toSetView(s: SetRow & { id: string }): SetView {
+	return { id: s.id, position: s.position, reps: s.reps, weight_kg: s.weight_kg, warmup: !!s.warmup };
 }
 
 export interface ExerciseView {
@@ -221,7 +226,13 @@ async function copyExercises(from: Kind, fromId: string, to: Kind, toId: string)
 		await dst.ex.add(ex);
 		for (const s of e.sets) {
 			await dst.sets.add(
-				fresh({ position: s.position, reps: s.reps, weight_kg: s.weight_kg, [dst.setParent]: ex.id })
+				fresh({
+					position: s.position,
+					reps: s.reps,
+					weight_kg: s.weight_kg,
+					warmup: !!s.warmup,
+					[dst.setParent]: ex.id
+				})
 			);
 		}
 	}
@@ -269,7 +280,7 @@ export async function loadExercises(kind: Kind, parentId: string): Promise<Exerc
 		sets: sets
 			.filter((s) => s[t.setParent] === e.id)
 			.sort(byPosition)
-			.map((s) => ({ id: s.id, position: s.position, reps: s.reps, weight_kg: s.weight_kg }))
+			.map(toSetView)
 	}));
 }
 
@@ -296,7 +307,7 @@ export async function addExercise(kind: Kind, parentId: string, name: string): P
 		const position = (existing.at(-1)?.position ?? 0) + 1;
 		const ex = fresh({ name: name.trim(), position, superset_id: null, [t.exParent]: parentId });
 		await t.ex.add(ex);
-		await t.sets.add(fresh({ position: 1, reps: 0, weight_kg: 0, [t.setParent]: ex.id }));
+		await t.sets.add(fresh({ position: 1, reps: 0, weight_kg: 0, warmup: false, [t.setParent]: ex.id }));
 		return ex.id;
 	});
 }
@@ -339,13 +350,15 @@ export async function addSet(kind: Kind, exerciseId: string) {
 				position: (last?.position ?? 0) + 1,
 				reps: last?.reps ?? 0,
 				weight_kg: last?.weight_kg ?? 0,
+				// New sets are working sets; warm-ups are marked from the set menu.
+				warmup: false,
 				[t.setParent]: exerciseId
 			})
 		);
 	});
 }
 
-export async function updateSet(kind: Kind, id: string, changes: Partial<Pick<SetRow, 'reps' | 'weight_kg'>>) {
+export async function updateSet(kind: Kind, id: string, changes: Partial<Pick<SetRow, 'reps' | 'weight_kg' | 'warmup'>>) {
 	await write(() => patch(tables(kind).sets, id, changes));
 }
 
@@ -496,7 +509,7 @@ export async function previousSets(workoutId: string): Promise<Map<string, SetVi
 			if (sets.length > 0) {
 				result.set(
 					name,
-					sets.map((s) => ({ id: s.id, position: s.position, reps: s.reps, weight_kg: s.weight_kg }))
+					sets.map(toSetView)
 				);
 				break;
 			}

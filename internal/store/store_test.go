@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"path/filepath"
 	"testing"
@@ -33,7 +34,7 @@ func TestSyncRoundTrip(t *testing.T) {
 		}},
 		"sets": {{
 			"id": "s1", "updated_at": int64(100), "deleted": false,
-			"workout_exercise_id": "e1", "position": 1.0, "reps": int64(8), "weight_kg": 82.5,
+			"workout_exercise_id": "e1", "position": 1.0, "reps": int64(8), "weight_kg": 82.5, "warmup": true,
 		}},
 	})
 	if err != nil {
@@ -46,7 +47,7 @@ func TestSyncRoundTrip(t *testing.T) {
 		t.Fatalf("unexpected changes: %v", out)
 	}
 	set := out["sets"][0]
-	if set["reps"] != int64(8) || set["weight_kg"] != 82.5 || set["deleted"] != false {
+	if set["reps"] != int64(8) || set["weight_kg"] != 82.5 || set["warmup"] != true || set["deleted"] != false {
 		t.Fatalf("set = %v", set)
 	}
 	if out["workout_exercises"][0]["superset_id"] != "s1" {
@@ -146,6 +147,7 @@ func TestValidation(t *testing.T) {
 		{"bad deleted", map[string][]Row{"workouts": {{"id": "w", "updated_at": int64(1), "deleted": 0, "name": "x", "date": "2026-01-01"}}}},
 		{"bad date", map[string][]Row{"workouts": {{"id": "w", "updated_at": int64(1), "deleted": false, "name": "x", "date": "14/11/2026"}}}},
 		{"negative reps", map[string][]Row{"sets": {{"id": "s", "updated_at": int64(1), "deleted": false, "workout_exercise_id": "e", "position": 1.0, "reps": int64(-1), "weight_kg": 1.0}}}},
+		{"string warmup", map[string][]Row{"sets": {{"id": "s", "updated_at": int64(1), "deleted": false, "workout_exercise_id": "e", "position": 1.0, "reps": int64(1), "weight_kg": 1.0, "warmup": "yes"}}}},
 		{"string weight", map[string][]Row{"sets": {{"id": "s", "updated_at": int64(1), "deleted": false, "workout_exercise_id": "e", "position": 1.0, "reps": int64(1), "weight_kg": "1"}}}},
 	}
 	for _, tc := range bad {
@@ -186,5 +188,57 @@ func TestReopenKeepsData(t *testing.T) {
 	}
 	if cur != 1 || len(out["routines"]) != 1 {
 		t.Fatalf("cursor %d out %v", cur, out)
+	}
+}
+
+func TestMissingWarmupMeansNormalSet(t *testing.T) {
+	s := openTest(t)
+	_, out, err := s.Sync(context.Background(), 0, map[string][]Row{"routine_sets": {{
+		"id": "rs1", "updated_at": int64(1), "deleted": false,
+		"routine_exercise_id": "re1", "position": 1.0, "reps": int64(5), "weight_kg": 60.0,
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out["routine_sets"][0]["warmup"] != false {
+		t.Fatalf("warmup = %v, want false", out["routine_sets"][0]["warmup"])
+	}
+}
+
+// A database created before warm-up sets existed gains the column and keeps its rows.
+func TestMigrateAddsWarmup(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "old.db")
+	db, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{
+		"CREATE TABLE sync_state (id INTEGER PRIMARY KEY CHECK (id = 1), seq INTEGER NOT NULL); INSERT INTO sync_state VALUES (1, 1);",
+		"CREATE TABLE workouts (id TEXT PRIMARY KEY, updated_at INTEGER NOT NULL, deleted INTEGER NOT NULL DEFAULT 0, seq INTEGER NOT NULL, name TEXT NOT NULL DEFAULT '', date TEXT NOT NULL DEFAULT '')",
+		"CREATE TABLE workout_exercises (id TEXT PRIMARY KEY, updated_at INTEGER NOT NULL, deleted INTEGER NOT NULL DEFAULT 0, seq INTEGER NOT NULL, workout_id TEXT NOT NULL DEFAULT '', name TEXT NOT NULL DEFAULT '', position REAL NOT NULL DEFAULT 0, superset_id TEXT)",
+		"CREATE TABLE sets (id TEXT PRIMARY KEY, updated_at INTEGER NOT NULL, deleted INTEGER NOT NULL DEFAULT 0, seq INTEGER NOT NULL, workout_exercise_id TEXT NOT NULL DEFAULT '', position REAL NOT NULL DEFAULT 0, reps INTEGER NOT NULL DEFAULT 0, weight_kg REAL NOT NULL DEFAULT 0)",
+		"CREATE TABLE routines (id TEXT PRIMARY KEY, updated_at INTEGER NOT NULL, deleted INTEGER NOT NULL DEFAULT 0, seq INTEGER NOT NULL, name TEXT NOT NULL DEFAULT '')",
+		"CREATE TABLE routine_exercises (id TEXT PRIMARY KEY, updated_at INTEGER NOT NULL, deleted INTEGER NOT NULL DEFAULT 0, seq INTEGER NOT NULL, routine_id TEXT NOT NULL DEFAULT '', name TEXT NOT NULL DEFAULT '', position REAL NOT NULL DEFAULT 0, superset_id TEXT)",
+		"CREATE TABLE routine_sets (id TEXT PRIMARY KEY, updated_at INTEGER NOT NULL, deleted INTEGER NOT NULL DEFAULT 0, seq INTEGER NOT NULL, routine_exercise_id TEXT NOT NULL DEFAULT '', position REAL NOT NULL DEFAULT 0, reps INTEGER NOT NULL DEFAULT 0, weight_kg REAL NOT NULL DEFAULT 0)",
+		"INSERT INTO sets VALUES ('s1', 1, 0, 1, 'e1', 1, 8, 80)",
+		"PRAGMA user_version = 1",
+	} {
+		if _, err := db.Exec(q); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	_ = db.Close()
+
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+	_, out, err := s.Sync(context.Background(), 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out["sets"]) != 1 || out["sets"][0]["warmup"] != false || out["sets"][0]["reps"] != int64(8) {
+		t.Fatalf("sets = %v", out["sets"])
 	}
 }

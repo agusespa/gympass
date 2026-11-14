@@ -13,6 +13,7 @@ const (
 	colDate
 	colInt
 	colReal
+	colBool // JSON boolean stored as 0/1; missing means false
 )
 
 type column struct {
@@ -30,10 +31,10 @@ type table struct {
 var tables = []table{
 	{"workouts", []column{{"name", colText}, {"date", colDate}}},
 	{"workout_exercises", []column{{"workout_id", colText}, {"name", colText}, {"position", colReal}, {"superset_id", colTextNull}}},
-	{"sets", []column{{"workout_exercise_id", colText}, {"position", colReal}, {"reps", colInt}, {"weight_kg", colReal}}},
+	{"sets", []column{{"workout_exercise_id", colText}, {"position", colReal}, {"reps", colInt}, {"weight_kg", colReal}, {"warmup", colBool}}},
 	{"routines", []column{{"name", colText}}},
 	{"routine_exercises", []column{{"routine_id", colText}, {"name", colText}, {"position", colReal}, {"superset_id", colTextNull}}},
-	{"routine_sets", []column{{"routine_exercise_id", colText}, {"position", colReal}, {"reps", colInt}, {"weight_kg", colReal}}},
+	{"routine_sets", []column{{"routine_exercise_id", colText}, {"position", colReal}, {"reps", colInt}, {"weight_kg", colReal}, {"warmup", colBool}}},
 }
 
 var tableByName = func() map[string]*table {
@@ -46,7 +47,7 @@ var tableByName = func() map[string]*table {
 
 func sqlType(t colType) string {
 	switch t {
-	case colInt:
+	case colInt, colBool:
 		return "INTEGER NOT NULL DEFAULT 0"
 	case colReal:
 		return "REAL NOT NULL DEFAULT 0"

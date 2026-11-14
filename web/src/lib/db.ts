@@ -36,6 +36,8 @@ export interface SetRow extends Synced {
 	position: number;
 	reps: number;
 	weight_kg: number;
+	/** Warm-up set. Missing on rows written before warm-ups existed, meaning false. */
+	warmup?: boolean;
 }
 
 export interface WorkoutSet extends SetRow {

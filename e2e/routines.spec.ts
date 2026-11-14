@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { addExercise, exercise, fillSet, newWorkout, setText, uid } from './helpers';
+import { addExercise, exercise, fillSet, newWorkout, serverData, setText, uid } from './helpers';
 
 test('save a workout as a routine and start a workout from it', async ({ page }) => {
 	const id = uid();
@@ -47,4 +47,41 @@ test('create a routine from scratch, start it from the list, delete it', async (
 	await page.getByRole('button', { name: 'Confirm delete' }).click();
 	await expect(page).toHaveURL('/');
 	await expect(page.getByRole('link', { name: `Arms ${id}` })).toHaveCount(0);
+});
+
+test('warm-up sets in a routine carry into the workout', async ({ page, request }) => {
+	const id = uid();
+	const press = `Press ${id}`;
+	await page.goto('/');
+	await page.getByRole('button', { name: 'New routine' }).click();
+	await setText(page.getByLabel('Routine name'), `Warm ${id}`);
+	await addExercise(page, press);
+	const ex = exercise(page, press);
+	await fillSet(page, press, 1, '40', '10');
+	await ex.getByRole('button', { name: 'Add set' }).click();
+	await fillSet(page, press, 2, '80', '5');
+
+	// Mark the first set as a warm-up; working sets are numbered on their own.
+	await ex.getByRole('button', { name: 'Set 1 type: normal' }).click();
+	await ex.getByRole('menuitem', { name: 'Warm-up set' }).click();
+	await expect(ex.getByRole('button', { name: /^Set \d type/ })).toHaveText(['W', '1']);
+	// The flag reaches the server.
+	await expect
+		.poll(async () => {
+			const data = await serverData(request);
+			return data.routine_sets?.filter((s) => s.weight_kg === 40 && s.warmup === true).length ?? 0;
+		})
+		.toBeGreaterThan(0);
+
+	await page.getByRole('link', { name: 'Workout', exact: true }).click();
+	await page.getByRole('button', { name: `Start Warm ${id}` }).click();
+	await expect(page).toHaveURL(/\/workouts\//);
+	const w = exercise(page, press);
+	await expect(w.getByRole('button', { name: /^Set \d type/ })).toHaveText(['W', '1']);
+	await expect(w.getByLabel('Weight set 1')).toHaveValue('40');
+
+	// Turning it back into a normal set renumbers.
+	await w.getByRole('button', { name: 'Set 1 type: warm-up' }).click();
+	await w.getByRole('menuitem', { name: 'Normal set' }).click();
+	await expect(w.getByRole('button', { name: /^Set \d type/ })).toHaveText(['1', '2']);
 });

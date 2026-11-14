@@ -8,6 +8,7 @@
 	--accent-text: #ffffff;
 	--danger: #d93636;
 	--superset: #8a4fff;
+	--warmup: #f5a300;
 	--radius: 14px;
 	--bar: rgba(255, 255, 255, 0.88);
 	--bar-active: rgba(118, 118, 128, 0.14);
@@ -26,6 +27,7 @@
 		--accent: #0a84ff;
 		--danger: #ff5c5c;
 		--superset: #a77bff;
+		--warmup: #ffcc00;
 		--bar: rgba(28, 28, 30, 0.88);
 		--bar-active: #000000;
 		--separator: rgba(84, 84, 88, 0.6);

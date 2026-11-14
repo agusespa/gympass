@@ -43,6 +43,8 @@
 	const blocks = $derived(toBlocks(exercises.current));
 	/** Exercise whose options menu is open; one at a time. */
 	let menuFor = $state<string | null>(null);
+	/** Set whose type picker (normal / warm-up) is open. */
+	let typeFor = $state<string | null>(null);
 	let newName = $state('');
 
 	async function add(e: SubmitEvent) {
@@ -53,11 +55,31 @@
 		await addExercise(kind, parentId, name);
 	}
 
+	/** Position of a set among the exercise's sets of the same type (warm-up or working), 0-based. */
+	function nthOfType(ex: ExerciseView, i: number): number {
+		const warm = ex.sets[i].warmup;
+		return ex.sets.slice(0, i).filter((s) => s.warmup === warm).length;
+	}
+
+	/** Last time's set of the same type and order: warm-ups match warm-ups, working sets match working sets. */
 	function prevFor(ex: ExerciseView, i: number): string {
-		const s = previous.current.get(ex.name.trim().toLowerCase())?.[i];
+		const warm = ex.sets[i].warmup;
+		const prev = previous.current.get(ex.name.trim().toLowerCase())?.filter((s) => s.warmup === warm);
+		const s = prev?.[nthOfType(ex, i)];
 		return s ? `${kg(s.weight_kg)}kg × ${s.reps}` : '–';
 	}
+
+	function setType(kind: Kind, set: SetView, warmup: boolean) {
+		typeFor = null;
+		if (set.warmup !== warmup) updateSet(kind, set.id, { warmup });
+	}
 </script>
+
+<svelte:window
+	onclick={(e) => {
+		if (typeFor && !(e.target as Element).closest('.set-cell')) typeFor = null;
+	}}
+/>
 
 {#each blocks as block, bi (block.items[0].id)}
 	<div class:superset={block.superset} class="block">
@@ -166,7 +188,26 @@
 					<span class="th"></span>
 
 					{#each ex.sets as set, si (set.id)}
-						<span class="set-num">{si + 1}</span>
+						<span class="set-cell">
+							<button
+								class="set-num"
+								class:warmup={set.warmup}
+								aria-label="Set {si + 1} type: {set.warmup ? 'warm-up' : 'normal'}"
+								aria-expanded={typeFor === set.id}
+								onclick={() => (typeFor = typeFor === set.id ? null : set.id)}
+								>{set.warmup ? 'W' : nthOfType(ex, si) + 1}</button
+							>
+							{#if typeFor === set.id}
+								<span class="type-menu" role="menu">
+									<button role="menuitem" onclick={() => setType(kind, set, false)}>
+										<span class="tag">1</span> Normal set
+									</button>
+									<button role="menuitem" onclick={() => setType(kind, set, true)}>
+										<span class="tag warmup">W</span> Warm-up set
+									</button>
+								</span>
+							{/if}
+						</span>
 						{#if kind === 'workout'}
 							<span class="prev" data-testid="previous">{prevFor(ex, si)}</span>
 						{/if}
@@ -334,14 +375,64 @@
 		stroke-width: 2.5;
 	}
 
+	.set-cell {
+		position: relative;
+	}
+
 	.set-num {
 		display: grid;
 		place-items: center;
+		width: 100%;
 		height: 44px;
+		min-height: 0;
+		padding: 0;
 		border-radius: 10px;
 		background: var(--surface);
 		font-weight: 600;
 		font-size: 1.05rem;
+	}
+
+	.set-num.warmup,
+	.tag.warmup {
+		color: var(--warmup);
+	}
+
+	.type-menu {
+		position: absolute;
+		top: calc(100% + 6px);
+		left: 0;
+		z-index: 20;
+		display: flex;
+		flex-direction: column;
+		min-width: 180px;
+		padding: 4px;
+		border-radius: 12px;
+		background: var(--surface);
+		box-shadow:
+			0 12px 32px rgba(0, 0, 0, 0.35),
+			0 0 0 1px var(--border);
+	}
+
+	.type-menu button {
+		display: flex;
+		align-items: center;
+		gap: 0.6rem;
+		min-height: 40px;
+		padding: 0 0.6rem;
+		background: transparent;
+		border-radius: 8px;
+		text-align: left;
+		font-size: 0.95rem;
+	}
+
+	.type-menu button:active {
+		background: var(--border);
+	}
+
+	.tag {
+		width: 1.2rem;
+		text-align: center;
+		font-weight: 700;
 	}
 
 	.prev {

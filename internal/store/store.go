@@ -78,6 +78,15 @@ func (s *Store) migrate() error {
 			}
 			return nil
 		},
+		// 2: warm-up flag on sets. Databases created after this change already have it.
+		func(tx *sql.Tx) error {
+			for _, t := range []string{"sets", "routine_sets"} {
+				if err := addColumnIfMissing(tx, t, "warmup", sqlType(colBool)); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
 	}
 	for i := version; i < len(migrations); i++ {
 		tx, err := s.db.Begin()
@@ -243,6 +252,15 @@ func convert(c column, v any) (any, error) {
 			return nil, fmt.Errorf("%s must be a number", c.name)
 		}
 		return f, nil
+	case colBool:
+		if v == nil {
+			return int64(0), nil
+		}
+		b, ok := v.(bool)
+		if !ok {
+			return nil, fmt.Errorf("%s must be a boolean", c.name)
+		}
+		return boolInt(b), nil
 	}
 	return nil, fmt.Errorf("%s: unsupported column type", c.name)
 }
@@ -271,16 +289,31 @@ func (t *table) since(ctx context.Context, tx *sql.Tx, cursor int64) ([]Row, err
 		}
 		for i, c := range t.cols {
 			v := vals[4+i]
-			if c.typ == colReal {
+			switch c.typ {
+			case colReal:
 				if f, ok := toFloat(v); ok {
 					v = f
 				}
+			case colBool:
+				v = v == int64(1)
 			}
 			r[c.name] = v
 		}
 		out = append(out, r)
 	}
 	return out, rs.Err()
+}
+
+func addColumnIfMissing(tx *sql.Tx, table, col, typ string) error {
+	var n int
+	if err := tx.QueryRow("SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?", table, col).Scan(&n); err != nil {
+		return err
+	}
+	if n > 0 {
+		return nil
+	}
+	_, err := tx.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", table, col, typ))
+	return err
 }
 
 func boolInt(b bool) int64 {
