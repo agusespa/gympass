@@ -9,16 +9,17 @@ test('works offline and syncs when back online', async ({ page, context, request
 	// The app shell comes from the service worker cache.
 	const res = await page.reload();
 	expect(res?.fromServiceWorker()).toBe(true);
-	await expect(page.getByRole('heading', { name: 'History' })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Workout' })).toBeVisible();
 
-	await page.getByRole('button', { name: 'New workout' }).click();
+	await page.getByRole('button', { name: 'Start empty workout' }).click();
 	await setText(page.getByLabel('Workout name'), `Offline ${id}`);
 	await addExercise(page, `Press ${id}`);
 	await fillSet(page, `Press ${id}`, 1, '40', '10');
 
 	// Navigating between screens still works offline.
-	await page.getByRole('link', { name: 'Routines' }).click();
-	await page.getByRole('link', { name: 'History' }).click();
+	await page.getByRole('link', { name: 'Profile', exact: true }).click();
+	await page.getByRole('link', { name: 'Workout', exact: true }).click();
+	await page.getByRole('link', { name: 'Profile', exact: true }).click();
 	await expect(page.getByRole('link', { name: new RegExp(`Offline ${id}`) })).toBeVisible();
 
 	// Nothing has reached the server yet.
@@ -47,7 +48,7 @@ test('pulls changes made elsewhere', async ({ page, request }) => {
 			}
 		}
 	});
-	await openApp(page);
+	await openApp(page, '/profile');
 	await expect(page.getByRole('link', { name: new RegExp(`Remote ${id}`) })).toBeVisible();
 
 	// A newer remote edit wins over the local copy.

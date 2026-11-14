@@ -166,8 +166,20 @@ export async function deleteWorkout(id: string) {
 
 // ---------- routines ----------
 
-export async function listRoutines(): Promise<Routine[]> {
-	return live(await db.routines.toArray()).sort((a, b) => a.name.localeCompare(b.name));
+export interface RoutineSummary extends Routine {
+	exercises: string[];
+}
+
+export async function listRoutines(): Promise<RoutineSummary[]> {
+	const routines = live(await db.routines.toArray()).sort((a, b) => a.name.localeCompare(b.name));
+	const exercises = live(await db.routine_exercises.toArray()).sort(byPosition);
+	const names = new Map<string, string[]>();
+	for (const e of exercises) {
+		const list = names.get(e.routine_id) ?? [];
+		list.push(e.name);
+		names.set(e.routine_id, list);
+	}
+	return routines.map((r) => ({ ...r, exercises: names.get(r.id) ?? [] }));
 }
 
 export async function getRoutine(id: string): Promise<Routine | undefined> {

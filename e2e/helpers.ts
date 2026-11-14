@@ -27,7 +27,7 @@ export async function openApp(page: Page, path = '/') {
 
 export async function newWorkout(page: Page, name: string) {
 	await page.goto('/');
-	await page.getByRole('button', { name: 'New workout' }).click();
+	await page.getByRole('button', { name: 'Start empty workout' }).click();
 	await expect(page).toHaveURL(/\/workouts\//);
 	await setText(page.getByLabel('Workout name'), name);
 }

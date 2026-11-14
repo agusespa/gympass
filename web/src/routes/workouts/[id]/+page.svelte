@@ -21,7 +21,7 @@
 
 	async function remove() {
 		await deleteWorkout(id);
-		await goto('/');
+		await goto('/profile');
 	}
 </script>
 
@@ -57,7 +57,7 @@
 		<ConfirmButton label="Delete workout" onconfirm={remove} />
 	</div>
 {:else if workout.loaded}
-	<p class="muted">Workout not found. <a href="/">Back to history</a></p>
+	<p class="muted">Workout not found. <a href="/profile">Back to history</a></p>
 {/if}
 
 <style>

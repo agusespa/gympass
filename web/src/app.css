@@ -1,27 +1,35 @@
 :root {
-	--bg: #f4f4f6;
+	--bg: #f2f2f7;
 	--surface: #ffffff;
-	--text: #16161a;
-	--muted: #6b6b76;
-	--border: #e2e2e8;
-	--accent: #2f6fed;
+	--text: #000000;
+	--muted: #8a8a8e;
+	--border: #e5e5ea;
+	--accent: #007aff;
 	--accent-text: #ffffff;
 	--danger: #d93636;
 	--superset: #8a4fff;
-	--radius: 12px;
+	--radius: 14px;
+	--bar: rgba(255, 255, 255, 0.88);
+	--bar-active: rgba(118, 118, 128, 0.14);
+	--separator: rgba(60, 60, 67, 0.29);
+	--bar-shadow: 0 8px 28px rgba(0, 0, 0, 0.14), 0 1px 3px rgba(0, 0, 0, 0.08);
 	color-scheme: light dark;
 }
 
 @media (prefers-color-scheme: dark) {
 	:root {
-		--bg: #0f0f12;
-		--surface: #1b1b20;
-		--text: #f2f2f5;
-		--muted: #9a9aa6;
-		--border: #2c2c34;
-		--accent: #5b8cff;
+		--bg: #000000;
+		--surface: #1c1c1e;
+		--text: #ffffff;
+		--muted: #8e8e93;
+		--border: #2c2c2e;
+		--accent: #0a84ff;
 		--danger: #ff5c5c;
 		--superset: #a77bff;
+		--bar: rgba(28, 28, 30, 0.88);
+		--bar-active: #000000;
+		--separator: rgba(84, 84, 88, 0.6);
+		--bar-shadow: 0 8px 28px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.1);
 	}
 }
 
@@ -141,3 +149,15 @@ button.icon {
 .stack > * + * {
 	margin-top: 0.5rem;
 }
+
+/* iOS-style large title at the top of a tab. */
+.large-title {
+	font-size: 2.125rem;
+	font-weight: 700;
+	letter-spacing: 0.01em;
+	margin: 0.25rem 0 1rem;
+}
+
+
+
+

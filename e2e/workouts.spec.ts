@@ -15,7 +15,7 @@ test('log a workout, see previous values, edit and delete', async ({ page, reque
 	await expect(exercise(page, bench).getByLabel('Weight set 2')).toHaveValue('82.5');
 
 	// Shows in history.
-	await page.getByRole('link', { name: 'History' }).click();
+	await page.getByRole('link', { name: 'Profile', exact: true }).click();
 	const entry = page.getByRole('link', { name: new RegExp(`Push ${id}`) });
 	await expect(entry).toContainText(bench);
 
@@ -42,7 +42,7 @@ test('log a workout, see previous values, edit and delete', async ({ page, reque
 	// Delete the whole workout.
 	await page.getByRole('button', { name: 'Delete workout' }).click();
 	await page.getByRole('button', { name: 'Confirm delete' }).click();
-	await expect(page).toHaveURL('/');
+	await expect(page).toHaveURL('/profile');
 	await expect(page.getByRole('link', { name: new RegExp(`Push again ${id}`) })).toHaveCount(0);
 
 	// Everything reached the server, including the delete as a tombstone.

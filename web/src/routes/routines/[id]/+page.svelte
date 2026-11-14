@@ -16,7 +16,7 @@
 
 	async function remove() {
 		await deleteRoutine(id);
-		await goto('/routines');
+		await goto('/');
 	}
 </script>
 
@@ -42,7 +42,7 @@
 		<ConfirmButton label="Delete routine" onconfirm={remove} />
 	</div>
 {:else if routine.loaded}
-	<p class="muted">Routine not found. <a href="/routines">Back to routines</a></p>
+	<p class="muted">Routine not found. <a href="/">Back to routines</a></p>
 {/if}
 
 <style>
