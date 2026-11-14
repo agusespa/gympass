@@ -65,11 +65,20 @@ test('warm-up sets in a routine carry into the workout', async ({ page, request 
 	await ex.getByRole('button', { name: 'Set 1 type: normal' }).click();
 	await ex.getByRole('menuitem', { name: 'Warm-up set' }).click();
 	await expect(ex.getByRole('button', { name: /^Set \d type/ })).toHaveText(['W', '1']);
+
+	// Every set has a rest; the warm-up gets a shorter one.
+	await expect(ex.getByLabel('Rest after set 2')).toHaveValue('120');
+	await ex.getByLabel('Rest after set 1').selectOption('60');
+	await expect(ex.locator('.rest-pill')).toHaveText(['1:00', '2:00']);
+
 	// The flag reaches the server.
 	await expect
 		.poll(async () => {
 			const data = await serverData(request);
-			return data.routine_sets?.filter((s) => s.weight_kg === 40 && s.warmup === true).length ?? 0;
+			return (
+				data.routine_sets?.filter((s) => s.weight_kg === 40 && s.warmup === true && s.rest_seconds === 60)
+					.length ?? 0
+			);
 		})
 		.toBeGreaterThan(0);
 
@@ -79,6 +88,8 @@ test('warm-up sets in a routine carry into the workout', async ({ page, request 
 	const w = exercise(page, press);
 	await expect(w.getByRole('button', { name: /^Set \d type/ })).toHaveText(['W', '1']);
 	await expect(w.getByLabel('Weight set 1')).toHaveValue('40');
+	await expect(w.getByLabel('Rest after set 1')).toHaveValue('60');
+	await expect(w.getByLabel('Rest after set 2')).toHaveValue('120');
 
 	// Turning it back into a normal set renumbers.
 	await w.getByRole('button', { name: 'Set 1 type: warm-up' }).click();

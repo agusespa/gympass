@@ -5,6 +5,7 @@
 import type { Table } from 'dexie';
 import {
 	db,
+	DEFAULT_REST_SECONDS,
 	type Exercise,
 	type Routine,
 	type SetRow,
@@ -20,10 +21,18 @@ export interface SetView {
 	reps: number;
 	weight_kg: number;
 	warmup: boolean;
+	rest_seconds: number;
 }
 
 function toSetView(s: SetRow & { id: string }): SetView {
-	return { id: s.id, position: s.position, reps: s.reps, weight_kg: s.weight_kg, warmup: !!s.warmup };
+	return {
+		id: s.id,
+		position: s.position,
+		reps: s.reps,
+		weight_kg: s.weight_kg,
+		warmup: !!s.warmup,
+		rest_seconds: s.rest_seconds ?? DEFAULT_REST_SECONDS
+	};
 }
 
 export interface ExerciseView {
@@ -231,6 +240,7 @@ async function copyExercises(from: Kind, fromId: string, to: Kind, toId: string)
 					reps: s.reps,
 					weight_kg: s.weight_kg,
 					warmup: !!s.warmup,
+					rest_seconds: s.rest_seconds ?? DEFAULT_REST_SECONDS,
 					[dst.setParent]: ex.id
 				})
 			);
@@ -307,7 +317,14 @@ export async function addExercise(kind: Kind, parentId: string, name: string): P
 		const position = (existing.at(-1)?.position ?? 0) + 1;
 		const ex = fresh({ name: name.trim(), position, superset_id: null, [t.exParent]: parentId });
 		await t.ex.add(ex);
-		await t.sets.add(fresh({ position: 1, reps: 0, weight_kg: 0, warmup: false, [t.setParent]: ex.id }));
+		await t.sets.add(fresh({
+				position: 1,
+				reps: 0,
+				weight_kg: 0,
+				warmup: false,
+				rest_seconds: DEFAULT_REST_SECONDS,
+				[t.setParent]: ex.id
+			}));
 		return ex.id;
 	});
 }
@@ -352,13 +369,14 @@ export async function addSet(kind: Kind, exerciseId: string) {
 				weight_kg: last?.weight_kg ?? 0,
 				// New sets are working sets; warm-ups are marked from the set menu.
 				warmup: false,
+				rest_seconds: last?.rest_seconds ?? DEFAULT_REST_SECONDS,
 				[t.setParent]: exerciseId
 			})
 		);
 	});
 }
 
-export async function updateSet(kind: Kind, id: string, changes: Partial<Pick<SetRow, 'reps' | 'weight_kg' | 'warmup'>>) {
+export async function updateSet(kind: Kind, id: string, changes: Partial<Pick<SetRow, 'reps' | 'weight_kg' | 'warmup' | 'rest_seconds'>>) {
 	await write(() => patch(tables(kind).sets, id, changes));
 }
 

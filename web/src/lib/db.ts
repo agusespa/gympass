@@ -38,7 +38,12 @@ export interface SetRow extends Synced {
 	weight_kg: number;
 	/** Warm-up set. Missing on rows written before warm-ups existed, meaning false. */
 	warmup?: boolean;
+	/** Rest after this set, seconds. Missing on older rows, meaning DEFAULT_REST_SECONDS. */
+	rest_seconds?: number;
 }
+
+/** Mirrors defaultRestSeconds in internal/store/schema.go. */
+export const DEFAULT_REST_SECONDS = 120;
 
 export interface WorkoutSet extends SetRow {
 	workout_exercise_id: string;

@@ -13,7 +13,13 @@ const (
 	colDate
 	colInt
 	colReal
-	colBool // JSON boolean stored as 0/1; missing means false
+	colBool    // JSON boolean stored as 0/1; missing means false
+	colSeconds // rest duration, 0..maxRestSeconds; missing means defaultRestSeconds
+)
+
+const (
+	defaultRestSeconds = 120
+	maxRestSeconds     = 3600
 )
 
 type column struct {
@@ -31,10 +37,10 @@ type table struct {
 var tables = []table{
 	{"workouts", []column{{"name", colText}, {"date", colDate}}},
 	{"workout_exercises", []column{{"workout_id", colText}, {"name", colText}, {"position", colReal}, {"superset_id", colTextNull}}},
-	{"sets", []column{{"workout_exercise_id", colText}, {"position", colReal}, {"reps", colInt}, {"weight_kg", colReal}, {"warmup", colBool}}},
+	{"sets", []column{{"workout_exercise_id", colText}, {"position", colReal}, {"reps", colInt}, {"weight_kg", colReal}, {"warmup", colBool}, {"rest_seconds", colSeconds}}},
 	{"routines", []column{{"name", colText}}},
 	{"routine_exercises", []column{{"routine_id", colText}, {"name", colText}, {"position", colReal}, {"superset_id", colTextNull}}},
-	{"routine_sets", []column{{"routine_exercise_id", colText}, {"position", colReal}, {"reps", colInt}, {"weight_kg", colReal}, {"warmup", colBool}}},
+	{"routine_sets", []column{{"routine_exercise_id", colText}, {"position", colReal}, {"reps", colInt}, {"weight_kg", colReal}, {"warmup", colBool}, {"rest_seconds", colSeconds}}},
 }
 
 var tableByName = func() map[string]*table {
@@ -49,6 +55,8 @@ func sqlType(t colType) string {
 	switch t {
 	case colInt, colBool:
 		return "INTEGER NOT NULL DEFAULT 0"
+	case colSeconds:
+		return fmt.Sprintf("INTEGER NOT NULL DEFAULT %d", defaultRestSeconds)
 	case colReal:
 		return "REAL NOT NULL DEFAULT 0"
 	case colTextNull:

@@ -87,6 +87,15 @@ func (s *Store) migrate() error {
 			}
 			return nil
 		},
+		// 3: rest time per set.
+		func(tx *sql.Tx) error {
+			for _, t := range []string{"sets", "routine_sets"} {
+				if err := addColumnIfMissing(tx, t, "rest_seconds", sqlType(colSeconds)); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
 	}
 	for i := version; i < len(migrations); i++ {
 		tx, err := s.db.Begin()
@@ -261,6 +270,15 @@ func convert(c column, v any) (any, error) {
 			return nil, fmt.Errorf("%s must be a boolean", c.name)
 		}
 		return boolInt(b), nil
+	case colSeconds:
+		if v == nil {
+			return int64(defaultRestSeconds), nil
+		}
+		n, ok := toInt(v)
+		if !ok || n < 0 || n > maxRestSeconds {
+			return nil, fmt.Errorf("%s must be an integer from 0 to %d", c.name, maxRestSeconds)
+		}
+		return n, nil
 	}
 	return nil, fmt.Errorf("%s: unsupported column type", c.name)
 }

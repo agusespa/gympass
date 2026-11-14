@@ -18,6 +18,9 @@ test('reorder exercises and build supersets', async ({ page }) => {
 	await expect(page.getByText('Superset', { exact: true })).toBeVisible();
 	await page.getByRole('button', { name: 'Move superset up' }).click();
 	await expect.poll(() => exerciseOrder(page)).toEqual([c, b, a]);
+	// Rest only after the last exercise of the superset round.
+	await expect(page.getByRole('region', { name: c }).getByLabel(/^Rest after/)).toHaveCount(0);
+	await expect(page.getByRole('region', { name: b }).getByLabel(/^Rest after/)).toHaveCount(1);
 
 	// Reorder inside the superset.
 	await page.getByRole('button', { name: `Move ${b} up in superset` }).click();

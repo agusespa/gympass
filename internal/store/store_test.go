@@ -34,7 +34,7 @@ func TestSyncRoundTrip(t *testing.T) {
 		}},
 		"sets": {{
 			"id": "s1", "updated_at": int64(100), "deleted": false,
-			"workout_exercise_id": "e1", "position": 1.0, "reps": int64(8), "weight_kg": 82.5, "warmup": true,
+			"workout_exercise_id": "e1", "position": 1.0, "reps": int64(8), "weight_kg": 82.5, "warmup": true, "rest_seconds": int64(90),
 		}},
 	})
 	if err != nil {
@@ -47,7 +47,7 @@ func TestSyncRoundTrip(t *testing.T) {
 		t.Fatalf("unexpected changes: %v", out)
 	}
 	set := out["sets"][0]
-	if set["reps"] != int64(8) || set["weight_kg"] != 82.5 || set["warmup"] != true || set["deleted"] != false {
+	if set["reps"] != int64(8) || set["weight_kg"] != 82.5 || set["warmup"] != true || set["rest_seconds"] != int64(90) || set["deleted"] != false {
 		t.Fatalf("set = %v", set)
 	}
 	if out["workout_exercises"][0]["superset_id"] != "s1" {
@@ -148,6 +148,8 @@ func TestValidation(t *testing.T) {
 		{"bad date", map[string][]Row{"workouts": {{"id": "w", "updated_at": int64(1), "deleted": false, "name": "x", "date": "14/11/2026"}}}},
 		{"negative reps", map[string][]Row{"sets": {{"id": "s", "updated_at": int64(1), "deleted": false, "workout_exercise_id": "e", "position": 1.0, "reps": int64(-1), "weight_kg": 1.0}}}},
 		{"string warmup", map[string][]Row{"sets": {{"id": "s", "updated_at": int64(1), "deleted": false, "workout_exercise_id": "e", "position": 1.0, "reps": int64(1), "weight_kg": 1.0, "warmup": "yes"}}}},
+		{"rest too long", map[string][]Row{"sets": {{"id": "s", "updated_at": int64(1), "deleted": false, "workout_exercise_id": "e", "position": 1.0, "reps": int64(1), "weight_kg": 1.0, "rest_seconds": int64(3601)}}}},
+		{"negative rest", map[string][]Row{"sets": {{"id": "s", "updated_at": int64(1), "deleted": false, "workout_exercise_id": "e", "position": 1.0, "reps": int64(1), "weight_kg": 1.0, "rest_seconds": int64(-1)}}}},
 		{"string weight", map[string][]Row{"sets": {{"id": "s", "updated_at": int64(1), "deleted": false, "workout_exercise_id": "e", "position": 1.0, "reps": int64(1), "weight_kg": "1"}}}},
 	}
 	for _, tc := range bad {
@@ -191,7 +193,8 @@ func TestReopenKeepsData(t *testing.T) {
 	}
 }
 
-func TestMissingWarmupMeansNormalSet(t *testing.T) {
+// Older clients don't send the newer set fields.
+func TestMissingSetFieldsGetDefaults(t *testing.T) {
 	s := openTest(t)
 	_, out, err := s.Sync(context.Background(), 0, map[string][]Row{"routine_sets": {{
 		"id": "rs1", "updated_at": int64(1), "deleted": false,
@@ -200,13 +203,14 @@ func TestMissingWarmupMeansNormalSet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out["routine_sets"][0]["warmup"] != false {
-		t.Fatalf("warmup = %v, want false", out["routine_sets"][0]["warmup"])
+	rs := out["routine_sets"][0]
+	if rs["warmup"] != false || rs["rest_seconds"] != int64(defaultRestSeconds) {
+		t.Fatalf("routine set = %v", rs)
 	}
 }
 
-// A database created before warm-up sets existed gains the column and keeps its rows.
-func TestMigrateAddsWarmup(t *testing.T) {
+// A database created before warm-ups and rest times gains the columns and keeps its rows.
+func TestMigrateFromV1(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "old.db")
 	db, err := sql.Open("sqlite", "file:"+path)
 	if err != nil {
@@ -238,7 +242,8 @@ func TestMigrateAddsWarmup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(out["sets"]) != 1 || out["sets"][0]["warmup"] != false || out["sets"][0]["reps"] != int64(8) {
+	if len(out["sets"]) != 1 || out["sets"][0]["warmup"] != false || out["sets"][0]["reps"] != int64(8) ||
+		out["sets"][0]["rest_seconds"] != int64(defaultRestSeconds) {
 		t.Fatalf("sets = %v", out["sets"])
 	}
 }

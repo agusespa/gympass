@@ -1,6 +1,6 @@
 <script lang="ts">
 	import ConfirmButton from './ConfirmButton.svelte';
-	import { kg, parseReps, parseWeight } from './format';
+	import { kg, parseReps, parseWeight, REST_CHOICES, restLabel } from './format';
 	import { live } from './live.svelte';
 	import {
 		addExercise,
@@ -67,6 +67,13 @@
 		const prev = previous.current.get(ex.name.trim().toLowerCase())?.filter((s) => s.warmup === warm);
 		const s = prev?.[nthOfType(ex, i)];
 		return s ? `${kg(s.weight_kg)}kg × ${s.reps}` : '–';
+	}
+
+	/** Picker options, keeping an off-list value (e.g. synced from elsewhere) selectable. */
+	function restOptions(current: number): number[] {
+		return REST_CHOICES.includes(current)
+			? REST_CHOICES
+			: [...REST_CHOICES, current].sort((a, b) => a - b);
 	}
 
 	function setType(kind: Kind, set: SetView, warmup: boolean) {
@@ -233,6 +240,27 @@
 						>
 							<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17" /></svg>
 						</button>
+						<!-- In a superset you only rest after the last exercise of the round. -->
+						{#if !block.superset || ei === block.items.length - 1}
+							<label class="rest" class:warmup={set.warmup}>
+								<span class="rest-pill">
+									<svg viewBox="0 0 24 24" aria-hidden="true">
+										<circle cx="12" cy="13" r="8" /><path d="M12 9v4l2.5 2.5M10 2.5h4" />
+									</svg>
+									{restLabel(set.rest_seconds)}
+								</span>
+								<select
+									aria-label="Rest after set {si + 1}"
+									value={set.rest_seconds}
+									onchange={(e) =>
+										updateSet(kind, set.id, { rest_seconds: Number(e.currentTarget.value) })}
+								>
+									{#each restOptions(set.rest_seconds) as sec (sec)}
+										<option value={sec}>{sec === 0 ? 'No rest' : restLabel(sec)}</option>
+									{/each}
+								</select>
+							</label>
+						{/if}
 					{/each}
 				</div>
 
@@ -466,6 +494,59 @@
 	.add-set svg {
 		width: 20px;
 		height: 20px;
+	}
+
+	/* Rest line between sets: a centred pill on a hairline; a transparent native
+	   select on top gives the iOS picker wheel when tapped. */
+	.rest {
+		grid-column: 1 / -1;
+		position: relative;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		height: 22px;
+		margin: -0.2rem 0;
+	}
+
+	.rest::before {
+		content: '';
+		position: absolute;
+		left: 52px;
+		right: 52px;
+		top: 50%;
+		border-top: 1px dashed var(--border);
+	}
+
+	.rest-pill {
+		position: relative;
+		display: flex;
+		align-items: center;
+		gap: 0.25rem;
+		padding: 0.1rem 0.55rem;
+		border-radius: 999px;
+		background: var(--bg);
+		color: var(--accent);
+		font-size: 0.78rem;
+		font-weight: 600;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.rest.warmup .rest-pill {
+		color: var(--warmup);
+	}
+
+	.rest-pill svg {
+		width: 13px;
+		height: 13px;
+		stroke-width: 2.2;
+	}
+
+	.rest select {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		opacity: 0;
+		font-size: 16px;
 	}
 
 	.add-set {

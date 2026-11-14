@@ -24,3 +24,16 @@ export function longDate(iso: string): string {
 		year: 'numeric'
 	});
 }
+
+/** Rest duration as m:ss, e.g. 90 → "1:30". */
+export function restLabel(seconds: number): string {
+	const m = Math.floor(seconds / 60);
+	const s = seconds % 60;
+	return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+/** Rest choices for the picker: 15 s steps to 5 min, then 30 s steps to 10 min. */
+export const REST_CHOICES: number[] = [
+	...Array.from({ length: 21 }, (_, i) => i * 15),
+	...Array.from({ length: 10 }, (_, i) => 330 + i * 30)
+];
