@@ -12,7 +12,7 @@
 
 <div class="topbar">
 	<button class="back" aria-label="Back" onclick={back}>
-		<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+		<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
 	</button>
 	<span class="title">{title}</span>
 </div>
@@ -24,7 +24,7 @@
 		z-index: 5;
 		display: flex;
 		align-items: center;
-		gap: 0.9rem;
+		gap: 0.25rem;
 		margin: calc(-1 * (env(safe-area-inset-top) + 1rem)) -1rem 0;
 		padding: calc(env(safe-area-inset-top) + 0.6rem) 1rem 0.6rem;
 		background: var(--bar);
@@ -33,23 +33,25 @@
 		border-bottom: 1px solid var(--border);
 	}
 
+	/* iOS-style back chevron: no background, tinted like a link. */
 	.back {
 		display: grid;
 		place-items: center;
-		width: 44px;
+		width: 36px;
 		height: 44px;
+		min-height: 0;
+		margin-left: -0.5rem;
 		padding: 0;
-		border-radius: 50%;
-		background: var(--surface);
-		box-shadow: 0 0 0 1px var(--border);
+		background: transparent;
+		color: var(--accent);
 	}
 
 	.back svg {
-		width: 22px;
-		height: 22px;
+		width: 26px;
+		height: 26px;
 		fill: none;
 		stroke: currentColor;
-		stroke-width: 2;
+		stroke-width: 2.4;
 		stroke-linecap: round;
 		stroke-linejoin: round;
 	}
