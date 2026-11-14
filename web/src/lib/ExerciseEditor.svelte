@@ -41,7 +41,8 @@
 	);
 
 	const blocks = $derived(toBlocks(exercises.current));
-	let editing = $state(false);
+	/** Exercise whose options menu is open; one at a time. */
+	let menuFor = $state<string | null>(null);
 	let newName = $state('');
 
 	async function add(e: SubmitEvent) {
@@ -54,152 +55,156 @@
 
 	function prevFor(ex: ExerciseView, i: number): string {
 		const s = previous.current.get(ex.name.trim().toLowerCase())?.[i];
-		return s ? `${s.reps} × ${kg(s.weight_kg)}` : '–';
+		return s ? `${kg(s.weight_kg)}kg × ${s.reps}` : '–';
 	}
 </script>
-
-{#if exercises.current.length > 0}
-	<div class="row toolbar">
-		<span class="spacer"></span>
-		<button class="ghost" onclick={() => (editing = !editing)}>
-			{editing ? 'Done' : 'Edit order'}
-		</button>
-	</div>
-{/if}
 
 {#each blocks as block, bi (block.items[0].id)}
 	<div class:superset={block.superset} class="block">
 		{#if block.superset}
-			<div class="row superset-head">
-				<span class="badge">Superset</span>
-				<span class="spacer"></span>
-				{#if editing}
-					<button
-						class="icon"
-						aria-label="Move superset up"
-						disabled={bi === 0}
-						onclick={() => moveBlock(kind, parentId, block.items[0].id, -1)}>↑</button
-					>
-					<button
-						class="icon"
-						aria-label="Move superset down"
-						disabled={bi === blocks.length - 1}
-						onclick={() => moveBlock(kind, parentId, block.items[0].id, 1)}>↓</button
-					>
-				{/if}
-			</div>
+			<span class="badge">Superset</span>
 		{/if}
 
 		{#each block.items as ex, ei (ex.id)}
-			<section class="card" aria-label={ex.name}>
-				{#if editing}
-					<input
-						class="name-input"
-						aria-label="Exercise name"
-						value={ex.name}
-						onchange={(e) => {
-							const v = e.currentTarget.value.trim();
-							if (v) renameExercise(kind, ex.id, v);
-						}}
-					/>
-					<div class="row controls">
-						{#if block.superset}
-							<button
-								class="icon"
-								aria-label="Move {ex.name} up in superset"
-								disabled={ei === 0}
-								onclick={() => moveWithinSuperset(kind, parentId, ex.id, -1)}>↑</button
-							>
-							<button
-								class="icon"
-								aria-label="Move {ex.name} down in superset"
-								disabled={ei === block.items.length - 1}
-								onclick={() => moveWithinSuperset(kind, parentId, ex.id, 1)}>↓</button
-							>
-						{:else}
-							<button
-								class="icon"
-								aria-label="Move {ex.name} up"
-								disabled={bi === 0}
-								onclick={() => moveBlock(kind, parentId, ex.id, -1)}>↑</button
-							>
-							<button
-								class="icon"
-								aria-label="Move {ex.name} down"
-								disabled={bi === blocks.length - 1}
-								onclick={() => moveBlock(kind, parentId, ex.id, 1)}>↓</button
-							>
-						{/if}
-						{#if ei === 0 && bi > 0}
-							<button class="ghost" onclick={() => linkToAbove(kind, parentId, ex.id)}>
-								Superset with above
-							</button>
-						{/if}
-						{#if block.superset}
-							<button class="ghost" onclick={() => unlink(kind, parentId, ex.id)}>Remove from superset</button>
-						{/if}
-						<span class="spacer"></span>
-						<ConfirmButton label="Delete" onconfirm={() => deleteExercise(kind, parentId, ex.id)} />
-					</div>
-				{:else}
+			<section aria-label={ex.name}>
+				<header>
 					<h2>{ex.name}</h2>
-					<table>
-						<thead>
-							<tr>
-								<th class="num">Set</th>
-								{#if kind === 'workout'}<th>Previous</th>{/if}
-								<th>kg</th>
-								<th>Reps</th>
-								<th></th>
-							</tr>
-						</thead>
-						<tbody>
-							{#each ex.sets as set, si (set.id)}
-								<tr>
-									<td class="num muted">{si + 1}</td>
-									{#if kind === 'workout'}
-										<td class="prev muted" data-testid="previous">{prevFor(ex, si)}</td>
-									{/if}
-									<td>
-										<input
-											inputmode="decimal"
-											aria-label="Weight set {si + 1}"
-											placeholder="0"
-											value={set.weight_kg ? kg(set.weight_kg) : ''}
-											onchange={(e) =>
-												updateSet(kind, set.id, { weight_kg: parseWeight(e.currentTarget.value) })}
-										/>
-									</td>
-									<td>
-										<input
-											inputmode="numeric"
-											pattern="[0-9]*"
-											aria-label="Reps set {si + 1}"
-											placeholder="0"
-											value={set.reps ? String(set.reps) : ''}
-											onchange={(e) =>
-												updateSet(kind, set.id, { reps: parseReps(e.currentTarget.value) })}
-										/>
-									</td>
-									<td>
-										<button
-											class="icon danger"
-											aria-label="Delete set {si + 1}"
-											onclick={() => deleteSet(kind, set.id)}>×</button
-										>
-									</td>
-								</tr>
-							{/each}
-						</tbody>
-					</table>
-					<button class="add-set" onclick={() => addSet(kind, ex.id)}>+ Add set</button>
+					<button
+						class="menu-button"
+						aria-label="Exercise options"
+						aria-expanded={menuFor === ex.id}
+						onclick={() => (menuFor = menuFor === ex.id ? null : ex.id)}
+					>
+						<svg viewBox="0 0 24 24" aria-hidden="true">
+							<circle cx="12" cy="5" r="2" /><circle cx="12" cy="12" r="2" /><circle
+								cx="12"
+								cy="19"
+								r="2"
+							/>
+						</svg>
+					</button>
+				</header>
+
+				{#if menuFor === ex.id}
+					<div class="menu">
+						<input
+							aria-label="Exercise name"
+							value={ex.name}
+							onchange={(e) => {
+								const v = e.currentTarget.value.trim();
+								if (v) renameExercise(kind, ex.id, v);
+							}}
+						/>
+						<div class="chips">
+							{#if block.superset}
+								<button
+									class="chip"
+									aria-label="Move {ex.name} up in superset"
+									disabled={ei === 0}
+									onclick={() => moveWithinSuperset(kind, parentId, ex.id, -1)}>↑ In superset</button
+								>
+								<button
+									class="chip"
+									aria-label="Move {ex.name} down in superset"
+									disabled={ei === block.items.length - 1}
+									onclick={() => moveWithinSuperset(kind, parentId, ex.id, 1)}>↓ In superset</button
+								>
+								<button
+									class="chip"
+									aria-label="Move superset up"
+									disabled={bi === 0}
+									onclick={() => moveBlock(kind, parentId, ex.id, -1)}>↑ Superset</button
+								>
+								<button
+									class="chip"
+									aria-label="Move superset down"
+									disabled={bi === blocks.length - 1}
+									onclick={() => moveBlock(kind, parentId, ex.id, 1)}>↓ Superset</button
+								>
+							{:else}
+								<button
+									class="chip"
+									aria-label="Move {ex.name} up"
+									disabled={bi === 0}
+									onclick={() => moveBlock(kind, parentId, ex.id, -1)}>↑ Move up</button
+								>
+								<button
+									class="chip"
+									aria-label="Move {ex.name} down"
+									disabled={bi === blocks.length - 1}
+									onclick={() => moveBlock(kind, parentId, ex.id, 1)}>↓ Move down</button
+								>
+							{/if}
+							{#if ei === 0 && bi > 0}
+								<button class="chip" onclick={() => linkToAbove(kind, parentId, ex.id)}>
+									Superset with above
+								</button>
+							{/if}
+							{#if block.superset}
+								<button class="chip" onclick={() => unlink(kind, parentId, ex.id)}>
+									Remove from superset
+								</button>
+							{/if}
+						</div>
+						<ConfirmButton
+							label="Delete exercise"
+							onconfirm={() => deleteExercise(kind, parentId, ex.id)}
+						/>
+					</div>
 				{/if}
+
+				<div class="sets" class:with-prev={kind === 'workout'}>
+					<span class="th">Set</span>
+					{#if kind === 'workout'}<span class="th">Previous</span>{/if}
+					<span class="th">
+						<svg class="kg-icon" viewBox="0 0 24 24" aria-hidden="true">
+							<path d="M2 12h20M6 8v8M18 8v8M9 9.5v5M15 9.5v5" />
+						</svg>
+						kg
+					</span>
+					<span class="th">Reps</span>
+					<span class="th"></span>
+
+					{#each ex.sets as set, si (set.id)}
+						<span class="set-num">{si + 1}</span>
+						{#if kind === 'workout'}
+							<span class="prev" data-testid="previous">{prevFor(ex, si)}</span>
+						{/if}
+						<input
+							inputmode="decimal"
+							aria-label="Weight set {si + 1}"
+							placeholder="0"
+							value={set.weight_kg ? kg(set.weight_kg) : ''}
+							onchange={(e) => updateSet(kind, set.id, { weight_kg: parseWeight(e.currentTarget.value) })}
+						/>
+						<input
+							inputmode="numeric"
+							pattern="[0-9]*"
+							aria-label="Reps set {si + 1}"
+							placeholder="0"
+							value={set.reps ? String(set.reps) : ''}
+							onchange={(e) => updateSet(kind, set.id, { reps: parseReps(e.currentTarget.value) })}
+						/>
+						<button
+							class="delete-set"
+							aria-label="Delete set {si + 1}"
+							onclick={() => deleteSet(kind, set.id)}
+						>
+							<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17" /></svg>
+						</button>
+					{/each}
+				</div>
+
+				<button class="add-set" onclick={() => addSet(kind, ex.id)}>
+					<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+					Add set
+				</button>
 			</section>
 		{/each}
 	</div>
 {/each}
 
-<form class="card row" onsubmit={add}>
+<form class="add-exercise" onsubmit={add}>
 	<input
 		list="exercise-names"
 		aria-label="New exercise name"
@@ -216,25 +221,20 @@
 </datalist>
 
 <style>
-	.toolbar {
-		margin-bottom: 0.25rem;
+	section {
+		padding: 1.25rem 0 1.5rem;
+		border-bottom: 1px solid var(--border);
 	}
 
 	.block.superset {
 		border-left: 3px solid var(--superset);
-		padding-left: 0.5rem;
-		margin-bottom: 0.75rem;
-	}
-
-	.block.superset .card {
-		margin-bottom: 0.5rem;
-	}
-
-	.superset-head {
-		margin-bottom: 0.4rem;
+		padding-left: 0.75rem;
+		margin-top: 0.75rem;
 	}
 
 	.badge {
+		display: block;
+		padding-top: 0.25rem;
 		color: var(--superset);
 		font-weight: 700;
 		font-size: 0.8rem;
@@ -242,54 +242,172 @@
 		letter-spacing: 0.04em;
 	}
 
-	table {
-		width: 100%;
-		border-collapse: collapse;
-		margin: 0.5rem 0;
+	header {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		margin-bottom: 0.75rem;
 	}
 
-	th {
-		font-size: 0.75rem;
+	h2 {
+		flex: 1;
+		min-width: 0;
+		color: var(--accent);
+		font-size: 1.3rem;
 		font-weight: 600;
+	}
+
+	svg {
+		fill: none;
+		stroke: currentColor;
+		stroke-width: 2;
+		stroke-linecap: round;
+		stroke-linejoin: round;
+	}
+
+	.menu-button {
+		background: transparent;
+		padding: 0;
+		min-width: 40px;
+		color: var(--text);
+	}
+
+	.menu-button svg {
+		width: 22px;
+		height: 22px;
+		fill: currentColor;
+		stroke: none;
+	}
+
+	.menu {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 0.6rem;
+		background: var(--surface);
+		border-radius: var(--radius);
+		padding: 0.75rem;
+		margin-bottom: 1rem;
+	}
+
+	.chips {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.4rem;
+	}
+
+	.chip {
+		background: var(--border);
+		border-radius: 999px;
+		min-height: 36px;
+		padding: 0.35rem 0.85rem;
+		font-size: 0.9rem;
+	}
+
+	/* Set table as a grid: Set | (Previous) | kg | Reps | delete */
+	.sets {
+		display: grid;
+		grid-template-columns: 44px 1fr 1fr 44px;
+		align-items: center;
+		gap: 0.6rem 0.6rem;
+	}
+
+	.sets.with-prev {
+		grid-template-columns: 44px 1.15fr 1fr 1fr 44px;
+	}
+
+	.th {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.3rem;
+		font-size: 0.8rem;
+		font-weight: 500;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
 		color: var(--muted);
-		text-align: center;
-		padding: 0 0.25rem 0.25rem;
 	}
 
-	td {
-		padding: 0.2rem 0.25rem;
+	.kg-icon {
+		width: 16px;
+		height: 16px;
+		stroke-width: 2.5;
 	}
 
-	.num {
-		width: 2rem;
-		text-align: center;
+	.set-num {
+		display: grid;
+		place-items: center;
+		height: 44px;
+		border-radius: 10px;
+		background: var(--surface);
+		font-weight: 600;
+		font-size: 1.05rem;
 	}
 
 	.prev {
-		font-size: 0.9rem;
-		white-space: nowrap;
-	}
-
-	td input {
 		text-align: center;
+		color: var(--muted);
+		white-space: nowrap;
+		font-size: 0.95rem;
 	}
 
-	td:last-child,
-	th:last-child {
-		width: 40px;
+	.sets input {
+		height: 44px;
+		text-align: center;
+		font-size: 1.05rem;
+		background: transparent;
+		border: 1px solid var(--border);
+		border-radius: 10px;
+		padding: 0 0.25rem;
+	}
+
+	.delete-set {
+		display: grid;
+		place-items: center;
+		height: 44px;
+		padding: 0;
+		border-radius: 10px;
+		background: var(--surface);
+		color: var(--muted);
+	}
+
+	.delete-set svg,
+	.add-set svg {
+		width: 20px;
+		height: 20px;
 	}
 
 	.add-set {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.4rem;
 		width: 100%;
+		min-height: 48px;
+		margin-top: 1rem;
+		background: var(--surface);
+		border-radius: 12px;
+		font-size: 1.05rem;
+		font-weight: 500;
 	}
 
-	.name-input {
-		font-weight: 600;
-		margin-bottom: 0.5rem;
+	.add-exercise {
+		display: flex;
+		gap: 0.5rem;
+		margin-top: 1.25rem;
 	}
 
-	.controls {
-		flex-wrap: wrap;
-		gap: 0.25rem;
+	.add-exercise input {
+		height: 48px;
+		background: var(--surface);
+		border-color: transparent;
+		border-radius: 12px;
+		padding: 0 1rem;
+	}
+
+	.add-exercise button {
+		min-height: 48px;
+		border-radius: 12px;
+		padding: 0 1.25rem;
 	}
 </style>

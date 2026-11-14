@@ -6,13 +6,14 @@ test('reorder exercises and build supersets', async ({ page }) => {
 	const [a, b, c] = [`A ${id}`, `B ${id}`, `C ${id}`];
 	await newWorkout(page, `Order ${id}`);
 	for (const n of [a, b, c]) await addExercise(page, n);
-	await page.getByRole('button', { name: 'Edit order' }).click();
 
-	// Single exercise moves.
+	// Single exercise moves, from the exercise's options menu.
+	await page.getByRole('region', { name: c }).getByRole('button', { name: 'Exercise options' }).click();
 	await page.getByRole('button', { name: `Move ${c} up` }).click();
 	await expect.poll(() => exerciseOrder(page)).toEqual([a, c, b]);
 
 	// Superset c + b, then move the superset to the top.
+	await page.getByRole('region', { name: b }).getByRole('button', { name: 'Exercise options' }).click();
 	await page.getByRole('region', { name: b }).getByRole('button', { name: 'Superset with above' }).click();
 	await expect(page.getByText('Superset', { exact: true })).toBeVisible();
 	await page.getByRole('button', { name: 'Move superset up' }).click();
@@ -34,7 +35,7 @@ test('reorder exercises and build supersets', async ({ page }) => {
 	await expect(page.getByText('Superset', { exact: true })).toBeVisible();
 
 	// Unlinking dissolves a two-exercise superset.
-	await page.getByRole('button', { name: 'Edit order' }).click();
+	await page.getByRole('region', { name: c }).getByRole('button', { name: 'Exercise options' }).click();
 	await page.getByRole('region', { name: c }).getByRole('button', { name: 'Remove from superset' }).click();
 	await expect(page.getByText('Superset', { exact: true })).toHaveCount(0);
 	await expect.poll(() => exerciseOrder(page)).toEqual([b, c, a]);

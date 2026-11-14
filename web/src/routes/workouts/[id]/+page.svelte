@@ -3,6 +3,7 @@
 	import { page } from '$app/state';
 	import ConfirmButton from '#lib/ConfirmButton.svelte';
 	import ExerciseEditor from '#lib/ExerciseEditor.svelte';
+	import TopBar from '#lib/TopBar.svelte';
 	import { live } from '#lib/live.svelte.ts';
 	import { deleteWorkout, getWorkout, saveWorkoutAsRoutine, updateWorkout } from '#lib/repo.ts';
 	import type { Workout } from '#lib/db.ts';
@@ -27,7 +28,8 @@
 
 {#if workout.current}
 	{@const w = workout.current}
-	<div class="card stack">
+	<TopBar title="Log workout" fallback="/profile" />
+	<div class="details">
 		<input
 			class="title"
 			aria-label="Workout name"
@@ -38,6 +40,7 @@
 			}}
 		/>
 		<input
+			class="date"
 			type="date"
 			aria-label="Workout date"
 			value={w.date}
@@ -61,12 +64,27 @@
 {/if}
 
 <style>
+	.details {
+		padding: 1rem 0 0.75rem;
+		border-bottom: 1px solid var(--border);
+	}
+
 	.title {
-		font-size: 1.3rem;
+		font-size: 1.6rem;
 		font-weight: 700;
+		background: transparent;
+		border-color: transparent;
+		padding: 0.25rem 0;
+	}
+
+	.date {
+		width: auto;
+		background: var(--surface);
+		border-color: transparent;
+		margin-top: 0.4rem;
 	}
 
 	.actions {
-		margin-top: 1rem;
+		margin-top: 1.25rem;
 	}
 </style>

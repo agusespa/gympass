@@ -3,6 +3,7 @@
 	import { page } from '$app/state';
 	import ConfirmButton from '#lib/ConfirmButton.svelte';
 	import ExerciseEditor from '#lib/ExerciseEditor.svelte';
+	import TopBar from '#lib/TopBar.svelte';
 	import { live } from '#lib/live.svelte.ts';
 	import { deleteRoutine, getRoutine, updateRoutine } from '#lib/repo.ts';
 	import type { Routine } from '#lib/db.ts';
@@ -21,7 +22,8 @@
 </script>
 
 {#if routine.current}
-	<div class="card">
+	<TopBar title="Edit routine" fallback="/" />
+	<div class="details">
 		<input
 			class="title"
 			aria-label="Routine name"
@@ -46,12 +48,20 @@
 {/if}
 
 <style>
+	.details {
+		padding: 1rem 0 0.75rem;
+		border-bottom: 1px solid var(--border);
+	}
+
 	.title {
-		font-size: 1.3rem;
+		font-size: 1.6rem;
 		font-weight: 700;
+		background: transparent;
+		border-color: transparent;
+		padding: 0.25rem 0;
 	}
 
 	.actions {
-		margin-top: 1rem;
+		margin-top: 1.25rem;
 	}
 </style>

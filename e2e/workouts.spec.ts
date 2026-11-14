@@ -8,7 +8,7 @@ test('log a workout, see previous values, edit and delete', async ({ page, reque
 	await newWorkout(page, `Push ${id}`);
 	await addExercise(page, bench);
 	await fillSet(page, bench, 1, '80', '8');
-	await exercise(page, bench).getByRole('button', { name: '+ Add set' }).click();
+	await exercise(page, bench).getByRole('button', { name: 'Add set' }).click();
 	// A new set copies the previous one.
 	await expect(exercise(page, bench).getByLabel('Weight set 2')).toHaveValue('80');
 	await fillSet(page, bench, 2, '82,5', '6'); // decimal comma from the iPhone keyboard
@@ -24,18 +24,18 @@ test('log a workout, see previous values, edit and delete', async ({ page, reque
 	await page.getByLabel('New exercise name').fill(bench.toLowerCase());
 	await page.getByRole('button', { name: 'Add', exact: true }).click();
 	const again = exercise(page, bench.toLowerCase());
-	await again.getByRole('button', { name: '+ Add set' }).click();
-	await expect(again.getByTestId('previous')).toHaveText(['8 × 80', '6 × 82.5']);
+	await again.getByRole('button', { name: 'Add set' }).click();
+	await expect(again.getByTestId('previous')).toHaveText(['80kg × 8', '82.5kg × 6']);
 
 	// Delete a set and the exercise.
 	await again.getByRole('button', { name: 'Delete set 2' }).click();
 	await expect(again.getByLabel('Reps set 2')).toHaveCount(0);
-	await page.getByRole('button', { name: 'Edit order' }).click();
-	await again.getByRole('button', { name: 'Delete' }).click();
+	await again.getByRole('button', { name: 'Exercise options' }).click();
+	await again.getByRole('button', { name: 'Delete exercise' }).click();
 	// Nothing is deleted until the second tap.
 	await again.getByRole('button', { name: 'Cancel' }).click();
 	await expect(again).toHaveCount(1);
-	await again.getByRole('button', { name: 'Delete' }).click();
+	await again.getByRole('button', { name: 'Delete exercise' }).click();
 	await again.getByRole('button', { name: 'Confirm delete' }).click();
 	await expect(again).toHaveCount(0);
 
