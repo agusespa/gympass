@@ -4,3 +4,11 @@ test-results/
 coverage.out
 .DS_Store
 .env
+
+# Build output
+web/build/
+web/.svelte-kit/
+internal/ui/dist/*
+!internal/ui/dist/.gitkeep
+/bin/
+/data/
