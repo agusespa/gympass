@@ -4,6 +4,7 @@
 	import ConfirmButton from '#lib/ConfirmButton.svelte';
 	import ExerciseEditor from '#lib/ExerciseEditor.svelte';
 	import TopBar from '#lib/TopBar.svelte';
+	import { elapsed } from '#lib/format.ts';
 	import { live } from '#lib/live.svelte.ts';
 	import { deleteWorkout, getWorkout, saveWorkoutAsRoutine, updateWorkout } from '#lib/repo.ts';
 	import type { Workout } from '#lib/db.ts';
@@ -14,6 +15,16 @@
 		(id) => getWorkout(id),
 		undefined as Workout | undefined
 	);
+
+	// Ticks once a second while a running workout with a known start is open.
+	let now = $state(Date.now());
+	$effect(() => {
+		const w = workout.current;
+		if (!w || w.finished_at != null || !w.started_at) return;
+		now = Date.now();
+		const timer = setInterval(() => (now = Date.now()), 1000);
+		return () => clearInterval(timer);
+	});
 
 	async function saveAsRoutine() {
 		const routineId = await saveWorkoutAsRoutine(id);
@@ -30,7 +41,12 @@
 	{@const w = workout.current}
 	{@const running = w.finished_at == null}
 	<!-- A running workout is left by finishing or discarding it, not by going back. -->
-	<TopBar fallback="/profile" back={!running}>
+	<TopBar
+		fallback="/profile"
+		back={!running}
+		title={running && w.started_at ? elapsed(now - w.started_at) : ''}
+		titleLabel={running && w.started_at ? 'Elapsed time' : undefined}
+	>
 		{#snippet action()}
 			{#if running}
 				<button class="primary finish" onclick={() => goto(`/workouts/${id}/finish`)}>Finish</button>

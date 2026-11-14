@@ -32,6 +32,15 @@ export function restLabel(seconds: number): string {
 	return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+/** Stopwatch time, e.g. 75_000 → "1:15", 3_725_000 → "1:02:05". */
+export function elapsed(ms: number): string {
+	const total = Math.max(0, Math.floor(ms / 1000));
+	const h = Math.floor(total / 3600);
+	const m = Math.floor((total % 3600) / 60);
+	const s = String(total % 60).padStart(2, '0');
+	return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`;
+}
+
 /** Rest choices for the picker: 0 to 5 min in 30 s steps. */
 export const REST_CHOICES: number[] = Array.from({ length: 11 }, (_, i) => i * 30);
 

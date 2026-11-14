@@ -9,9 +9,17 @@
 	let {
 		title = '',
 		fallback,
+		titleLabel,
 		back: showBack = true,
 		action
-	}: { title?: string; fallback: string; back?: boolean; action?: Snippet } = $props();
+	}: {
+		title?: string;
+		/** Accessible name for the title, e.g. "Elapsed time" for a running workout's clock. */
+		titleLabel?: string;
+		fallback: string;
+		back?: boolean;
+		action?: Snippet;
+	} = $props();
 
 	function back() {
 		if (history.length > 1) history.back();
@@ -25,7 +33,7 @@
 			<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
 		</button>
 	{/if}
-	<span class="title">{title}</span>
+	<span class="title" role={titleLabel ? 'timer' : undefined} aria-label={titleLabel}>{title}</span>
 	{#if action}
 		<span class="action">{@render action()}</span>
 	{/if}
@@ -78,6 +86,8 @@
 		min-height: 44px;
 		font-size: 1.15rem;
 		font-weight: 500;
+		/* Digits keep their width so a ticking clock doesn't jitter. */
+		font-variant-numeric: tabular-nums;
 	}
 
 	.action {

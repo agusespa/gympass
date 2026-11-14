@@ -146,6 +146,11 @@ test('a running workout takes over the app until it is finished', async ({ page,
 
 	// No back button and no tab bar: it is left by finishing or discarding it.
 	await expect(page.getByRole('button', { name: 'Back' })).toHaveCount(0);
+	// The top bar shows how long it has been running, and keeps ticking.
+	const clock = page.getByRole('timer', { name: 'Elapsed time' });
+	await expect(clock).toHaveText(/^0:\d\d$/);
+	const first = await clock.textContent();
+	await expect(clock).not.toHaveText(first ?? '');
 	// Reopening the app goes straight back to it.
 	await page.goto('/');
 	await expect(page).toHaveURL(workoutUrl);
@@ -181,4 +186,7 @@ test('a running workout takes over the app until it is finished', async ({ page,
 	await page.getByRole('link', { name: 'Workout', exact: true }).click();
 	await expect(page).toHaveURL('/');
 	await expect(page.getByRole('button', { name: 'Start empty workout' })).toBeVisible();
+	await page.goto(workoutUrl);
+	await expect(page.getByLabel('Workout name')).toHaveValue(`Arms ${id}`);
+	await expect(page.getByRole('timer')).toHaveCount(0);
 });
