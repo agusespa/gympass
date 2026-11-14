@@ -29,9 +29,9 @@
 {#if workout.current}
 	{@const w = workout.current}
 	<TopBar title="Log workout" fallback="/profile" />
-	<div class="details">
+	<div class="page-details">
 		<input
-			class="title"
+			class="page-name"
 			aria-label="Workout name"
 			value={w.name}
 			onchange={(e) => {
@@ -54,7 +54,7 @@
 		<ExerciseEditor kind="workout" parentId={id} />
 	{/key}
 
-	<div class="row actions">
+	<div class="row page-actions">
 		<button onclick={saveAsRoutine}>Save as routine</button>
 		<span class="spacer"></span>
 		<ConfirmButton label="Delete workout" onconfirm={remove} />
@@ -64,27 +64,10 @@
 {/if}
 
 <style>
-	.details {
-		padding: 1rem 0 0.75rem;
-		border-bottom: 1px solid var(--border);
-	}
-
-	.title {
-		font-size: 1.6rem;
-		font-weight: 700;
-		background: transparent;
-		border-color: transparent;
-		padding: 0.25rem 0;
-	}
-
 	.date {
 		width: auto;
 		background: var(--surface);
 		border-color: transparent;
 		margin-top: 0.4rem;
-	}
-
-	.actions {
-		margin-top: 1.25rem;
 	}
 </style>

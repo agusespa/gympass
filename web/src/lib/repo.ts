@@ -112,6 +112,46 @@ function live<T extends Synced>(rows: T[]): T[] {
 
 const byPosition = (a: { position: number }, b: { position: number }) => a.position - b.position;
 
+/** One row by id, unless it is missing or soft-deleted. */
+async function getLive<T extends Synced>(
+	table: { get(id: string): PromiseLike<T | undefined> },
+	id: string
+): Promise<T | undefined> {
+	const row = await table.get(id);
+	return row && !row.deleted ? row : undefined;
+}
+
+/** Exercise names per parent id, in exercise order. */
+function namesByParent<E extends Exercise>(
+	exercises: E[],
+	parentOf: (e: E) => string
+): Map<string, string[]> {
+	const names = new Map<string, string[]>();
+	for (const e of exercises.sort(byPosition)) {
+		const list = names.get(parentOf(e)) ?? [];
+		list.push(e.name);
+		names.set(parentOf(e), list);
+	}
+	return names;
+}
+
+/** A new set row with defaults; values from `like` (e.g. the set it copies) override them. */
+function newSet(
+	parentKey: KindTables['setParent'],
+	parentId: string,
+	like?: Partial<Omit<SetView, 'id'>>
+): SetRow & Synced & Record<string, unknown> {
+	return fresh({
+		position: 1,
+		reps: 0,
+		weight_kg: 0,
+		warmup: false,
+		rest_seconds: DEFAULT_REST_SECONDS,
+		...like,
+		[parentKey]: parentId
+	}) as SetRow & Synced & Record<string, unknown>;
+}
+
 // Tables differ per kind only in names; this keeps the rest of the code shared.
 interface KindTables {
 	ex: Table<Exercise & Record<string, unknown>, string>;
@@ -144,19 +184,12 @@ export interface WorkoutSummary extends Workout {
 
 export async function listWorkouts(): Promise<WorkoutSummary[]> {
 	const workouts = live(await db.workouts.orderBy('date').reverse().toArray());
-	const exercises = live(await db.workout_exercises.toArray()).sort(byPosition);
-	const names = new Map<string, string[]>();
-	for (const e of exercises) {
-		const list = names.get(e.workout_id) ?? [];
-		list.push(e.name);
-		names.set(e.workout_id, list);
-	}
+	const names = namesByParent(live(await db.workout_exercises.toArray()), (e) => e.workout_id);
 	return workouts.map((w) => ({ ...w, exercises: names.get(w.id) ?? [] }));
 }
 
-export async function getWorkout(id: string): Promise<Workout | undefined> {
-	const w = await db.workouts.get(id);
-	return w && !w.deleted ? w : undefined;
+export function getWorkout(id: string): Promise<Workout | undefined> {
+	return getLive<Workout>(db.workouts, id);
 }
 
 export async function createWorkout(name = 'Workout'): Promise<string> {
@@ -186,19 +219,12 @@ export interface RoutineSummary extends Routine {
 
 export async function listRoutines(): Promise<RoutineSummary[]> {
 	const routines = live(await db.routines.toArray()).sort((a, b) => a.name.localeCompare(b.name));
-	const exercises = live(await db.routine_exercises.toArray()).sort(byPosition);
-	const names = new Map<string, string[]>();
-	for (const e of exercises) {
-		const list = names.get(e.routine_id) ?? [];
-		list.push(e.name);
-		names.set(e.routine_id, list);
-	}
+	const names = namesByParent(live(await db.routine_exercises.toArray()), (e) => e.routine_id);
 	return routines.map((r) => ({ ...r, exercises: names.get(r.id) ?? [] }));
 }
 
-export async function getRoutine(id: string): Promise<Routine | undefined> {
-	const r = await db.routines.get(id);
-	return r && !r.deleted ? r : undefined;
+export function getRoutine(id: string): Promise<Routine | undefined> {
+	return getLive<Routine>(db.routines, id);
 }
 
 export async function createRoutine(name = 'New routine'): Promise<string> {
@@ -233,17 +259,8 @@ async function copyExercises(from: Kind, fromId: string, to: Kind, toId: string)
 		}
 		const ex = fresh({ name: e.name, position: e.position, superset_id: superset, [dst.exParent]: toId });
 		await dst.ex.add(ex);
-		for (const s of e.sets) {
-			await dst.sets.add(
-				fresh({
-					position: s.position,
-					reps: s.reps,
-					weight_kg: s.weight_kg,
-					warmup: !!s.warmup,
-					rest_seconds: s.rest_seconds ?? DEFAULT_REST_SECONDS,
-					[dst.setParent]: ex.id
-				})
-			);
+		for (const { id: _id, ...set } of e.sets) {
+			await dst.sets.add(newSet(dst.setParent, ex.id, set));
 		}
 	}
 }
@@ -317,14 +334,7 @@ export async function addExercise(kind: Kind, parentId: string, name: string): P
 		const position = (existing.at(-1)?.position ?? 0) + 1;
 		const ex = fresh({ name: name.trim(), position, superset_id: null, [t.exParent]: parentId });
 		await t.ex.add(ex);
-		await t.sets.add(fresh({
-				position: 1,
-				reps: 0,
-				weight_kg: 0,
-				warmup: false,
-				rest_seconds: DEFAULT_REST_SECONDS,
-				[t.setParent]: ex.id
-			}));
+		await t.sets.add(newSet(t.setParent, ex.id));
 		return ex.id;
 	});
 }
@@ -362,21 +372,27 @@ export async function addSet(kind: Kind, exerciseId: string) {
 	await write(async () => {
 		const sets = live(await t.sets.where(t.setParent).equals(exerciseId).toArray()).sort(byPosition);
 		const last = sets.at(-1);
+		// Copy the last set's numbers and rest; new sets are working sets (warm-ups are marked from the set menu).
 		await t.sets.add(
-			fresh({
-				position: (last?.position ?? 0) + 1,
-				reps: last?.reps ?? 0,
-				weight_kg: last?.weight_kg ?? 0,
-				// New sets are working sets; warm-ups are marked from the set menu.
-				warmup: false,
-				rest_seconds: last?.rest_seconds ?? DEFAULT_REST_SECONDS,
-				[t.setParent]: exerciseId
-			})
+			newSet(
+				t.setParent,
+				exerciseId,
+				last && {
+					position: last.position + 1,
+					reps: last.reps,
+					weight_kg: last.weight_kg,
+					rest_seconds: last.rest_seconds ?? DEFAULT_REST_SECONDS
+				}
+			)
 		);
 	});
 }
 
-export async function updateSet(kind: Kind, id: string, changes: Partial<Pick<SetRow, 'reps' | 'weight_kg' | 'warmup' | 'rest_seconds'>>) {
+export async function updateSet(
+	kind: Kind,
+	id: string,
+	changes: Partial<Pick<SetRow, 'reps' | 'weight_kg' | 'warmup' | 'rest_seconds'>>
+) {
 	await write(() => patch(tables(kind).sets, id, changes));
 }
 
@@ -428,7 +444,11 @@ export async function moveWithinSuperset(kind: Kind, parentId: string, exerciseI
 		const i = block.items.findIndex((e) => e.id === exerciseId);
 		const j = i + dir;
 		if (j < 0 || j >= block.items.length) return;
-		await setPositions(kind, [block.items[i], block.items[j]], [block.items[j].position, block.items[i].position]);
+		await setPositions(
+			kind,
+			[block.items[i], block.items[j]],
+			[block.items[j].position, block.items[i].position]
+		);
 	});
 }
 
@@ -486,10 +506,7 @@ async function normalizeSupersets(kind: Kind, parentId: string) {
 
 export async function exerciseNames(): Promise<string[]> {
 	const seen = new Map<string, string>();
-	const rows = [
-		...live(await db.workout_exercises.toArray()),
-		...live(await db.routine_exercises.toArray())
-	];
+	const rows = [...live(await db.workout_exercises.toArray()), ...live(await db.routine_exercises.toArray())];
 	for (const r of rows) {
 		const key = r.name.trim().toLowerCase();
 		if (key && !seen.has(key)) seen.set(key, r.name.trim());
@@ -511,12 +528,12 @@ export async function previousSets(workoutId: string): Promise<Map<string, SetVi
 
 	const workouts = new Map(live(await db.workouts.toArray()).map((w) => [w.id, w]));
 	for (const name of names) {
-		const candidates = live(
-			await db.workout_exercises.where('name').equalsIgnoreCase(name).toArray()
-		).filter((e) => {
-			const w = workouts.get(e.workout_id);
-			return w && w.id !== workoutId && w.date <= current.date;
-		});
+		const candidates = live(await db.workout_exercises.where('name').equalsIgnoreCase(name).toArray()).filter(
+			(e) => {
+				const w = workouts.get(e.workout_id);
+				return w && w.id !== workoutId && w.date <= current.date;
+			}
+		);
 		candidates.sort((a, b) => {
 			const wa = workouts.get(a.workout_id)!;
 			const wb = workouts.get(b.workout_id)!;
@@ -525,10 +542,7 @@ export async function previousSets(workoutId: string): Promise<Map<string, SetVi
 		for (const c of candidates) {
 			const sets = live(await db.sets.where('workout_exercise_id').equals(c.id).toArray()).sort(byPosition);
 			if (sets.length > 0) {
-				result.set(
-					name,
-					sets.map(toSetView)
-				);
+				result.set(name, sets.map(toSetView));
 				break;
 			}
 		}

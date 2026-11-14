@@ -23,9 +23,9 @@
 
 {#if routine.current}
 	<TopBar title="Edit routine" fallback="/" />
-	<div class="details">
+	<div class="page-details">
 		<input
-			class="title"
+			class="page-name"
 			aria-label="Routine name"
 			value={routine.current.name}
 			onchange={(e) => {
@@ -39,29 +39,10 @@
 		<ExerciseEditor kind="routine" parentId={id} />
 	{/key}
 
-	<div class="row actions">
+	<div class="row page-actions">
 		<span class="spacer"></span>
 		<ConfirmButton label="Delete routine" onconfirm={remove} />
 	</div>
 {:else if routine.loaded}
 	<p class="muted">Routine not found. <a href="/">Back to routines</a></p>
 {/if}
-
-<style>
-	.details {
-		padding: 1rem 0 0.75rem;
-		border-bottom: 1px solid var(--border);
-	}
-
-	.title {
-		font-size: 1.6rem;
-		font-weight: 700;
-		background: transparent;
-		border-color: transparent;
-		padding: 0.25rem 0;
-	}
-
-	.actions {
-		margin-top: 1.25rem;
-	}
-</style>

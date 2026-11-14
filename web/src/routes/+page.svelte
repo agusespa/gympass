@@ -29,7 +29,10 @@
 	}
 
 	function initials(name: string): string {
-		const words = name.trim().split(/[\s-]+/).filter(Boolean);
+		const words = name
+			.trim()
+			.split(/[\s-]+/)
+			.filter(Boolean);
 		return ((words[0]?.[0] ?? '') + (words[1]?.[0] ?? '')).toUpperCase() || '?';
 	}
 
@@ -50,7 +53,7 @@
 </script>
 
 <p class="eyebrow">{todayLabel}</p>
-<h1 class="title">Workout</h1>
+<h1 class="large-title">Workout</h1>
 
 <div class="section">
 	<h2>Routines</h2>
@@ -114,13 +117,6 @@
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
 		color: var(--accent);
-	}
-
-	.title {
-		font-size: 1.85rem;
-		font-weight: 800;
-		letter-spacing: -0.02em;
-		margin: 0 0 1rem;
 	}
 
 	.section {

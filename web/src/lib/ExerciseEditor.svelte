@@ -71,12 +71,10 @@
 
 	/** Picker options, keeping an off-list value (e.g. synced from elsewhere) selectable. */
 	function restOptions(current: number): number[] {
-		return REST_CHOICES.includes(current)
-			? REST_CHOICES
-			: [...REST_CHOICES, current].sort((a, b) => a - b);
+		return REST_CHOICES.includes(current) ? REST_CHOICES : [...REST_CHOICES, current].sort((a, b) => a - b);
 	}
 
-	function setType(kind: Kind, set: SetView, warmup: boolean) {
+	function setType(set: SetView, warmup: boolean) {
 		typeFor = null;
 		if (set.warmup !== warmup) updateSet(kind, set.id, { warmup });
 	}
@@ -105,11 +103,7 @@
 						onclick={() => (menuFor = menuFor === ex.id ? null : ex.id)}
 					>
 						<svg viewBox="0 0 24 24" aria-hidden="true">
-							<circle cx="12" cy="5" r="2" /><circle cx="12" cy="12" r="2" /><circle
-								cx="12"
-								cy="19"
-								r="2"
-							/>
+							<circle cx="12" cy="5" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="12" cy="19" r="2" />
 						</svg>
 					</button>
 				</header>
@@ -175,10 +169,7 @@
 								</button>
 							{/if}
 						</div>
-						<ConfirmButton
-							label="Delete exercise"
-							onconfirm={() => deleteExercise(kind, parentId, ex.id)}
-						/>
+						<ConfirmButton label="Delete exercise" onconfirm={() => deleteExercise(kind, parentId, ex.id)} />
 					</div>
 				{/if}
 
@@ -206,10 +197,10 @@
 							>
 							{#if typeFor === set.id}
 								<span class="type-menu" role="menu">
-									<button role="menuitem" onclick={() => setType(kind, set, false)}>
+									<button role="menuitem" onclick={() => setType(set, false)}>
 										<span class="tag">1</span> Normal set
 									</button>
-									<button role="menuitem" onclick={() => setType(kind, set, true)}>
+									<button role="menuitem" onclick={() => setType(set, true)}>
 										<span class="tag warmup">W</span> Warm-up set
 									</button>
 								</span>
@@ -252,8 +243,7 @@
 								<select
 									aria-label="Rest after set {si + 1}"
 									value={set.rest_seconds}
-									onchange={(e) =>
-										updateSet(kind, set.id, { rest_seconds: Number(e.currentTarget.value) })}
+									onchange={(e) => updateSet(kind, set.id, { rest_seconds: Number(e.currentTarget.value) })}
 								>
 									{#each restOptions(set.rest_seconds) as sec (sec)}
 										<option value={sec}>{sec === 0 ? 'No rest' : restLabel(sec)}</option>

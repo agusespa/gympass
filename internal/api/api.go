@@ -15,12 +15,8 @@ import (
 
 const maxBody = 10 << 20
 
-type syncRequest struct {
-	Cursor  int64                  `json:"cursor"`
-	Changes map[string][]store.Row `json:"changes"`
-}
-
-type syncResponse struct {
+// syncBody is both the request and the response of POST /api/sync.
+type syncBody struct {
 	Cursor  int64                  `json:"cursor"`
 	Changes map[string][]store.Row `json:"changes"`
 }
@@ -40,7 +36,7 @@ func syncHandler(s *store.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBody))
 		dec.UseNumber()
-		var req syncRequest
+		var req syncBody
 		if err := dec.Decode(&req); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON: " + err.Error()})
 			return
@@ -59,7 +55,7 @@ func syncHandler(s *store.Store) http.HandlerFunc {
 		if changes == nil {
 			changes = map[string][]store.Row{}
 		}
-		writeJSON(w, http.StatusOK, syncResponse{Cursor: cursor, Changes: changes})
+		writeJSON(w, http.StatusOK, syncBody{Cursor: cursor, Changes: changes})
 	}
 }
 

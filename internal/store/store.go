@@ -78,24 +78,10 @@ func (s *Store) migrate() error {
 			}
 			return nil
 		},
-		// 2: warm-up flag on sets. Databases created after this change already have it.
-		func(tx *sql.Tx) error {
-			for _, t := range []string{"sets", "routine_sets"} {
-				if err := addColumnIfMissing(tx, t, "warmup", sqlType(colBool)); err != nil {
-					return err
-				}
-			}
-			return nil
-		},
-		// 3: rest time per set.
-		func(tx *sql.Tx) error {
-			for _, t := range []string{"sets", "routine_sets"} {
-				if err := addColumnIfMissing(tx, t, "rest_seconds", sqlType(colSeconds)); err != nil {
-					return err
-				}
-			}
-			return nil
-		},
+		// Columns added to the set tables later. Databases created after a change
+		// already have the column from migration 1, so these skip existing ones.
+		addSetColumn("warmup", colBool),          // 2
+		addSetColumn("rest_seconds", colSeconds), // 3
 	}
 	for i := version; i < len(migrations); i++ {
 		tx, err := s.db.Begin()
@@ -320,6 +306,18 @@ func (t *table) since(ctx context.Context, tx *sql.Tx, cursor int64) ([]Row, err
 		out = append(out, r)
 	}
 	return out, rs.Err()
+}
+
+// addSetColumn returns a migration adding a column to both set tables.
+func addSetColumn(col string, typ colType) func(*sql.Tx) error {
+	return func(tx *sql.Tx) error {
+		for _, t := range []string{"sets", "routine_sets"} {
+			if err := addColumnIfMissing(tx, t, col, sqlType(typ)); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 }
 
 func addColumnIfMissing(tx *sql.Tx, table, col, typ string) error {

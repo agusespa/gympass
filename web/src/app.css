@@ -44,11 +44,7 @@ body {
 	margin: 0;
 	background: var(--bg);
 	color: var(--text);
-	font-family:
-		-apple-system,
-		BlinkMacSystemFont,
-		system-ui,
-		sans-serif;
+	font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
 	font-size: 16px;
 	-webkit-text-size-adjust: 100%;
 	-webkit-tap-highlight-color: transparent;
@@ -116,17 +112,6 @@ button.danger {
 	color: var(--danger);
 }
 
-button.ghost {
-	background: transparent;
-	color: var(--accent);
-}
-
-button.icon {
-	background: transparent;
-	padding: 0.4rem 0.6rem;
-	min-width: 40px;
-}
-
 .card {
 	background: var(--surface);
 	border-radius: var(--radius);
@@ -148,18 +133,28 @@ button.icon {
 	flex: 1;
 }
 
-.stack > * + * {
-	margin-top: 0.5rem;
-}
-
-/* iOS-style large title at the top of a tab. */
+/* Large title at the top of a tab. */
 .large-title {
-	font-size: 2.125rem;
-	font-weight: 700;
-	letter-spacing: 0.01em;
-	margin: 0.25rem 0 1rem;
+	font-size: 1.85rem;
+	font-weight: 800;
+	letter-spacing: -0.02em;
+	margin: 0 0 1rem;
 }
 
+/* Workout / routine screens: editable name under the top bar, actions at the end. */
+.page-details {
+	padding: 1rem 0 0.75rem;
+	border-bottom: 1px solid var(--border);
+}
 
+.page-name {
+	font-size: 1.6rem;
+	font-weight: 700;
+	background: transparent;
+	border-color: transparent;
+	padding: 0.25rem 0;
+}
 
-
+.page-actions {
+	margin-top: 1.25rem;
+}

@@ -20,16 +20,13 @@ function table(name: SyncedTable) {
 	return db.table<Synced & Record<string, unknown>, string>(name);
 }
 
-async function collectDirty(): Promise<{ changes: Changes; count: number }> {
+async function collectDirty(): Promise<Changes> {
 	const changes: Changes = {};
-	let count = 0;
 	for (const name of SYNCED_TABLES) {
 		const rows = await table(name).where('dirty').equals(1).toArray();
-		if (rows.length === 0) continue;
-		changes[name] = rows.map(({ dirty: _dirty, ...rest }) => rest as Wire);
-		count += rows.length;
+		if (rows.length > 0) changes[name] = rows.map(({ dirty: _dirty, ...rest }) => rest as Wire);
 	}
-	return { changes, count };
+	return changes;
 }
 
 /** True when the response came from Cloudflare Access rather than our API. */
@@ -64,7 +61,7 @@ async function syncOnce(): Promise<void> {
 		sync.status = 'offline';
 		return;
 	}
-	const { changes } = await collectDirty();
+	const changes = await collectDirty();
 	const cursor = Number((await db.meta.get(CURSOR_KEY))?.value ?? 0);
 
 	let res: Response;
