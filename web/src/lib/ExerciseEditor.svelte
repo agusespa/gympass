@@ -255,7 +255,7 @@
 		font-size: 0.75rem;
 		font-weight: 600;
 		color: var(--muted);
-		text-align: left;
+		text-align: center;
 		padding: 0 0.25rem 0.25rem;
 	}
 
