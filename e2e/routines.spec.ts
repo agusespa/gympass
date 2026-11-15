@@ -120,3 +120,19 @@ test('warm-up sets in a routine carry into the workout', async ({ page, request 
 	await w.getByRole('menuitem', { name: 'Normal set' }).click();
 	await expect(w.getByRole('button', { name: /^Set \d type/ })).toHaveText(['1', '2']);
 });
+
+test('a new routine exercise starts from the last workout with it', async ({ page }) => {
+	const id = uid();
+	const lunge = `Lunge ${id}`;
+	await newWorkout(page, `Legs ${id}`);
+	await addExercise(page, lunge);
+	await fillSet(page, lunge, 1, '20', '12');
+	await finishWorkout(page);
+
+	await page.goto('/');
+	await page.getByRole('button', { name: 'New routine' }).click();
+	await setText(page.getByLabel('Routine name'), `Plan ${id}`);
+	await addExercise(page, lunge);
+	await expect(exercise(page, lunge).getByLabel('Weight set 1')).toHaveValue('20');
+	await expect(exercise(page, lunge).getByLabel('Reps set 1')).toHaveValue('12');
+});

@@ -388,9 +388,24 @@ export async function addExercise(kind: Kind, parentId: string, name: string): P
 		const position = (existing.at(-1)?.position ?? 0) + 1;
 		const ex = fresh({ name: cleanName(name), position, superset_id: null, [t.exParent]: parentId });
 		await t.ex.add(ex);
-		// The only set is the last one, so no rest after it.
+		// A set added to a running workout is still to do; one added to history already happened.
 		const done = kind === 'workout' && (await isFinished(parentId));
-		await t.sets.add(newSet(t.setParent, ex.id, { rest_seconds: 0, done }));
+		// Start from what was done last time, so only the numbers need changing.
+		const before = kind === 'workout' ? (await getWorkout(parentId))?.date : undefined;
+		const last = await lastSetsFor(ex.name, { exclude: parentId, before });
+		const sets = last.length > 0 ? last : [undefined];
+		for (const [i, s] of sets.entries()) {
+			const isLast = i === sets.length - 1;
+			await t.sets.add(
+				newSet(t.setParent, ex.id, {
+					position: i + 1,
+					...(s && { reps: s.reps, weight_kg: s.weight_kg, warmup: s.warmup }),
+					// The last set gets no rest; the others keep theirs (or the default).
+					rest_seconds: isLast ? 0 : s?.rest_seconds || DEFAULT_REST_SECONDS,
+					done
+				})
+			);
+		}
 		return ex.id;
 	});
 }
@@ -583,8 +598,56 @@ export async function exerciseNames(): Promise<string[]> {
 }
 
 /**
+ * The sets of the last time an exercise was done: the most recent workout
+ * (other than `exclude`, on or before `before`) with done sets of it, else the
+ * most recently edited routine (other than `exclude`) that has it. Empty when
+ * neither exists (or, with `workoutsOnly`, no workout has it). Warm-ups
+ * included; from workouts, only performed sets.
+ */
+async function lastSetsFor(
+	name: string,
+	opts: { exclude?: string; before?: string; workoutsOnly?: boolean } = {}
+): Promise<SetView[]> {
+	const key = exerciseKey(name);
+	if (!key) return [];
+	const workouts = new Map(live(await db.workouts.toArray()).map((w) => [w.id, w]));
+	const candidates = live(await db.workout_exercises.where('name').equalsIgnoreCase(key).toArray()).filter(
+		(e) => {
+			const w = workouts.get(e.workout_id);
+			return w && w.id !== opts.exclude && (opts.before === undefined || w.date <= opts.before);
+		}
+	);
+	candidates.sort((a, b) => {
+		const wa = workouts.get(a.workout_id)!;
+		const wb = workouts.get(b.workout_id)!;
+		return wb.date.localeCompare(wa.date) || wb.updated_at - wa.updated_at || b.position - a.position;
+	});
+	for (const c of candidates) {
+		// Only what was actually performed; unchecked sets were plans that didn't happen.
+		const sets = live(await db.sets.where('workout_exercise_id').equals(c.id).toArray())
+			.filter((s) => s.done)
+			.sort(byPosition);
+		if (sets.length > 0) return sets.map(toSetView);
+	}
+	if (opts.workoutsOnly) return [];
+
+	const routines = new Map(live(await db.routines.toArray()).map((r) => [r.id, r]));
+	const planned = live(await db.routine_exercises.where('name').equalsIgnoreCase(key).toArray())
+		.filter((e) => routines.has(e.routine_id) && e.routine_id !== opts.exclude)
+		.sort((a, b) => b.updated_at - a.updated_at);
+	for (const p of planned) {
+		const sets = live(await db.routine_sets.where('routine_exercise_id').equals(p.id).toArray()).sort(
+			byPosition
+		);
+		if (sets.length > 0) return sets.map(toSetView);
+	}
+	return [];
+}
+
+/**
  * Sets from the most recent other workout (on or before this one's date) that
  * contains an exercise with this name. Keyed by exercise name (lowercased).
+ * Workouts only: the hint shows what was done, never a routine's plan.
  */
 export async function previousSets(workoutId: string): Promise<Map<string, SetView[]>> {
 	const result = new Map<string, SetView[]>();
@@ -592,31 +655,9 @@ export async function previousSets(workoutId: string): Promise<Map<string, SetVi
 	if (!current) return result;
 	const mine = live(await db.workout_exercises.where('workout_id').equals(workoutId).toArray());
 	const names = [...new Set(mine.map((e) => exerciseKey(e.name)))].filter(Boolean);
-	if (names.length === 0) return result;
-
-	const workouts = new Map(live(await db.workouts.toArray()).map((w) => [w.id, w]));
 	for (const name of names) {
-		const candidates = live(await db.workout_exercises.where('name').equalsIgnoreCase(name).toArray()).filter(
-			(e) => {
-				const w = workouts.get(e.workout_id);
-				return w && w.id !== workoutId && w.date <= current.date;
-			}
-		);
-		candidates.sort((a, b) => {
-			const wa = workouts.get(a.workout_id)!;
-			const wb = workouts.get(b.workout_id)!;
-			return wb.date.localeCompare(wa.date) || wb.updated_at - wa.updated_at || b.position - a.position;
-		});
-		for (const c of candidates) {
-			// Only what was actually performed; unchecked sets were plans that didn't happen.
-			const sets = live(await db.sets.where('workout_exercise_id').equals(c.id).toArray())
-				.filter((s) => s.done)
-				.sort(byPosition);
-			if (sets.length > 0) {
-				result.set(name, sets.map(toSetView));
-				break;
-			}
-		}
+		const sets = await lastSetsFor(name, { exclude: workoutId, before: current.date, workoutsOnly: true });
+		if (sets.length > 0) result.set(name, sets);
 	}
 	return result;
 }

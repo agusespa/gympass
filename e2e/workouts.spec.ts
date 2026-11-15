@@ -51,8 +51,14 @@ test('log a workout, see previous values, edit and delete', async ({ page, reque
 	await page.getByLabel('New exercise name').fill(bench.toLowerCase());
 	await page.getByRole('button', { name: 'Add', exact: true }).click();
 	const again = exercise(page, bench.toLowerCase());
-	await addSet(page, bench.toLowerCase());
 	await expect(again.getByTestId('previous')).toHaveText(['80kg × 8', '82.5kg × 6']);
+	// The sets start as last time's, still to do.
+	await expect(again.getByLabel('Weight set 1')).toHaveValue('80');
+	await expect(again.getByLabel('Reps set 2')).toHaveValue('6');
+	await expect(again.getByRole('button', { name: 'Complete set 2', exact: true })).toHaveAttribute(
+		'aria-pressed',
+		'false'
+	);
 
 	// Delete a set (from its set menu) and the exercise.
 	await again.getByRole('button', { name: 'Set 2 type: normal' }).click();
@@ -243,7 +249,9 @@ test('only checked-off sets count', async ({ page, request }) => {
 	// Next time, "Previous" shows what was done, not the skipped plan.
 	await newWorkout(page, `Pull again ${id}`);
 	await addExercise(page, row);
-	await addSet(page, row, 2);
+	// Only the two done sets are copied in, not the skipped third.
+	await expect(exercise(page, row).getByLabel('Weight set 2')).toHaveValue('65');
+	await addSet(page, row);
 	await expect(exercise(page, row).getByTestId('previous')).toHaveText(['60kg × 10', '65kg × 8', '–']);
 
 	// The server has the checkmarks too.
