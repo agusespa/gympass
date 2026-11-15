@@ -135,7 +135,8 @@ var tableByName = func() map[string]*table {
 }()
 
 // migrations[i] brings a database from user_version i to i+1. Released
-// migrations are never edited; schema changes append a new one.
+// migrations are never edited; schema changes append a new one. A new column
+// in tables needs no migration: addMissingColumns adds it on every start.
 var migrations = []func(*sql.Tx) error{
 	createSchema,
 }
@@ -163,6 +164,55 @@ func createSchema(tx *sql.Tx) error {
 		}
 	}
 	return nil
+}
+
+// addMissingColumns adds any column in tables that an older database lacks,
+// filled with the column's zero value. createSchema already makes new
+// databases with every column, so this only changes older ones.
+func addMissingColumns(tx *sql.Tx) error {
+	for i := range tables {
+		t := &tables[i]
+		have := map[string]bool{}
+		rows, err := tx.Query("SELECT name FROM pragma_table_info(?)", t.name)
+		if err != nil {
+			return err
+		}
+		for rows.Next() {
+			var name string
+			if err := rows.Scan(&name); err != nil {
+				_ = rows.Close()
+				return err
+			}
+			have[name] = true
+		}
+		if err := rows.Close(); err != nil {
+			return err
+		}
+		if len(have) == 0 {
+			return fmt.Errorf("table %s is missing", t.name)
+		}
+		for _, c := range t.cols {
+			if have[c.name] {
+				continue
+			}
+			q := fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s%s", t.name, c.name, sqlType(c.typ), sqlDefault(c.typ))
+			if _, err := tx.Exec(q); err != nil {
+				return fmt.Errorf("%s: %w", q, err)
+			}
+		}
+	}
+	return nil
+}
+
+func sqlDefault(t colType) string {
+	switch t {
+	case colRefNull, colTime:
+		return ""
+	case colInt, colBool, colNum, colPosition:
+		return " DEFAULT 0"
+	default:
+		return " DEFAULT ''"
+	}
 }
 
 func sqlType(t colType) string {

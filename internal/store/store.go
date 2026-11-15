@@ -116,7 +116,15 @@ func (s *Store) migrate() error {
 			return err
 		}
 	}
-	return nil
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	if err := addMissingColumns(tx); err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("adding columns: %w", err)
+	}
+	return tx.Commit()
 }
 
 // Rejection is a row Sync refused, with the reason. The rest of the batch is

@@ -331,3 +331,42 @@ func TestRepRangeSync(t *testing.T) {
 		t.Fatalf("rep ranges = %v", got)
 	}
 }
+
+// A database made before a column existed gets it on the next start, so
+// syncing and reading routines keep working after an upgrade.
+func TestOlderDatabaseGetsNewColumns(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "old.db")
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Turn it into a database from before timed sets and rep ranges.
+	for _, q := range []string{
+		"ALTER TABLE sets DROP COLUMN duration_seconds",
+		"ALTER TABLE sets DROP COLUMN rep_min",
+		"ALTER TABLE sets DROP COLUMN rep_max",
+		"ALTER TABLE routine_sets DROP COLUMN duration_seconds",
+		"ALTER TABLE routine_sets DROP COLUMN rep_min",
+		"ALTER TABLE routine_sets DROP COLUMN rep_max",
+		"ALTER TABLE exercise_settings DROP COLUMN timed",
+		`INSERT INTO routines (id, updated_at, deleted, seq, name) VALUES ('r1', 1, 0, 1, 'Push')`,
+	} {
+		if _, err := s.db.Exec(q); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	_ = s.Close()
+
+	s, err = Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	_, changes, _, err := s.Sync(context.Background(), 0, nil)
+	if err != nil {
+		t.Fatalf("sync after upgrade: %v", err)
+	}
+	if len(changes["routines"]) != 1 {
+		t.Fatalf("routines = %v", changes["routines"])
+	}
+}
