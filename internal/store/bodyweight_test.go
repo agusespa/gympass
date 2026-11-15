@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"encoding/json"
+	"os"
 	"testing"
 )
 
@@ -66,9 +68,9 @@ func TestBodyweightShares(t *testing.T) {
 		t.Fatalf("shares = %v", got)
 	}
 
-	_, _, err = s.Sync(context.Background(), 0, map[string][]Row{"exercise_settings": {setting("Dip", 101, 1, false, "dip")}})
-	if err == nil {
-		t.Fatal("bodyweight_pct 101 accepted")
+	_, _, rejected, err := s.Sync(context.Background(), 0, map[string][]Row{"exercise_settings": {setting("Dip", 101, 1, false, "dip")}})
+	if err != nil || len(rejected) != 1 {
+		t.Fatalf("bodyweight_pct 101: err %v, rejected %v", err, rejected)
 	}
 }
 
@@ -90,5 +92,23 @@ func TestWorkoutSnapshotBodyWeight(t *testing.T) {
 	}
 	if snap.Exercises[0].BodyweightPct != 100 || snap.Exercises[1].BodyweightPct != 0 {
 		t.Fatalf("exercises = %+v", snap.Exercises)
+	}
+}
+
+// The client computes the same keys (e2e/exercise-key.spec.ts reads the same
+// file); a mismatch would make the server refuse exercise_settings rows.
+func TestExerciseKeyVectors(t *testing.T) {
+	data, err := os.ReadFile("testdata/exercise_keys.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vectors []struct{ Name, Key string }
+	if err := json.Unmarshal(data, &vectors); err != nil {
+		t.Fatal(err)
+	}
+	for _, v := range vectors {
+		if got := ExerciseKey(v.Name); got != v.Key {
+			t.Errorf("ExerciseKey(%q) = %q, want %q", v.Name, got, v.Key)
+		}
 	}
 }

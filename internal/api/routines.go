@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -88,15 +89,56 @@ func writeStoreError(w http.ResponseWriter, what string, err error) {
 	}
 }
 
+// routineList is the response of GET /api/routines and list_routines.
+type routineList struct {
+	Routines   []store.Routine `json:"routines"`
+	NextCursor string          `json:"next_cursor,omitempty"`
+}
+
 func listRoutinesHandler(s *store.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		routines, err := s.Routines(r.Context())
+		q := r.URL.Query()
+		limit, err := queryLimit(q.Get("limit"))
+		var out routineList
+		if err == nil {
+			out, err = routinePage(r.Context(), s, limit, q.Get("cursor"))
+		}
 		if err != nil {
-			writeStoreError(w, "list routines", err)
+			writeListError(w, "list routines", err)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"routines": routines})
+		writeJSON(w, http.StatusOK, out)
 	}
+}
+
+// routinePage lists one page of routines sorted by name.
+func routinePage(ctx context.Context, s *store.Store, limit int, cursor string) (routineList, error) {
+	limit, err := pageSize(limit)
+	if err != nil {
+		return routineList{}, err
+	}
+	// A routine's place in the order: name, id.
+	after, err := decodeCursor(cursor, 2)
+	if err != nil {
+		return routineList{}, err
+	}
+	afterName, afterID := "", ""
+	if after != nil {
+		afterName, afterID = after[0], after[1]
+		if afterID == "" {
+			return routineList{}, paramError("invalid cursor")
+		}
+	}
+	page, more, err := s.RoutinePage(ctx, afterName, afterID, limit)
+	if err != nil {
+		return routineList{}, err
+	}
+	out := routineList{Routines: page}
+	if more && len(page) > 0 {
+		last := page[len(page)-1]
+		out.NextCursor = encodeCursor(last.Name, last.ID)
+	}
+	return out, nil
 }
 
 func getRoutineHandler(s *store.Store) http.HandlerFunc {

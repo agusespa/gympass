@@ -150,3 +150,35 @@ func TestRoutineBadRequests(t *testing.T) {
 		t.Errorf("GET missing: status %d, want 404", res.StatusCode)
 	}
 }
+
+func TestRoutineListPages(t *testing.T) {
+	srv := newRoutineServer(t, Tokens{Write: "w"})
+	for _, name := range []string{"Pull", "Legs", "Push"} {
+		if res := send(t, http.MethodPost, srv.URL+"/api/routines", "w", `{"name":"`+name+`"}`, nil); res.StatusCode != http.StatusCreated {
+			t.Fatalf("create %s: %d", name, res.StatusCode)
+		}
+	}
+	var names []string
+	cursor := ""
+	for i := 0; i < 4; i++ {
+		var p struct {
+			Routines   []store.Routine
+			NextCursor string `json:"next_cursor"`
+		}
+		if res := send(t, http.MethodGet, srv.URL+"/api/routines?limit=2&cursor="+cursor, "w", "", &p); res.StatusCode != http.StatusOK {
+			t.Fatalf("page %d: %d", i, res.StatusCode)
+		}
+		for _, r := range p.Routines {
+			names = append(names, r.Name)
+		}
+		if cursor = p.NextCursor; cursor == "" {
+			break
+		}
+	}
+	if strings.Join(names, ",") != "Legs,Pull,Push" {
+		t.Fatalf("paged names = %v", names)
+	}
+	if res := send(t, http.MethodGet, srv.URL+"/api/routines?cursor="+encodeCursor("x", ""), "w", "", nil); res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("empty-id cursor: %d", res.StatusCode)
+	}
+}

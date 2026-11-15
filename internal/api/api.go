@@ -18,10 +18,13 @@ import (
 
 const maxBody = 10 << 20
 
-// syncBody is both the request and the response of POST /api/sync.
+// syncBody is both the request and the response of POST /api/sync. Rejected
+// is only in responses: rows that were not stored, with the reason. The
+// other rows of the request are stored.
 type syncBody struct {
-	Cursor  int64                  `json:"cursor"`
-	Changes map[string][]store.Row `json:"changes"`
+	Cursor   int64                  `json:"cursor"`
+	Changes  map[string][]store.Row `json:"changes"`
+	Rejected []store.Rejection      `json:"rejected,omitempty"`
 }
 
 // Tokens are the bearer tokens of the automation API. Read reaches the
@@ -37,7 +40,7 @@ type Tokens struct {
 func New(s *store.Store, static fs.FS, tokens Tokens) http.Handler {
 	mux := http.NewServeMux()
 	metrics := newSyncMetrics()
-	mux.Handle("POST /api/sync", metrics.instrument(syncHandler(s)))
+	mux.Handle("POST /api/sync", metrics.instrument(syncHandler(s, metrics)))
 	if tokens.Read != "" || tokens.Write != "" {
 		read := func(h http.Handler) http.Handler { return requireToken(h, tokens.Read, tokens.Write) }
 		mux.Handle("GET /api/workouts", read(listWorkoutsHandler(s)))
@@ -72,7 +75,7 @@ func New(s *store.Store, static fs.FS, tokens Tokens) http.Handler {
 	return mux
 }
 
-func syncHandler(s *store.Store) http.HandlerFunc {
+func syncHandler(s *store.Store, metrics *syncMetrics) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBody))
 		dec.UseNumber()
@@ -81,7 +84,7 @@ func syncHandler(s *store.Store) http.HandlerFunc {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON: " + err.Error()})
 			return
 		}
-		cursor, changes, err := s.Sync(r.Context(), req.Cursor, req.Changes)
+		cursor, changes, rejected, err := s.Sync(r.Context(), req.Cursor, req.Changes)
 		if err != nil {
 			var ve *store.ValidationError
 			if errors.As(err, &ve) {
@@ -95,7 +98,11 @@ func syncHandler(s *store.Store) http.HandlerFunc {
 		if changes == nil {
 			changes = map[string][]store.Row{}
 		}
-		writeJSON(w, http.StatusOK, syncBody{Cursor: cursor, Changes: changes})
+		if len(rejected) > 0 {
+			metrics.rejected.Add(float64(len(rejected)))
+			log.Printf("sync: rejected %d rows, first %s %q: %s", len(rejected), rejected[0].Table, rejected[0].ID, rejected[0].Error)
+		}
+		writeJSON(w, http.StatusOK, syncBody{Cursor: cursor, Changes: changes, Rejected: rejected})
 	}
 }
 

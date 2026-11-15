@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -40,7 +41,7 @@ func routineStore(t *testing.T) (*Store, *fakeClock) {
 // changedSince returns the ids of rows per table written after cursor.
 func changedSince(t *testing.T, s *Store, cursor int64) (int64, map[string][]Row) {
 	t.Helper()
-	cur, out, err := s.Sync(context.Background(), cursor, nil)
+	cur, out, _, err := s.Sync(context.Background(), cursor, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -248,12 +249,33 @@ func TestRoutinesList(t *testing.T) {
 		t.Fatal(err)
 	}
 	mustSync(t, s, map[string][]Row{"routines": {{"id": "gone", "updated_at": int64(1), "deleted": true, "name": "Abs"}}})
-	got, err := s.Routines(ctx)
+	got, more, err := s.RoutinePage(ctx, "", "", 10)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 2 || got[0].Name != "arms" || got[1].Name != "Push" || len(got[1].Exercises) != 3 {
-		t.Fatalf("routines = %+v", got)
+	if more || len(got) != 2 || got[0].Name != "arms" || got[1].Name != "Push" || len(got[1].Exercises) != 3 {
+		t.Fatalf("routines = %+v, more %v", got, more)
+	}
+
+	// Paging walks the same order, including ties on name (ordered by id).
+	if _, err := s.CreateRoutine(ctx, Routine{Name: "ARMS"}); err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	afterName, afterID := "", ""
+	for pages := 0; ; pages++ {
+		page, more, err := s.RoutinePage(ctx, afterName, afterID, 1)
+		if err != nil || len(page) != 1 || pages > 3 {
+			t.Fatalf("page %d: %+v, %v", pages, page, err)
+		}
+		names = append(names, strings.ToLower(page[0].Name))
+		afterName, afterID = page[0].Name, page[0].ID
+		if !more {
+			break
+		}
+	}
+	if strings.Join(names, ",") != "arms,arms,push" {
+		t.Fatalf("paged names = %v", names)
 	}
 }
 

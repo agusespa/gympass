@@ -1,3 +1,5 @@
+import { MAX_REPS, MAX_WEIGHT_KG } from './limits';
+
 /** 82.5 → "82.5", 80 → "80". */
 export function kg(n: number): string {
 	return String(Math.round(n * 100) / 100);
@@ -6,12 +8,12 @@ export function kg(n: number): string {
 /** Parse a weight the iPhone keyboard may type with a decimal comma. */
 export function parseWeight(s: string): number {
 	const n = parseFloat(s.replace(',', '.'));
-	return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : 0;
+	return Number.isFinite(n) && n >= 0 ? Math.min(MAX_WEIGHT_KG, Math.round(n * 100) / 100) : 0;
 }
 
 export function parseReps(s: string): number {
 	const n = parseInt(s, 10);
-	return Number.isFinite(n) && n >= 0 ? n : 0;
+	return Number.isFinite(n) && n >= 0 ? Math.min(MAX_REPS, n) : 0;
 }
 
 /** "2026-11-14" → "Sat 14 Nov 2026" in the device locale. */

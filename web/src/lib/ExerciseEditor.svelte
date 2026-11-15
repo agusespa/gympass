@@ -1,5 +1,6 @@
 <script lang="ts">
 	import ConfirmButton from './ConfirmButton.svelte';
+	import { exerciseKey } from './exercise-key';
 	import { kg, parseReps, parseWeight, REST_CHOICES, restLabel } from './format';
 	import { live } from './live.svelte';
 	import {
@@ -64,7 +65,7 @@
 	/** Last time's set of the same type and order: warm-ups match warm-ups, working sets match working sets. */
 	function prevFor(ex: ExerciseView, i: number): string {
 		const warm = ex.sets[i].warmup;
-		const prev = previous.current.get(ex.name.trim().toLowerCase())?.filter((s) => s.warmup === warm);
+		const prev = previous.current.get(exerciseKey(ex.name))?.filter((s) => s.warmup === warm);
 		const s = prev?.[nthOfType(ex, i)];
 		return s ? `${kg(s.weight_kg)}kg × ${s.reps}` : '–';
 	}

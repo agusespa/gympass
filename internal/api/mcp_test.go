@@ -165,6 +165,8 @@ func TestMCPRoutineFlow(t *testing.T) {
 			"id": saved.Exercises[0].ID, "name": "Bench", "sets": []any{map[string]any{"id": "made-up", "reps": 1, "weight_kg": 1}}}}}, "not a set"},
 		"bad range":       {"list_workouts", map[string]any{"from": "2026-11-10", "to": "2026-11-01"}, "before"},
 		"missing workout": {"get_workout", map[string]any{"id": "nope"}, "no finished workout"},
+		"bad limit":       {"list_routines", map[string]any{"limit": 500}, "limit"},
+		"bad cursor":      {"list_workouts", map[string]any{"from": "2026-11-01", "to": "2026-11-10", "cursor": "x"}, "cursor"},
 	}
 	for name, c := range cases {
 		if msg := call(t, cs, c.tool, c.args, nil); !strings.Contains(msg, c.want) {

@@ -39,7 +39,7 @@ func TestSyncRoundTrip(t *testing.T) {
 	s := openTest(t)
 	ctx := context.Background()
 
-	cur, out, err := s.Sync(ctx, 0, map[string][]Row{
+	cur, out, _, err := s.Sync(ctx, 0, map[string][]Row{
 		"workouts": {workout("w1", 100, "Push")},
 		"workout_exercises": {{
 			"id": "e1", "updated_at": int64(100), "deleted": false,
@@ -68,7 +68,7 @@ func TestSyncRoundTrip(t *testing.T) {
 	}
 
 	// Nothing new since cursor.
-	cur2, out2, err := s.Sync(ctx, cur, nil)
+	cur2, out2, _, err := s.Sync(ctx, cur, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,11 +81,11 @@ func TestNewestWins(t *testing.T) {
 	s := openTest(t)
 	ctx := context.Background()
 
-	if _, _, err := s.Sync(ctx, 0, map[string][]Row{"workouts": {workout("w1", 200, "New")}}); err != nil {
+	if _, _, _, err := s.Sync(ctx, 0, map[string][]Row{"workouts": {workout("w1", 200, "New")}}); err != nil {
 		t.Fatal(err)
 	}
 	// Older write is ignored and does not advance the cursor.
-	cur, _, err := s.Sync(ctx, 0, map[string][]Row{"workouts": {workout("w1", 100, "Old")}})
+	cur, _, _, err := s.Sync(ctx, 0, map[string][]Row{"workouts": {workout("w1", 100, "Old")}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +93,7 @@ func TestNewestWins(t *testing.T) {
 		t.Fatalf("cursor advanced on ignored write: %d", cur)
 	}
 	// Equal timestamp keeps the existing row.
-	_, out, err := s.Sync(ctx, 0, map[string][]Row{"workouts": {workout("w1", 200, "Same")}})
+	_, out, _, err := s.Sync(ctx, 0, map[string][]Row{"workouts": {workout("w1", 200, "Same")}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +101,7 @@ func TestNewestWins(t *testing.T) {
 		t.Fatalf("name = %v, want New", got)
 	}
 	// Newer write replaces it.
-	cur, out, err = s.Sync(ctx, 1, map[string][]Row{"workouts": {workout("w1", 300, "Newer")}})
+	cur, out, _, err = s.Sync(ctx, 1, map[string][]Row{"workouts": {workout("w1", 300, "Newer")}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,17 +113,17 @@ func TestNewestWins(t *testing.T) {
 func TestDeleteSyncs(t *testing.T) {
 	s := openTest(t)
 	ctx := context.Background()
-	cur, _, err := s.Sync(ctx, 0, map[string][]Row{"workouts": {workout("w1", 100, "Push")}})
+	cur, _, _, err := s.Sync(ctx, 0, map[string][]Row{"workouts": {workout("w1", 100, "Push")}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	del := workout("w1", 200, "Push")
 	del["deleted"] = true
-	if _, _, err := s.Sync(ctx, 0, map[string][]Row{"workouts": {del}}); err != nil {
+	if _, _, _, err := s.Sync(ctx, 0, map[string][]Row{"workouts": {del}}); err != nil {
 		t.Fatal(err)
 	}
 	// Another device that synced before the delete gets the tombstone.
-	_, out, err := s.Sync(ctx, cur, nil)
+	_, out, _, err := s.Sync(ctx, cur, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,10 +135,10 @@ func TestDeleteSyncs(t *testing.T) {
 func TestCursorAheadResendsAll(t *testing.T) {
 	s := openTest(t)
 	ctx := context.Background()
-	if _, _, err := s.Sync(ctx, 0, map[string][]Row{"workouts": {workout("w1", 100, "Push")}}); err != nil {
+	if _, _, _, err := s.Sync(ctx, 0, map[string][]Row{"workouts": {workout("w1", 100, "Push")}}); err != nil {
 		t.Fatal(err)
 	}
-	_, out, err := s.Sync(ctx, 999, nil)
+	_, out, _, err := s.Sync(ctx, 999, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,17 +191,45 @@ func TestValidation(t *testing.T) {
 	}
 	for _, tc := range bad {
 		t.Run(tc.name, func(t *testing.T) {
-			_, _, err := s.Sync(ctx, 0, tc.changes)
-			var ve *ValidationError
-			if !errors.As(err, &ve) {
-				t.Fatalf("want ValidationError, got %v", err)
+			_, _, rejected, err := s.Sync(ctx, 0, tc.changes)
+			if err != nil || len(rejected) != 1 || rejected[0].Error == "" {
+				t.Fatalf("want one rejection, got %v (err %v)", rejected, err)
 			}
 		})
 	}
-	// Nothing was written by the rejected batches.
-	cur, out, err := s.Sync(ctx, 0, nil)
+	if _, _, _, err := s.Sync(ctx, -1, nil); !errors.As(err, new(*ValidationError)) {
+		t.Fatalf("negative cursor: %v", err)
+	}
+	// Nothing was written by the rejected rows.
+	cur, out, _, err := s.Sync(ctx, 0, nil)
 	if err != nil || cur != 0 || len(out) != 0 {
 		t.Fatalf("cursor %d out %v err %v", cur, out, err)
+	}
+}
+
+// One bad row is refused on its own: the rest of the batch is stored, and the
+// rejection names the row so the client can keep it unsynced.
+func TestSyncRejectsRowsIndividually(t *testing.T) {
+	s := openTest(t)
+	ctx := context.Background()
+	heavy := setRow("s-bad", "e1", 2, 5, 20000)
+	cur, out, rejected, err := s.Sync(ctx, 0, map[string][]Row{
+		"workouts": {workout("w1", 1, "Push")},
+		"sets":     {setRow("s-ok", "e1", 1, 5, 100), heavy},
+		"from_v9":  {{"id": "n1"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cur != 1 || len(out["workouts"]) != 1 || len(out["sets"]) != 1 || out["sets"][0]["id"] != "s-ok" {
+		t.Fatalf("cursor %d, out %v", cur, out)
+	}
+	want := []Rejection{
+		{Table: "from_v9", ID: "n1", Error: `unknown table "from_v9"`},
+		{Table: "sets", ID: "s-bad", Error: "weight_kg must be a number from 0 to 10000"},
+	}
+	if fmt.Sprint(rejected) != fmt.Sprint(want) {
+		t.Fatalf("rejected = %v", rejected)
 	}
 }
 
@@ -211,7 +239,7 @@ func TestReopenKeepsData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := s.Sync(context.Background(), 0, map[string][]Row{"routines": {{"id": "r1", "updated_at": int64(5), "deleted": false, "name": "Legs"}}}); err != nil {
+	if _, _, _, err := s.Sync(context.Background(), 0, map[string][]Row{"routines": {{"id": "r1", "updated_at": int64(5), "deleted": false, "name": "Legs"}}}); err != nil {
 		t.Fatal(err)
 	}
 	_ = s.Close()
@@ -221,7 +249,7 @@ func TestReopenKeepsData(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = s.Close() }()
-	cur, out, err := s.Sync(context.Background(), 0, nil)
+	cur, out, _, err := s.Sync(context.Background(), 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

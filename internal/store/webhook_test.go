@@ -27,8 +27,9 @@ func outboxStore(t *testing.T) (*Store, *fakeClock) {
 
 func mustSync(t *testing.T, s *Store, changes map[string][]Row) {
 	t.Helper()
-	if _, _, err := s.Sync(context.Background(), 0, changes); err != nil {
-		t.Fatal(err)
+	_, _, rejected, err := s.Sync(context.Background(), 0, changes)
+	if err != nil || len(rejected) > 0 {
+		t.Fatalf("err %v, rejected %v", err, rejected)
 	}
 }
 
@@ -43,7 +44,7 @@ func due(t *testing.T, s *Store) []PendingWebhook {
 
 func TestFinishedAtRoundTrip(t *testing.T) {
 	s := openTest(t)
-	_, out, err := s.Sync(context.Background(), 0, map[string][]Row{
+	_, out, _, err := s.Sync(context.Background(), 0, map[string][]Row{
 		"workouts": {workout("running", 1, "A"), finishedWorkout("done", 2)},
 	})
 	if err != nil {
@@ -58,8 +59,8 @@ func TestFinishedAtRoundTrip(t *testing.T) {
 	}
 	bad := workout("bad", 3, "B")
 	bad["finished_at"] = "yesterday"
-	if _, _, err := s.Sync(context.Background(), 0, map[string][]Row{"workouts": {bad}}); err == nil {
-		t.Fatal("want validation error for non-integer finished_at")
+	if _, _, rejected, err := s.Sync(context.Background(), 0, map[string][]Row{"workouts": {bad}}); err != nil || len(rejected) != 1 {
+		t.Fatalf("non-integer finished_at: err %v, rejected %v", err, rejected)
 	}
 }
 

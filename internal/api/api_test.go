@@ -70,13 +70,28 @@ func TestSyncEndpoint(t *testing.T) {
 	}
 }
 
+func TestSyncReportsRejectedRows(t *testing.T) {
+	srv := newServer(t)
+	body := `{"cursor":0,"changes":{"workouts":[{"id":"w1"},{"id":"w2","updated_at":1,"deleted":false,"name":"Push","date":"2026-11-14","started_at":null,"finished_at":null}]}}`
+	res, out := post(t, srv.URL+"/api/sync", body)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status %d: %v", res.StatusCode, out)
+	}
+	rej := out["rejected"].([]any)
+	if len(rej) != 1 || rej[0].(map[string]any)["id"] != "w1" || rej[0].(map[string]any)["table"] != "workouts" {
+		t.Fatalf("rejected %v", rej)
+	}
+	if ws := out["changes"].(map[string]any)["workouts"].([]any); len(ws) != 1 {
+		t.Fatalf("workouts %v", ws)
+	}
+}
+
 func TestSyncRejectsBadInput(t *testing.T) {
 	srv := newServer(t)
 	for _, body := range []string{
 		`not json`,
-		`{"cursor":0,"changes":{"bogus":[]}}`,
 		`{"cursor":-1}`,
-		`{"cursor":0,"changes":{"workouts":[{"id":"w1"}]}}`,
+		`{"cursor":0,"changes":{"workouts":{}}}`,
 	} {
 		res, out := post(t, srv.URL+"/api/sync", body)
 		if res.StatusCode != http.StatusBadRequest || out["error"] == nil {

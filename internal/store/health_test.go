@@ -8,7 +8,7 @@ import (
 func TestReadyLeavesSyncDataUnchanged(t *testing.T) {
 	s := openTest(t)
 	ctx := context.Background()
-	cursor, _, err := s.Sync(ctx, 0, map[string][]Row{"workouts": {workout("w1", 100, "Push")}})
+	cursor, _, _, err := s.Sync(ctx, 0, map[string][]Row{"workouts": {workout("w1", 100, "Push")}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -17,7 +17,7 @@ func TestReadyLeavesSyncDataUnchanged(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	got, changes, err := s.Sync(ctx, cursor, nil)
+	got, changes, _, err := s.Sync(ctx, cursor, nil)
 	if err != nil || got != cursor || len(changes) != 0 {
 		t.Fatalf("probe changed sync state: cursor %d changes %v err %v", got, changes, err)
 	}

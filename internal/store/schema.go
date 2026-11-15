@@ -21,6 +21,7 @@ const (
 	colBool
 )
 
+// The client clamps input to these bounds (web/src/lib/limits.ts).
 const (
 	maxTextLen = 200
 	// exercise_settings uses the exercise key (a lowercased name of up to

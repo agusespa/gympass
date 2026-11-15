@@ -63,6 +63,14 @@
 			<button class="primary" onclick={() => location.reload()}>Reload</button>
 		</div>
 	{/if}
+	{#if sync.rejected > 0}
+		<div class="banner" role="alert">
+			<span>
+				{sync.rejected === 1 ? '1 change' : `${sync.rejected} changes`} couldn't be saved to the server. They're
+				kept on this phone.
+			</span>
+		</div>
+	{/if}
 	{@render children()}
 </main>
 

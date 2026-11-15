@@ -11,6 +11,7 @@ type syncMetrics struct {
 	registry *prometheus.Registry
 	requests *prometheus.CounterVec
 	duration *prometheus.HistogramVec
+	rejected prometheus.Counter
 }
 
 func newSyncMetrics() *syncMetrics {
@@ -25,8 +26,12 @@ func newSyncMetrics() *syncMetrics {
 			Help:    "Time spent serving sync requests.",
 			Buckets: prometheus.DefBuckets,
 		}, nil),
+		rejected: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "gym_tracker_sync_rejected_rows_total",
+			Help: "Rows refused by sync; each stays unsynced on the phone that sent it.",
+		}),
 	}
-	m.registry.MustRegister(m.requests, m.duration)
+	m.registry.MustRegister(m.requests, m.duration, m.rejected)
 	// Keep zero-valued series available before the first request.
 	for _, code := range []string{"200", "400", "500"} {
 		m.requests.WithLabelValues(code)

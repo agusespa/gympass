@@ -1,6 +1,7 @@
 /**
  * Sync loop: push dirty rows, pull rows changed since our cursor, newest
- * updated_at wins. If Cloudflare Access answers instead of the API (redirect,
+ * updated_at wins. Rows the server refuses stay dirty (and are sent again, in
+ * case a newer server accepts them) while the rest of the sync goes through. If Cloudflare Access answers instead of the API (redirect,
  * 401/403 or non-JSON), local data is kept and the UI asks for a reload.
  */
 import { db, SYNCED_TABLES, type Synced, type SyncedTable } from './db';
@@ -8,10 +9,20 @@ import { onLocalChange } from './repo';
 
 export type SyncStatus = 'idle' | 'syncing' | 'offline' | 'auth-expired' | 'error';
 
-export const sync = $state({ status: 'idle' as SyncStatus });
+export const sync = $state({
+	status: 'idle' as SyncStatus,
+	/** Local changes the server refused on the last sync; they stay on this phone. */
+	rejected: 0
+});
 
 type Wire = Omit<Synced, 'dirty'> & Record<string, unknown>;
 type Changes = Partial<Record<SyncedTable, Wire[]>>;
+/** A row the server refused, from the sync response. */
+interface Rejection {
+	table: string;
+	id: string;
+	error: string;
+}
 
 const CURSOR_KEY = 'cursor';
 /** Meta key holding when the last sync succeeded, ms. */
@@ -38,12 +49,14 @@ function isAccessResponse(res: Response): boolean {
 	return !(res.headers.get('content-type') ?? '').includes('application/json');
 }
 
-async function apply(sent: Changes, received: Changes, cursor: number) {
+async function apply(sent: Changes, received: Changes, rejected: Rejection[], cursor: number) {
+	const refused = new Set(rejected.map((r) => `${r.table}/${r.id}`));
 	await db.transaction('rw', [...SYNCED_TABLES.map(table), db.meta], async () => {
 		for (const name of SYNCED_TABLES) {
 			const t = table(name);
 			// Rows the server accepted (or already had newer) are clean unless edited meanwhile.
 			for (const row of sent[name] ?? []) {
+				if (refused.has(`${name}/${row.id}`)) continue;
 				const local = await t.get(row.id);
 				if (local && local.updated_at === row.updated_at) await t.update(row.id, { dirty: 0 });
 			}
@@ -91,8 +104,11 @@ async function syncOnce(): Promise<void> {
 		console.error('sync failed', res.status, await res.text().catch(() => ''));
 		return;
 	}
-	const body = (await res.json()) as { cursor: number; changes: Changes };
-	await apply(changes, body.changes ?? {}, body.cursor);
+	const body = (await res.json()) as { cursor: number; changes: Changes; rejected?: Rejection[] };
+	const rejected = body.rejected ?? [];
+	if (rejected.length > 0) console.warn('sync: server refused rows', rejected);
+	await apply(changes, body.changes ?? {}, rejected, body.cursor);
+	sync.rejected = rejected.length;
 	sync.status = 'idle';
 }
 

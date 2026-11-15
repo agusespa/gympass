@@ -103,6 +103,10 @@ network. The app exports:
   status code per series; probes and metric scrapes are excluded.
 - `gym_tracker_sync_request_duration_seconds`: a histogram of sync request
   duration, including `_bucket`, `_sum`, and `_count` series.
+- `gym_tracker_sync_rejected_rows_total`: rows a sync refused (for example a
+  value out of range). The rest of that sync is stored; each refused row stays
+  unsynced on the phone that sent it, which shows a banner, and is sent again on
+  later syncs. The server log names the first refused row of each sync.
 
 For example, a server-error alert can use:
 
@@ -182,7 +186,7 @@ Running, discarded and deleted workouts are never returned.
 
 | Endpoint | Returns |
 |---|---|
-| `GET /api/workouts?from=YYYY-MM-DD&to=YYYY-MM-DD` | Finished workouts whose `date` is in the range (both ends included, at most 366 days), oldest first, plus totals for the range. |
+| `GET /api/workouts?from=YYYY-MM-DD&to=YYYY-MM-DD` | Finished workouts whose `date` is in the range (both ends included, at most 366 days), oldest first, plus totals for the whole range. [Paged](#paging). |
 | `GET /api/workouts/{id}` | One finished workout, or `404`. |
 
 Each workout has the same shape as `workout` in the [webhook](#webhook) payload. The list looks like this:
@@ -191,7 +195,8 @@ Each workout has the same shape as `workout` in the [webhook](#webhook) payload.
 {
   "from": "2026-11-09", "to": "2026-11-15",
   "totals": { "workouts": 3, "working_sets": 54, "reps": 412, "volume_kg": 24310.5, "duration_seconds": 12600 },
-  "workouts": [{ "id": "…", "name": "Push", "date": "2026-11-10", "…": "…" }]
+  "workouts": [{ "id": "…", "name": "Push", "date": "2026-11-10", "…": "…" }],
+  "next_cursor": "…"
 }
 ```
 
@@ -201,7 +206,7 @@ Each workout has the same shape as `workout` in the [webhook](#webhook) payload.
 
 | Endpoint | Token | Does |
 |---|---|---|
-| `GET /api/routines` | read | `{"routines": [...]}`, every routine sorted by name. |
+| `GET /api/routines` | read | `{"routines": [...], "next_cursor": "…"}`, routines sorted by name. [Paged](#paging). |
 | `GET /api/routines/{id}` | read | One routine, or `404`. |
 | `POST /api/routines` | write | Creates a routine and returns it with `201`. Any ids in the body are ignored. |
 | `PUT /api/routines/{id}` | write | Makes the routine look exactly like the body and returns the result. |
@@ -226,9 +231,13 @@ To change a routine, `GET` it, edit the JSON and `PUT` it back:
 - Adjacent exercises with the same `superset_id` form a superset. Any string works as a label for a new one; a lone exercise's label is cleared.
 - Only rows that actually changed are written, and they reach your phone on its next sync like an edit made in the app. If the same set is edited in the app around the same time, the newest edit wins.
 
+### Paging
+
+The list endpoints return at most `limit` items (1–200, default 50). While more remain, the response has a `next_cursor`; pass it back as `cursor` (with the same other parameters) to get the next page. It is missing on the last page. Treat cursors as opaque. `totals` in the workout list always cover the whole range, on every page.
+
 ### MCP
 
-AI assistants can use the same data through the Model Context Protocol at `/mcp` (Streamable HTTP), with the same bearer tokens. With `API_TOKEN` an assistant gets `list_workouts`, `get_workout`, `list_routines` and `get_routine`. With `API_WRITE_TOKEN` it also gets `create_routine` and `update_routine`, which follow the same rules as `POST` and `PUT` above.
+AI assistants can use the same data through the Model Context Protocol at `/mcp` (Streamable HTTP), with the same bearer tokens. With `API_TOKEN` an assistant gets `list_workouts`, `get_workout`, `list_routines` and `get_routine`. With `API_WRITE_TOKEN` it also gets `create_routine` and `update_routine`, which follow the same rules as `POST` and `PUT` above. `list_workouts` and `list_routines` take the same `limit` and `cursor` arguments as the [paged](#paging) endpoints.
 
 ### Connecting
 

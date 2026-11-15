@@ -46,23 +46,27 @@ const (
 	maxExerciseSets     = 50
 )
 
-// Routines returns every live routine, sorted by name.
-func (s *Store) Routines(ctx context.Context) ([]Routine, error) {
+// RoutinePage returns up to limit live routines sorted by name (ignoring
+// ASCII case), then id, starting after the routine named afterName with id
+// afterID (afterID "" starts at the first). more is true when routines remain.
+func (s *Store) RoutinePage(ctx context.Context, afterName, afterID string, limit int) (page []Routine, more bool, err error) {
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	rs, err := tx.QueryContext(ctx, "SELECT id FROM routines WHERE deleted = 0 ORDER BY name COLLATE NOCASE, id")
+	rs, err := tx.QueryContext(ctx, `SELECT id FROM routines WHERE deleted = 0
+  AND (?2 = '' OR name COLLATE NOCASE > ?1 OR (name COLLATE NOCASE = ?1 AND id > ?2))
+ORDER BY name COLLATE NOCASE, id LIMIT ?3`, afterName, afterID, limit+1)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	var ids []string
 	for rs.Next() {
 		var id string
 		if err := rs.Scan(&id); err != nil {
 			_ = rs.Close()
-			return nil, err
+			return nil, false, err
 		}
 		ids = append(ids, id)
 	}
@@ -71,19 +75,22 @@ func (s *Store) Routines(ctx context.Context) ([]Routine, error) {
 		err = cerr
 	}
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	out := make([]Routine, 0, len(ids))
+	if len(ids) > limit {
+		ids, more = ids[:limit], true
+	}
+	page = make([]Routine, 0, len(ids))
 	for _, id := range ids {
 		cur, err := loadRoutine(ctx, tx, id)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		if cur != nil {
-			out = append(out, cur.routine())
+			page = append(page, cur.routine())
 		}
 	}
-	return out, nil
+	return page, more, nil
 }
 
 // Routine returns one live routine, or ok=false.

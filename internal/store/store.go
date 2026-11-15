@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"sort"
 	"time"
 	"unicode/utf8"
 
@@ -118,39 +119,55 @@ func (s *Store) migrate() error {
 	return nil
 }
 
-// Sync applies the client's changes and returns every row written after cursor,
-// along with the new cursor. Rows the client just pushed are included; they are
-// harmless because the client applies the same newest-wins rule.
-func (s *Store) Sync(ctx context.Context, cursor int64, changes map[string][]Row) (int64, map[string][]Row, error) {
+// Rejection is a row Sync refused, with the reason. The rest of the batch is
+// still applied, so one bad row never blocks a device's other changes.
+type Rejection struct {
+	Table string `json:"table"`
+	ID    string `json:"id"` // empty when the row had no usable id
+	Error string `json:"error"`
+}
+
+// Sync applies the client's valid changes and returns every row written after
+// cursor, the new cursor and the rows it refused. Rows the client just pushed
+// are included; they are harmless because the client applies the same
+// newest-wins rule. Only a bad cursor or a database failure is an error.
+func (s *Store) Sync(ctx context.Context, cursor int64, changes map[string][]Row) (int64, map[string][]Row, []Rejection, error) {
 	if cursor < 0 {
-		return 0, nil, invalid("cursor must be >= 0")
+		return 0, nil, nil, invalid("cursor must be >= 0")
 	}
 	// Validate everything before touching the database.
 	now := s.nowMs()
 	rows := make(map[*table][][]any, len(changes))
+	var rejected []Rejection
 	for name, list := range changes {
 		t, ok := tableByName[name]
-		if !ok {
-			return 0, nil, invalid("unknown table %q", name)
-		}
-		for i, r := range list {
+		for _, r := range list {
+			if !ok {
+				rejected = append(rejected, Rejection{Table: name, ID: rowID(r), Error: fmt.Sprintf("unknown table %q", name)})
+				continue
+			}
 			args, err := t.args(r, now)
 			if err != nil {
-				return 0, nil, invalid("%s[%d]: %v", name, i, err)
+				rejected = append(rejected, Rejection{Table: name, ID: rowID(r), Error: err.Error()})
+				continue
 			}
 			rows[t] = append(rows[t], args)
 		}
 	}
+	sort.Slice(rejected, func(i, j int) bool {
+		a, b := rejected[i], rejected[j]
+		return a.Table < b.Table || a.Table == b.Table && a.ID < b.ID
+	})
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return 0, nil, err
+		return 0, nil, nil, err
 	}
 	defer func() { _ = tx.Rollback() }()
 
 	seq, written, err := writeRows(ctx, tx, rows)
 	if err != nil {
-		return 0, nil, err
+		return 0, nil, nil, err
 	}
 	if cursor > seq {
 		// Client is ahead of us (e.g. the database was replaced): resend everything.
@@ -158,7 +175,7 @@ func (s *Store) Sync(ctx context.Context, cursor int64, changes map[string][]Row
 	}
 	if s.outboxOn && len(written) > 0 {
 		if err := s.scheduleWebhooks(ctx, tx, written); err != nil {
-			return 0, nil, err
+			return 0, nil, nil, err
 		}
 	}
 
@@ -166,16 +183,25 @@ func (s *Store) Sync(ctx context.Context, cursor int64, changes map[string][]Row
 	for i := range tables {
 		rows, err := tables[i].since(ctx, tx, cursor)
 		if err != nil {
-			return 0, nil, err
+			return 0, nil, nil, err
 		}
 		if len(rows) > 0 {
 			out[tables[i].name] = rows
 		}
 	}
 	if err := tx.Commit(); err != nil {
-		return 0, nil, err
+		return 0, nil, nil, err
 	}
-	return seq, out, nil
+	return seq, out, rejected, nil
+}
+
+// rowID is r's id for a rejection, or "" when it has none.
+func rowID(r Row) string {
+	id, _ := r["id"].(string)
+	if len(id) > maxIDLen {
+		return ""
+	}
+	return id
 }
 
 // writeRows upserts rows (values in colNames order) where they are newer than

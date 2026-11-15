@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // The webhook outbox holds one row per finished workout that has to be sent
@@ -215,10 +216,17 @@ ORDER BY e.position, e.id, s.position, s.id`, id)
 	return w, true, rs.Err()
 }
 
-// ExerciseKey is how exercises are matched by name: trimmed and lowercased.
-// The client uses the same rule (exerciseKey in web/src/lib/stats.ts).
+// ExerciseKey is how exercises are matched by name: trimmed and lowercased
+// one rune at a time. The client must compute exactly the same key
+// (web/src/lib/exercise-key.ts); testdata/exercise_keys.json checks both.
 func ExerciseKey(name string) string {
-	return strings.ToLower(strings.TrimSpace(name))
+	return strings.ToLower(TrimName(name))
+}
+
+// TrimName strips leading and trailing white space: Unicode White_Space plus
+// U+FEFF, the same set as the client's trimName (JS \s plus U+0085).
+func TrimName(name string) string {
+	return strings.TrimFunc(name, func(r rune) bool { return unicode.IsSpace(r) || r == '\uFEFF' })
 }
 
 // BodyWeightOn returns the body weight for a date: the latest weigh-in on or

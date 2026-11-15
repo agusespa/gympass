@@ -7,6 +7,8 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -16,12 +18,14 @@ import (
 
 const maxRangeDays = 366
 
-// workoutList is the response of GET /api/workouts.
+// workoutList is the response of GET /api/workouts: one page of workouts,
+// with totals for the whole range.
 type workoutList struct {
-	From     string             `json:"from"`
-	To       string             `json:"to"`
-	Totals   listTotals         `json:"totals"`
-	Workouts []*webhook.Workout `json:"workouts"`
+	From       string             `json:"from"`
+	To         string             `json:"to"`
+	Totals     listTotals         `json:"totals"`
+	Workouts   []*webhook.Workout `json:"workouts"`
+	NextCursor string             `json:"next_cursor,omitempty"`
 }
 
 // listTotals add up the per-workout totals (working sets only).
@@ -58,38 +62,55 @@ func requireToken(next http.Handler, tokens ...string) http.Handler {
 func listWorkoutsHandler(s *store.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
-		out, err := workoutRange(r.Context(), s, q.Get("from"), q.Get("to"))
+		out, err := listWorkouts(r.Context(), s, q)
 		if err != nil {
-			var re rangeError
-			if errors.As(err, &re) {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": re.Error()})
-				return
-			}
-			log.Printf("list workouts: %v", err)
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+			writeListError(w, "list workouts", err)
 			return
 		}
 		writeJSON(w, http.StatusOK, out)
 	}
 }
 
-// rangeError is a bad from/to pair.
-type rangeError string
+func listWorkouts(ctx context.Context, s *store.Store, q url.Values) (workoutList, error) {
+	limit, err := queryLimit(q.Get("limit"))
+	if err != nil {
+		return workoutList{}, err
+	}
+	return workoutRange(ctx, s, q.Get("from"), q.Get("to"), limit, q.Get("cursor"))
+}
 
-func (e rangeError) Error() string { return string(e) }
+// writeListError answers a failed list request: 400 for bad parameters.
+func writeListError(w http.ResponseWriter, what string, err error) {
+	var pe paramError
+	if errors.As(err, &pe) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": pe.Error()})
+		return
+	}
+	log.Printf("%s: %v", what, err)
+	writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+}
 
-// workoutRange lists finished workouts dated from..to (YYYY-MM-DD, inclusive)
-// with their totals.
-func workoutRange(ctx context.Context, s *store.Store, fromQ, toQ string) (workoutList, error) {
+// workoutRange lists one page of the finished workouts dated from..to
+// (YYYY-MM-DD, inclusive), oldest first, with totals for the whole range.
+func workoutRange(ctx context.Context, s *store.Store, fromQ, toQ string, limit int, cursor string) (workoutList, error) {
+	limit, err := pageSize(limit)
+	if err != nil {
+		return workoutList{}, err
+	}
+	// A workout's place in the order: date, finished_at, id.
+	after, err := decodeCursor(cursor, 3)
+	if err != nil {
+		return workoutList{}, err
+	}
 	from, errFrom := time.Parse(time.DateOnly, fromQ)
 	to, errTo := time.Parse(time.DateOnly, toQ)
 	switch {
 	case errFrom != nil || errTo != nil:
-		return workoutList{}, rangeError("from and to are required as YYYY-MM-DD")
+		return workoutList{}, paramError("from and to are required as YYYY-MM-DD")
 	case to.Before(from):
-		return workoutList{}, rangeError("to is before from")
+		return workoutList{}, paramError("to is before from")
 	case to.Sub(from) >= maxRangeDays*24*time.Hour:
-		return workoutList{}, rangeError("range is longer than 366 days")
+		return workoutList{}, paramError("range is longer than 366 days")
 	}
 	fromS, toS := from.Format(time.DateOnly), to.Format(time.DateOnly)
 
@@ -97,18 +118,45 @@ func workoutRange(ctx context.Context, s *store.Store, fromQ, toQ string) (worko
 	if err != nil {
 		return workoutList{}, err
 	}
-	out := workoutList{From: fromS, To: toS, Workouts: make([]*webhook.Workout, 0, len(snaps))}
+	out := workoutList{From: fromS, To: toS, Workouts: make([]*webhook.Workout, 0, min(limit, len(snaps)))}
+	var lastKey []string
+	more := false
 	for _, snap := range snaps {
 		wo := webhook.FromSnapshot(snap)
-		out.Workouts = append(out.Workouts, wo)
+		out.Totals.Workouts++
 		out.Totals.WorkingSets += wo.Totals.WorkingSets
 		out.Totals.Reps += wo.Totals.Reps
 		out.Totals.VolumeKg += wo.Totals.VolumeKg
 		out.Totals.DurationSeconds += wo.DurationSeconds
+
+		key := []string{snap.Date, strconv.FormatInt(*snap.FinishedAt, 10), snap.ID}
+		switch {
+		case after != nil && !workoutAfter(key, after):
+		case len(out.Workouts) == limit:
+			more = true
+		default:
+			out.Workouts = append(out.Workouts, wo)
+			lastKey = key
+		}
 	}
-	out.Totals.Workouts = len(out.Workouts)
+	if more {
+		out.NextCursor = encodeCursor(lastKey...)
+	}
 	out.Totals.VolumeKg = math.Round(out.Totals.VolumeKg*100) / 100
 	return out, nil
+}
+
+// workoutAfter compares workout order keys (date, finished_at ms, id).
+func workoutAfter(key, after []string) bool {
+	if key[0] != after[0] {
+		return key[0] > after[0]
+	}
+	k, _ := strconv.ParseInt(key[1], 10, 64)
+	a, _ := strconv.ParseInt(after[1], 10, 64)
+	if k != a {
+		return k > a
+	}
+	return key[2] > after[2]
 }
 
 func getWorkoutHandler(s *store.Store) http.HandlerFunc {

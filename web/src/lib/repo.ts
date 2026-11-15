@@ -15,7 +15,8 @@ import {
 	type BodyWeight,
 	type Workout
 } from './db';
-import { exerciseKey } from './stats';
+import { exerciseKey, trimName } from './exercise-key';
+import { MAX_REPS, MAX_TEXT_LEN, MAX_WEIGHT_KG } from './limits';
 
 export type Kind = 'workout' | 'routine';
 
@@ -87,6 +88,15 @@ export function today(): string {
 	const m = String(d.getMonth() + 1).padStart(2, '0');
 	const day = String(d.getDate()).padStart(2, '0');
 	return `${d.getFullYear()}-${m}-${day}`;
+}
+
+/** A user-typed name as the server accepts it: trimmed, at most MAX_TEXT_LEN code points. */
+export function cleanName(name: string): string {
+	return Array.from(trimName(name)).slice(0, MAX_TEXT_LEN).join('');
+}
+
+function clamp(n: number, max: number): number {
+	return Number.isFinite(n) ? Math.min(max, Math.max(0, n)) : 0;
 }
 
 function fresh<T extends object>(row: T): T & Synced {
@@ -225,7 +235,7 @@ async function isFinished(workoutId: string): Promise<boolean> {
 }
 
 export async function createWorkout(name = 'Workout'): Promise<string> {
-	const w = fresh({ name, date: today(), started_at: Date.now(), finished_at: null });
+	const w = fresh({ name: cleanName(name), date: today(), started_at: Date.now(), finished_at: null });
 	await write(async () => {
 		await db.workouts.add(w);
 	});
@@ -233,6 +243,7 @@ export async function createWorkout(name = 'Workout'): Promise<string> {
 }
 
 export async function updateWorkout(id: string, changes: Partial<Pick<Workout, 'name' | 'date'>>) {
+	if (changes.name !== undefined) changes = { ...changes, name: cleanName(changes.name) };
 	await write(() => patch(db.workouts, id, changes));
 }
 
@@ -269,7 +280,7 @@ export function getRoutine(id: string): Promise<Routine | undefined> {
 }
 
 export async function createRoutine(name = 'New routine'): Promise<string> {
-	const r = fresh({ name });
+	const r = fresh({ name: cleanName(name) });
 	await write(async () => {
 		await db.routines.add(r);
 	});
@@ -277,6 +288,7 @@ export async function createRoutine(name = 'New routine'): Promise<string> {
 }
 
 export async function updateRoutine(id: string, changes: Partial<Pick<Routine, 'name'>>) {
+	if (changes.name !== undefined) changes = { ...changes, name: cleanName(changes.name) };
 	await write(() => patch(db.routines, id, changes));
 }
 
@@ -374,7 +386,7 @@ export async function addExercise(kind: Kind, parentId: string, name: string): P
 	return write(async () => {
 		const existing = await loadExercises(kind, parentId);
 		const position = (existing.at(-1)?.position ?? 0) + 1;
-		const ex = fresh({ name: name.trim(), position, superset_id: null, [t.exParent]: parentId });
+		const ex = fresh({ name: cleanName(name), position, superset_id: null, [t.exParent]: parentId });
 		await t.ex.add(ex);
 		// The only set is the last one, so no rest after it.
 		const done = kind === 'workout' && (await isFinished(parentId));
@@ -384,7 +396,7 @@ export async function addExercise(kind: Kind, parentId: string, name: string): P
 }
 
 export async function renameExercise(kind: Kind, id: string, name: string) {
-	await write(() => patch(tables(kind).ex, id, { name: name.trim() }));
+	await write(() => patch(tables(kind).ex, id, { name: cleanName(name) }));
 }
 
 async function deleteSetsOf(kind: Kind, exerciseIds: string[]) {
@@ -446,7 +458,10 @@ export async function updateSet(
 	id: string,
 	changes: Partial<Pick<SetRow, 'reps' | 'weight_kg' | 'warmup' | 'rest_seconds'> & { done: boolean }>
 ) {
-	await write(() => patch(tables(kind).sets, id, changes));
+	const bounded = { ...changes };
+	if (bounded.reps !== undefined) bounded.reps = Math.round(clamp(bounded.reps, MAX_REPS));
+	if (bounded.weight_kg !== undefined) bounded.weight_kg = clamp(bounded.weight_kg, MAX_WEIGHT_KG);
+	await write(() => patch(tables(kind).sets, id, bounded));
 }
 
 export async function deleteSet(kind: Kind, id: string) {
@@ -561,8 +576,8 @@ export async function exerciseNames(): Promise<string[]> {
 	const seen = new Map<string, string>();
 	const rows = [...live(await db.workout_exercises.toArray()), ...live(await db.routine_exercises.toArray())];
 	for (const r of rows) {
-		const key = r.name.trim().toLowerCase();
-		if (key && !seen.has(key)) seen.set(key, r.name.trim());
+		const key = exerciseKey(r.name);
+		if (key && !seen.has(key)) seen.set(key, trimName(r.name));
 	}
 	return [...seen.values()].sort((a, b) => a.localeCompare(b));
 }
@@ -576,7 +591,7 @@ export async function previousSets(workoutId: string): Promise<Map<string, SetVi
 	const current = await getWorkout(workoutId);
 	if (!current) return result;
 	const mine = live(await db.workout_exercises.where('workout_id').equals(workoutId).toArray());
-	const names = [...new Set(mine.map((e) => e.name.trim().toLowerCase()))].filter(Boolean);
+	const names = [...new Set(mine.map((e) => exerciseKey(e.name)))].filter(Boolean);
 	if (names.length === 0) return result;
 
 	const workouts = new Map(live(await db.workouts.toArray()).map((w) => [w.id, w]));
@@ -628,7 +643,7 @@ export async function dismissBodyWeightCard() {
 
 /** Record the body weight for a date, replacing that date's weigh-in. */
 export function logBodyWeight(date: string, weight_kg: number) {
-	return write(() => db.body_weights.put(keyed(date, { date, weight_kg })));
+	return write(() => db.body_weights.put(keyed(date, { date, weight_kg: clamp(weight_kg, MAX_WEIGHT_KG) })));
 }
 
 export function deleteBodyWeight(date: string) {
@@ -637,9 +652,12 @@ export function deleteBodyWeight(date: string) {
 
 /** Set the share of body weight each rep of an exercise moves, 0–100. */
 export function setBodyweightPct(name: string, pct: number) {
-	const key = exerciseKey(name);
+	// The server derives the id from the stored name, so both come from one cleaned value.
+	const clean = cleanName(name);
+	const key = exerciseKey(clean);
 	if (!key) return Promise.resolve();
-	return write(() => db.exercise_settings.put(keyed(key, { name: name.trim(), bodyweight_pct: pct })));
+	const bodyweight_pct = Math.round(clamp(pct, 100));
+	return write(() => db.exercise_settings.put(keyed(key, { name: clean, bodyweight_pct })));
 }
 
 // ---------- settings ----------

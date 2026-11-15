@@ -51,7 +51,7 @@ func setup(t *testing.T) (*store.Store, *Sender, *receiver) {
 
 func syncRows(t *testing.T, s *store.Store, changes map[string][]store.Row) {
 	t.Helper()
-	if _, _, err := s.Sync(context.Background(), 0, changes); err != nil {
+	if _, _, _, err := s.Sync(context.Background(), 0, changes); err != nil {
 		t.Fatal(err)
 	}
 }

@@ -8,6 +8,7 @@
  * (internal/webhook FromSnapshot).
  */
 import { db } from './db';
+import { exerciseKey } from './exercise-key';
 
 export interface HistorySet {
 	reps: number;
@@ -36,9 +37,7 @@ export interface History {
 	performances: Performance[];
 }
 
-export function exerciseKey(name: string): string {
-	return name.trim().toLowerCase();
-}
+export { exerciseKey };
 
 // ---------- body weight ----------
 

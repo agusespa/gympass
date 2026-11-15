@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"testing/fstest"
 
@@ -35,7 +36,7 @@ func newReadServer(t *testing.T, token string) *httptest.Server {
 		return store.Row{"id": id, "updated_at": int64(100), "deleted": false, "workout_exercise_id": exercise,
 			"position": 1.0, "reps": reps, "weight_kg": kg, "warmup": warmup, "rest_seconds": int64(120), "done": true}
 	}
-	_, _, err = s.Sync(context.Background(), 0, map[string][]store.Row{
+	_, _, _, err = s.Sync(context.Background(), 0, map[string][]store.Row{
 		"workouts": {
 			w("push", "2026-11-10", int64(1_000_000), int64(4_600_000)), // 3600 s
 			w("pull", "2026-11-12", nil, int64(9_000_000)),
@@ -178,6 +179,42 @@ func TestGetWorkout(t *testing.T) {
 	for _, id := range []string{"running", "missing"} {
 		if res := get(t, srv.URL+"/api/workouts/"+id, "Bearer "+testToken, nil); res.StatusCode != http.StatusNotFound {
 			t.Errorf("%s: status %d, want 404", id, res.StatusCode)
+		}
+	}
+}
+
+func TestListWorkoutsPages(t *testing.T) {
+	srv := newReadServer(t, testToken)
+	type page struct {
+		Totals     map[string]float64
+		Workouts   []struct{ ID string }
+		NextCursor string `json:"next_cursor"`
+	}
+	var ids []string
+	cursor := ""
+	for i := 0; i < 3; i++ {
+		var p page
+		res := get(t, srv.URL+"/api/workouts?from=2026-11-10&to=2026-11-16&limit=1&cursor="+cursor, "Bearer "+testToken, &p)
+		if res.StatusCode != http.StatusOK || len(p.Workouts) != 1 {
+			t.Fatalf("page %d: status %d, %+v", i, res.StatusCode, p)
+		}
+		// Totals always cover the whole range.
+		if p.Totals["workouts"] != 2 {
+			t.Fatalf("page %d totals = %v", i, p.Totals)
+		}
+		ids = append(ids, p.Workouts[0].ID)
+		if cursor = p.NextCursor; cursor == "" {
+			break
+		}
+	}
+	if strings.Join(ids, ",") != "push,pull" {
+		t.Fatalf("paged ids = %v", ids)
+	}
+
+	for _, q := range []string{"limit=0", "limit=201", "limit=x", "cursor=nope", "cursor=" + encodeCursor("a")} {
+		res := get(t, srv.URL+"/api/workouts?from=2026-11-10&to=2026-11-16&"+q, "Bearer "+testToken, nil)
+		if res.StatusCode != http.StatusBadRequest {
+			t.Errorf("%s: status %d, want 400", q, res.StatusCode)
 		}
 	}
 }

@@ -46,8 +46,15 @@ func newMCPHandler(s *store.Store, tokens Tokens) http.Handler {
 }
 
 type workoutRangeArgs struct {
-	From string `json:"from" jsonschema:"first date, YYYY-MM-DD, inclusive"`
-	To   string `json:"to" jsonschema:"last date, YYYY-MM-DD, inclusive; at most 366 days after from"`
+	From   string `json:"from" jsonschema:"first date, YYYY-MM-DD, inclusive"`
+	To     string `json:"to" jsonschema:"last date, YYYY-MM-DD, inclusive; at most 366 days after from"`
+	Limit  int    `json:"limit,omitempty" jsonschema:"most workouts to return, 1 to 200; defaults to 50"`
+	Cursor string `json:"cursor,omitempty" jsonschema:"next_cursor from the previous call, to get the next page"`
+}
+
+type pageArgs struct {
+	Limit  int    `json:"limit,omitempty" jsonschema:"most items to return, 1 to 200; defaults to 50"`
+	Cursor string `json:"cursor,omitempty" jsonschema:"next_cursor from the previous call, to get the next page"`
 }
 
 type idArgs struct {
@@ -65,10 +72,6 @@ type updateRoutineArgs struct {
 	Exercises []exerciseInput `json:"exercises,omitempty" jsonschema:"the complete list of exercises in order; exercises left out are deleted"`
 }
 
-type routineList struct {
-	Routines []store.Routine `json:"routines"`
-}
-
 func newMCPServer(s *store.Store, write bool) *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{Name: "gym-tracker", Version: "1"}, &mcp.ServerOptions{
 		Instructions: mcpInstructions,
@@ -76,12 +79,13 @@ func newMCPServer(s *store.Store, write bool) *mcp.Server {
 	readOnly := &mcp.ToolAnnotations{ReadOnlyHint: true, IdempotentHint: true, OpenWorldHint: new(false)}
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "list_workouts",
-		Title:       "List workouts",
-		Description: "Finished workouts dated in a range, oldest first, with each one's exercises and performed sets, plus totals for the range (working sets only).",
+		Name:  "list_workouts",
+		Title: "List workouts",
+		Description: "Finished workouts dated in a range, oldest first, with each one's exercises and performed sets, plus totals for the whole range (working sets only). " +
+			"Returns at most limit workouts; when next_cursor is set, call again with it as cursor for the rest.",
 		Annotations: readOnly,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in workoutRangeArgs) (*mcp.CallToolResult, workoutList, error) {
-		out, err := workoutRange(ctx, s, in.From, in.To)
+		out, err := workoutRange(ctx, s, in.From, in.To, in.Limit, in.Cursor)
 		return nil, out, toolError("list workouts", err)
 	})
 
@@ -102,13 +106,14 @@ func newMCPServer(s *store.Store, write bool) *mcp.Server {
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "list_routines",
-		Title:       "List routines",
-		Description: "Every routine with its exercises and planned sets, sorted by name.",
+		Name:  "list_routines",
+		Title: "List routines",
+		Description: "Routines with their exercises and planned sets, sorted by name. " +
+			"Returns at most limit routines; when next_cursor is set, call again with it as cursor for the rest.",
 		Annotations: readOnly,
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, routineList, error) {
-		routines, err := s.Routines(ctx)
-		return nil, routineList{Routines: routines}, toolError("list routines", err)
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in pageArgs) (*mcp.CallToolResult, routineList, error) {
+		out, err := routinePage(ctx, s, in.Limit, in.Cursor)
+		return nil, out, toolError("list routines", err)
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -173,8 +178,8 @@ func toolError(what string, err error) error {
 		return nil
 	}
 	var ve *store.ValidationError
-	var re rangeError
-	if errors.As(err, &ve) || errors.As(err, &re) {
+	var pe paramError
+	if errors.As(err, &ve) || errors.As(err, &pe) {
 		return err
 	}
 	log.Printf("mcp %s: %v", what, err)
