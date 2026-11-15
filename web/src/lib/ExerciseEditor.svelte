@@ -1,6 +1,5 @@
 <script lang="ts">
 	import Modal from './Modal.svelte';
-	import { exerciseKey } from './exercise-key';
 	import {
 		durationLabel,
 		kg,
@@ -23,7 +22,6 @@
 		loadExercises,
 		moveBlock,
 		moveWithinSuperset,
-		previousSets,
 		renameExercise,
 		setTimed,
 		toBlocks,
@@ -34,17 +32,21 @@
 		type SetView
 	} from './repo';
 
-	let { kind, parentId }: { kind: Kind; parentId: string } = $props();
+	let {
+		kind,
+		parentId,
+		collapseDone = false
+	}: {
+		kind: Kind;
+		parentId: string;
+		/** Fold an exercise down to its name once every set is checked off (a running workout). */
+		collapseDone?: boolean;
+	} = $props();
 
 	const exercises = live(
 		() => [kind, parentId] as const,
 		([k, id]) => loadExercises(k, id),
 		[] as ExerciseView[]
-	);
-	const previous = live(
-		() => [kind, parentId] as const,
-		([k, id]) => (k === 'workout' ? previousSets(id) : Promise.resolve(new Map<string, SetView[]>())),
-		new Map<string, SetView[]>()
 	);
 	const names = live(
 		() => null,
@@ -53,6 +55,23 @@
 	);
 
 	const blocks = $derived(toBlocks(exercises.current));
+
+	/** Superset colours (app.css), cycled so neighbouring supersets look different. */
+	const SUPERSET_COLORS = ['--superset', '--superset-2', '--superset-3'];
+	/** Each block's superset colour, or undefined for a single exercise. */
+	const supersetColor = $derived.by(() => {
+		let n = 0;
+		return blocks.map((b) =>
+			b.superset ? `var(${SUPERSET_COLORS[n++ % SUPERSET_COLORS.length]})` : undefined
+		);
+	});
+
+	/** Finished exercises the user opened again. */
+	let expanded = $state<Record<string, boolean>>({});
+
+	function allDone(ex: ExerciseView): boolean {
+		return collapseDone && ex.sets.length > 0 && ex.sets.every((s) => s.done);
+	}
 	/** Exercise whose options menu is open; one at a time. */
 	let menuFor = $state<string | null>(null);
 	/** The open menu opens upward: there was no room for it below the ⋯ button. */
@@ -80,17 +99,7 @@
 		return ex.sets.slice(0, i).filter((s) => s.warmup === warm).length;
 	}
 
-	/** Last time's set of the same type and order: warm-ups match warm-ups, working sets match working sets. */
-	function prevFor(ex: ExerciseView, i: number): string {
-		const warm = ex.sets[i].warmup;
-		const prev = previous.current.get(exerciseKey(ex.name))?.filter((s) => s.warmup === warm);
-		const s = prev?.[nthOfType(ex, i)];
-		if (!s) return '–';
-		const effort = ex.timed ? durationLabel(s.duration_seconds) : String(s.reps);
-		return ex.timed && !s.weight_kg ? effort : `${kg(s.weight_kg)}kg × ${effort}`;
-	}
-
-	/** Save a routine set's reps and max reps, and show what was kept (a max at or below the reps is dropped). */
+	/** Save a routine set's reps and max reps, and show what was kept (a max alone becomes the reps). */
 	function saveRepTarget(set: SetView, reps: number, max: number, maxInput: HTMLInputElement) {
 		const target = repTarget(reps, max);
 		maxInput.value = target.rep_max ? String(target.rep_max) : '';
@@ -156,13 +165,15 @@
 />
 
 {#each blocks as block, bi (block.items[0].id)}
-	<div class:superset={block.superset} class="block">
+	<div class:superset={block.superset} class="block" style:--ss={supersetColor[bi]}>
 		{#if block.superset}
 			<span class="badge">Superset</span>
 		{/if}
 
 		{#each block.items as ex, ei (ex.id)}
-			<section aria-label={ex.name}>
+			{@const finished = allDone(ex)}
+			{@const collapsed = finished && !expanded[ex.id]}
+			<section aria-label={ex.name} class:collapsed>
 				<header>
 					{#if renaming === ex.id}
 						<input
@@ -176,6 +187,24 @@
 								if (e.key === 'Escape') renaming = null;
 							}}
 						/>
+					{:else if finished}
+						<!-- Every set is checked off: the name folds the sets away and opens them again. -->
+						<h2>
+							<button
+								class="fold"
+								aria-expanded={!collapsed}
+								onclick={() => (expanded[ex.id] = !expanded[ex.id])}
+							>
+								<span class="fold-name">{ex.name}</span>
+								{#if collapsed}
+									<span class="fold-summary">
+										<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+										{ex.sets.length === 1 ? '1 set' : `${ex.sets.length} sets`}
+									</span>
+								{/if}
+								<svg class="chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+							</button>
+						</h2>
 					{:else}
 						<h2>{ex.name}</h2>
 					{/if}
@@ -206,6 +235,13 @@
 								aria-label="{ex.name} options"
 								{@attach placeMenu}
 							>
+								<!-- Extra sets are rare in a workout, so there it lives here instead of under the sets. -->
+								{#if kind === 'workout'}
+									<button role="menuitem" onclick={() => pick(() => addSet(kind, ex.id))}>
+										<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+										Add set
+									</button>
+								{/if}
 								<button role="menuitem" onclick={() => pick(() => (renaming = ex.id))}>
 									<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z" /></svg>
 									Rename
@@ -318,167 +354,167 @@
 					</div>
 				</header>
 
-				<div class="sets" class:with-prev={kind === 'workout'}>
-					<span class="th">Set</span>
-					{#if kind === 'workout'}<span class="th">Previous</span>{/if}
-					<span class="th">
-						<svg class="kg-icon" viewBox="0 0 24 24" aria-hidden="true">
-							<path d="M2 12h20M6 8v8M18 8v8M9 9.5v5M15 9.5v5" />
-						</svg>
-						kg
-					</span>
-					<span class="th">{ex.timed ? 'Time' : 'Reps'}</span>
-					<span class="th"></span>
-
-					{#each ex.sets as set, si (set.id)}
-						{@const done = checkable && set.done}
-						<span class="set-cell">
-							<button
-								class="set-num"
-								class:warmup={set.warmup}
-								aria-label="Set {si + 1} type: {set.warmup ? 'warm-up' : 'normal'}"
-								aria-expanded={typeFor === set.id}
-								onclick={() => (typeFor = typeFor === set.id ? null : set.id)}
-								>{set.warmup ? 'W' : nthOfType(ex, si) + 1}</button
-							>
-							{#if typeFor === set.id}
-								<span class="type-menu" role="menu">
-									<button role="menuitem" onclick={() => setType(set, false)}>
-										<span class="tag">1</span> Normal set
-									</button>
-									<button role="menuitem" onclick={() => setType(set, true)}>
-										<span class="tag warmup">W</span> Warm-up set
-									</button>
-									{#if checkable}
-										<button
-											role="menuitem"
-											class="danger-item"
-											aria-label="Delete set {si + 1}"
-											onclick={() => {
-												typeFor = null;
-												deleteSet(kind, set.id);
-											}}
-										>
-											<span class="tag">×</span> Delete set
-										</button>
-									{/if}
-								</span>
-							{/if}
+				{#if !collapsed}
+					<div class="sets">
+						<span class="th">Set</span>
+						<span class="th">
+							<svg class="kg-icon" viewBox="0 0 24 24" aria-hidden="true">
+								<path d="M2 12h20M6 8v8M18 8v8M9 9.5v5M15 9.5v5" />
+							</svg>
+							kg
 						</span>
-						{#if kind === 'workout'}
-							<span class="prev" class:done data-testid="previous">{prevFor(ex, si)}</span>
-						{/if}
-						<input
-							class:done
-							inputmode="decimal"
-							aria-label="Weight set {si + 1}"
-							placeholder="0"
-							value={set.weight_kg ? kg(set.weight_kg) : ''}
-							onchange={(e) => updateSet(kind, set.id, { weight_kg: parseWeight(e.currentTarget.value) })}
-						/>
-						{#if ex.timed}
-							<!-- Seconds or m:ss; the decimal keypad's separator works as the colon. -->
+						<span class="th">{ex.timed ? 'Time' : 'Reps'}</span>
+						<span class="th"></span>
+
+						{#each ex.sets as set, si (set.id)}
+							{@const done = checkable && set.done}
+							<span class="set-cell">
+								<button
+									class="set-num"
+									class:warmup={set.warmup}
+									aria-label="Set {si + 1} type: {set.warmup ? 'warm-up' : 'normal'}"
+									aria-expanded={typeFor === set.id}
+									onclick={() => (typeFor = typeFor === set.id ? null : set.id)}
+									>{set.warmup ? 'W' : nthOfType(ex, si) + 1}</button
+								>
+								{#if typeFor === set.id}
+									<span class="type-menu" role="menu">
+										<button role="menuitem" onclick={() => setType(set, false)}>
+											<span class="tag">1</span> Normal set
+										</button>
+										<button role="menuitem" onclick={() => setType(set, true)}>
+											<span class="tag warmup">W</span> Warm-up set
+										</button>
+										{#if checkable}
+											<button
+												role="menuitem"
+												class="danger-item"
+												aria-label="Delete set {si + 1}"
+												onclick={() => {
+													typeFor = null;
+													deleteSet(kind, set.id);
+												}}
+											>
+												<span class="tag">×</span> Delete set
+											</button>
+										{/if}
+									</span>
+								{/if}
+							</span>
 							<input
 								class:done
 								inputmode="decimal"
-								aria-label="Time set {si + 1}"
-								placeholder="0:00"
-								value={set.duration_seconds ? durationLabel(set.duration_seconds) : ''}
-								onchange={(e) => {
-									const duration_seconds = parseDuration(e.currentTarget.value);
-									e.currentTarget.value = duration_seconds ? durationLabel(duration_seconds) : '';
-									updateSet(kind, set.id, { duration_seconds });
-								}}
+								aria-label="Weight set {si + 1}"
+								placeholder="0"
+								value={set.weight_kg ? kg(set.weight_kg) : ''}
+								onchange={(e) => updateSet(kind, set.id, { weight_kg: parseWeight(e.currentTarget.value) })}
 							/>
-						{:else if checkable}
-							<!-- The rep range, when the routine set one, sits under the reps done. -->
-							<span class="reps-cell" class:ranged={set.rep_max > 0}>
+							{#if ex.timed}
+								<!-- Seconds or m:ss; the decimal keypad's separator works as the colon. -->
 								<input
 									class:done
-									inputmode="numeric"
-									pattern="[0-9]*"
-									aria-label="Reps set {si + 1}"
-									placeholder={set.rep_max > 0 ? repRange(set) : '0'}
-									value={set.reps ? String(set.reps) : ''}
-									onchange={(e) => updateSet(kind, set.id, { reps: parseReps(e.currentTarget.value) })}
-								/>
-								{#if set.rep_max > 0 && set.reps}
-									<span class="target" data-testid="rep-range">{repRange(set)}</span>
-								{/if}
-							</span>
-						{:else}
-							<!-- Reps, and optionally a max that makes them a range (8 and 12 plan 8–12). -->
-							<span class="rep-range">
-								<input
-									inputmode="numeric"
-									pattern="[0-9]*"
-									aria-label="Reps set {si + 1}"
-									placeholder="0"
-									value={set.reps ? String(set.reps) : ''}
+									inputmode="decimal"
+									aria-label="Time set {si + 1}"
+									placeholder="0:00"
+									value={set.duration_seconds ? durationLabel(set.duration_seconds) : ''}
 									onchange={(e) => {
-										const max = e.currentTarget.parentElement!.querySelector<HTMLInputElement>('.max')!;
-										saveRepTarget(set, parseReps(e.currentTarget.value), set.rep_max, max);
+										const duration_seconds = parseDuration(e.currentTarget.value);
+										e.currentTarget.value = duration_seconds ? durationLabel(duration_seconds) : '';
+										updateSet(kind, set.id, { duration_seconds });
 									}}
 								/>
-								<span class="dash" aria-hidden="true">–</span>
-								<input
-									class="max"
-									inputmode="numeric"
-									pattern="[0-9]*"
-									aria-label="Maximum reps for set {si + 1}"
-									placeholder="0"
-									value={set.rep_max ? String(set.rep_max) : ''}
-									onchange={(e) =>
-										saveRepTarget(set, set.reps, parseReps(e.currentTarget.value), e.currentTarget)}
-								/>
-							</span>
-						{/if}
-						{#if checkable}
-							<button
-								class="check-set"
-								class:done
-								aria-label="Complete set {si + 1}"
-								aria-pressed={set.done}
-								onclick={() => updateSet(kind, set.id, { done: !set.done })}
-							>
-								<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
-							</button>
-						{:else}
-							<button
-								class="delete-set"
-								aria-label="Delete set {si + 1}"
-								onclick={() => deleteSet(kind, set.id)}
-							>
-								<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17" /></svg>
-							</button>
-						{/if}
-						<!-- In a superset you only rest after the last exercise of the round. -->
-						{#if !block.superset || ei === block.items.length - 1}
-							<label class="rest" class:warmup={set.warmup} class:none={set.rest_seconds === 0}>
-								<span class="rest-pill">
-									<svg viewBox="0 0 24 24" aria-hidden="true">
-										<circle cx="12" cy="13" r="8" /><path d="M12 9v4l2.5 2.5M10 2.5h4" />
-									</svg>
-									{restLabel(set.rest_seconds)}
+							{:else if checkable}
+								<!-- The rep range, when the routine set one, sits under the reps done. -->
+								<span class="reps-cell" class:ranged={set.rep_max > 0}>
+									<input
+										class:done
+										inputmode="numeric"
+										pattern="[0-9]*"
+										aria-label="Reps set {si + 1}"
+										placeholder={set.rep_max > 0 ? repRange(set) : '0'}
+										value={set.reps ? String(set.reps) : ''}
+										onchange={(e) => updateSet(kind, set.id, { reps: parseReps(e.currentTarget.value) })}
+									/>
+									{#if set.rep_max > 0 && set.reps}
+										<span class="target" data-testid="rep-range">{repRange(set)}</span>
+									{/if}
 								</span>
-								<select
-									aria-label="Rest after set {si + 1}"
-									value={set.rest_seconds}
-									onchange={(e) => updateSet(kind, set.id, { rest_seconds: Number(e.currentTarget.value) })}
+							{:else}
+								<!-- Reps, and optionally a max that makes them a range (8 and 12 plan 8–12). -->
+								<span class="rep-range">
+									<input
+										inputmode="numeric"
+										pattern="[0-9]*"
+										aria-label="Reps set {si + 1}"
+										placeholder="0"
+										value={set.reps ? String(set.reps) : ''}
+										onchange={(e) => {
+											const max = e.currentTarget.parentElement!.querySelector<HTMLInputElement>('.max')!;
+											saveRepTarget(set, parseReps(e.currentTarget.value), set.rep_max, max);
+										}}
+									/>
+									<span class="dash" aria-hidden="true">–</span>
+									<input
+										class="max"
+										inputmode="numeric"
+										pattern="[0-9]*"
+										aria-label="Maximum reps for set {si + 1}"
+										placeholder="0"
+										value={set.rep_max ? String(set.rep_max) : ''}
+										onchange={(e) =>
+											saveRepTarget(set, set.reps, parseReps(e.currentTarget.value), e.currentTarget)}
+									/>
+								</span>
+							{/if}
+							{#if checkable}
+								<button
+									class="check-set"
+									class:done
+									aria-label="Complete set {si + 1}"
+									aria-pressed={set.done}
+									onclick={() => updateSet(kind, set.id, { done: !set.done })}
 								>
-									{#each restOptions(set.rest_seconds) as sec (sec)}
-										<option value={sec}>{sec === 0 ? 'No rest' : restLabel(sec)}</option>
-									{/each}
-								</select>
-							</label>
-						{/if}
-					{/each}
-				</div>
+									<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+								</button>
+							{:else}
+								<button
+									class="delete-set"
+									aria-label="Delete set {si + 1}"
+									onclick={() => deleteSet(kind, set.id)}
+								>
+									<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17" /></svg>
+								</button>
+							{/if}
+							<!-- In a superset you only rest after the last exercise of the round. -->
+							{#if !block.superset || ei === block.items.length - 1}
+								<label class="rest" class:warmup={set.warmup} class:none={set.rest_seconds === 0}>
+									<span class="rest-pill">
+										<svg viewBox="0 0 24 24" aria-hidden="true">
+											<circle cx="12" cy="13" r="8" /><path d="M12 9v4l2.5 2.5M10 2.5h4" />
+										</svg>
+										{restLabel(set.rest_seconds)}
+									</span>
+									<select
+										aria-label="Rest after set {si + 1}"
+										value={set.rest_seconds}
+										onchange={(e) => updateSet(kind, set.id, { rest_seconds: Number(e.currentTarget.value) })}
+									>
+										{#each restOptions(set.rest_seconds) as sec (sec)}
+											<option value={sec}>{sec === 0 ? 'No rest' : restLabel(sec)}</option>
+										{/each}
+									</select>
+								</label>
+							{/if}
+						{/each}
+					</div>
+				{/if}
 
-				<button class="add-set" onclick={() => addSet(kind, ex.id)}>
-					<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
-					Add set
-				</button>
+				{#if kind === 'routine'}
+					<button class="add-set" onclick={() => addSet(kind, ex.id)}>
+						<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+						Add set
+					</button>
+				{/if}
 			</section>
 		{/each}
 	</div>
@@ -522,7 +558,7 @@
 	}
 
 	.block.superset {
-		border-left: 3px solid var(--superset);
+		border-left: 3px solid var(--ss);
 		padding-left: 0.75rem;
 		margin-top: 0.75rem;
 	}
@@ -530,7 +566,7 @@
 	.badge {
 		display: block;
 		padding-top: 0.25rem;
-		color: var(--superset);
+		color: var(--ss);
 		font-weight: 700;
 		font-size: 0.8rem;
 		text-transform: uppercase;
@@ -558,6 +594,65 @@
 		stroke-width: 2;
 		stroke-linecap: round;
 		stroke-linejoin: round;
+	}
+
+	/* A finished exercise's name: tapping it shows or hides the sets. */
+	.fold {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		width: 100%;
+		min-height: 0;
+		padding: 0;
+		background: transparent;
+		color: inherit;
+		font: inherit;
+		text-align: left;
+	}
+
+	.fold-name {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.fold-summary {
+		display: flex;
+		align-items: center;
+		gap: 0.2rem;
+		flex: none;
+		color: var(--muted);
+		font-size: 0.9rem;
+		font-weight: 500;
+	}
+
+	.fold-summary svg {
+		width: 16px;
+		height: 16px;
+		stroke: var(--accent);
+		stroke-width: 3;
+	}
+
+	.fold .chevron {
+		width: 20px;
+		height: 20px;
+		flex: none;
+		margin-left: auto;
+		color: var(--muted);
+		transition: transform 0.2s;
+	}
+
+	.fold[aria-expanded='true'] .chevron {
+		transform: rotate(180deg);
+	}
+
+	section.collapsed {
+		padding-bottom: 0.5rem;
+	}
+
+	section.collapsed header {
+		margin-bottom: 0;
 	}
 
 	.ex-menu {
@@ -662,16 +757,12 @@
 		stroke: none;
 	}
 
-	/* Set table as a grid: Set | (Previous) | kg | Reps | delete */
+	/* Set table as a grid: Set | kg | Reps | check or delete */
 	.sets {
 		display: grid;
 		grid-template-columns: 44px 1fr 1fr 44px;
 		align-items: center;
 		gap: 0.6rem 0.6rem;
-	}
-
-	.sets.with-prev {
-		grid-template-columns: 44px 1.15fr 1fr 1fr 44px;
 	}
 
 	.th {
@@ -752,13 +843,6 @@
 		font-weight: 700;
 	}
 
-	.prev {
-		text-align: center;
-		color: var(--muted);
-		white-space: nowrap;
-		font-size: 0.95rem;
-	}
-
 	.sets input {
 		height: 44px;
 		text-align: center;
@@ -804,10 +888,6 @@
 	.sets input.done {
 		background: color-mix(in srgb, var(--accent) 16%, transparent);
 		border-color: transparent;
-	}
-
-	.prev.done {
-		color: var(--text);
 	}
 
 	.reps-cell {

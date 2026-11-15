@@ -236,8 +236,9 @@ func validateRoutine(r *Routine) error {
 			if st.RepMax == 0 {
 				e.Sets[j].RepMin = 0
 			} else {
-				if st.RepMin < 0 || st.RepMin > st.RepMax {
-					return invalid("%s.rep_min must be 0 to rep_max", where)
+				// The range is a guide: reps may reach or pass the max.
+				if st.RepMin < 0 || st.RepMin > maxReps {
+					return invalid("%s.rep_min must be 0 to %d", where, maxReps)
 				}
 				e.Sets[j].Reps = st.RepMin
 			}

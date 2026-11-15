@@ -311,21 +311,21 @@ export async function deleteRoutine(id: string) {
 }
 
 /**
- * A routine set as a workout target. A set with a rep range continues from
- * the last session's matching set (same type and order) with exactly its
- * weight and reps. Fixed sets are the routine's numbers as they are.
+ * A routine set as a workout target: it continues from the last session's
+ * matching set (same type and order) with exactly its weight, reps and time.
+ * Without one (never done, or more sets than last time) it is the routine's
+ * numbers as they are. A rep range is kept either way.
  */
 function targetFrom(set: SetView, nth: number, last: SetView[]): SetView {
-	if (set.rep_max <= 0) return set;
 	const prev = last.filter((s) => s.warmup === set.warmup)[nth];
 	if (!prev) return set;
-	return { ...set, weight_kg: prev.weight_kg, reps: prev.reps };
+	return { ...set, weight_kg: prev.weight_kg, reps: prev.reps, duration_seconds: prev.duration_seconds };
 }
 
 /** Copy one workout's or routine's exercises and sets into another parent. */
 async function copyExercises(from: Kind, fromId: string, to: Kind, toId: string) {
 	const src = await loadExercises(from, fromId);
-	// Starting a workout: ranged sets pick up where the last session left off.
+	// Starting a workout: sets pick up where the last session left off.
 	const startDate = to === 'workout' ? (await getWorkout(toId))?.date : undefined;
 	const dst = tables(to);
 	const supersets = new Map<string, string>();
@@ -338,7 +338,7 @@ async function copyExercises(from: Kind, fromId: string, to: Kind, toId: string)
 		const ex = fresh({ name: e.name, position: e.position, superset_id: superset, [dst.exParent]: toId });
 		await dst.ex.add(ex);
 		let sets = e.sets;
-		if (from === 'routine' && to === 'workout' && sets.some((s) => s.rep_max > 0)) {
+		if (from === 'routine' && to === 'workout') {
 			const last = await lastSetsFor(e.name, { exclude: toId, before: startDate, workoutsOnly: true });
 			const seen = { warm: 0, work: 0 };
 			sets = sets.map((s) => targetFrom(s, s.warmup ? seen.warm++ : seen.work++, last));
@@ -536,9 +536,8 @@ export async function updateSet(
 	if (bounded.weight_kg !== undefined) bounded.weight_kg = clamp(bounded.weight_kg, MAX_WEIGHT_KG);
 	if (bounded.rep_max !== undefined) {
 		bounded.rep_max = Math.round(clamp(bounded.rep_max, MAX_REPS));
-		bounded.rep_min = bounded.rep_max
-			? Math.min(bounded.rep_max, Math.round(clamp(bounded.rep_min ?? 0, MAX_REPS)))
-			: 0;
+		// A guide, not a rule: rep_min may pass rep_max (reps raised past the max).
+		bounded.rep_min = bounded.rep_max ? Math.round(clamp(bounded.rep_min ?? 0, MAX_REPS)) : 0;
 	}
 	await write(() => patch(tables(kind).sets, id, bounded));
 }
@@ -706,24 +705,6 @@ async function lastSetsFor(
 		if (sets.length > 0) return sets.map(toSetView);
 	}
 	return [];
-}
-
-/**
- * Sets from the most recent other workout (on or before this one's date) that
- * contains an exercise with this name. Keyed by exercise name (lowercased).
- * Workouts only: the hint shows what was done, never a routine's plan.
- */
-export async function previousSets(workoutId: string): Promise<Map<string, SetView[]>> {
-	const result = new Map<string, SetView[]>();
-	const current = await getWorkout(workoutId);
-	if (!current) return result;
-	const mine = live(await db.workout_exercises.where('workout_id').equals(workoutId).toArray());
-	const names = [...new Set(mine.map((e) => exerciseKey(e.name)))].filter(Boolean);
-	for (const name of names) {
-		const sets = await lastSetsFor(name, { exclude: workoutId, before: current.date, workoutsOnly: true });
-		if (sets.length > 0) result.set(name, sets);
-	}
-	return result;
 }
 
 // ---------- exercise settings ----------

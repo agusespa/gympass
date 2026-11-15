@@ -48,10 +48,10 @@ test("log a timed exercise such as a dead hang", async ({ page, request }) => {
     })
     .toEqual([45, 70]);
 
-  // Next time starts from these times and shows them as the previous values.
+  // Next time starts from these times.
   await newWorkout(page, `Grip again ${id}`);
   await addExercise(page, hang);
   const again = exercise(page, hang);
-  await expect(again.getByTestId("previous")).toHaveText(["0:45", "1:10"]);
+  await expect(again.getByLabel("Time set 1")).toHaveValue("0:45");
   await expect(again.getByLabel("Time set 2")).toHaveValue("1:10");
 });

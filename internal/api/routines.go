@@ -64,9 +64,6 @@ func (in routineInput) routine() (store.Routine, error) {
 				duration = *st.DurationSeconds
 			}
 			if st.RepMax != nil && *st.RepMax > 0 {
-				if *st.RepMax < reps {
-					return r, fmt.Errorf("exercises[%d].sets[%d]: rep_max must be at least reps", i, j)
-				}
 				repMin, repMax = reps, *st.RepMax
 			}
 			rest := int64(defaultRestSeconds)

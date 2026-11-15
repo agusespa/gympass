@@ -82,14 +82,29 @@ export async function fillSet(page: Page, ex: string, n: number, kg: string, rep
 	const check = section.getByRole('button', { name: `Complete set ${n}`, exact: true });
 	if ((await check.count()) > 0 && (await check.getAttribute('aria-pressed')) !== 'true') {
 		await check.click();
-		await expect(check).toHaveAttribute('aria-pressed', 'true');
+		// Checking off an exercise's last set in a running workout folds the exercise away.
+		await expect(check.and(page.locator('[aria-pressed="true"]')).or(folded(page, ex))).toBeVisible();
 	}
+}
+
+/** The name button of an exercise folded away because all its sets are done. */
+export function folded(page: Page, ex: string) {
+	return exercise(page, ex).getByRole('button', { expanded: false }).filter({ hasText: ex });
+}
+
+/** Open an exercise folded away after all its sets were checked off; no-op if it is open. */
+export async function unfold(page: Page, ex: string) {
+	const button = folded(page, ex);
+	if ((await button.count()) > 0) await button.click();
 }
 
 /** Add n sets to an exercise: the button in a routine, the exercise menu in a workout. */
 export async function addSet(page: Page, ex: string, n = 1) {
 	const button = exercise(page, ex).getByRole('button', { name: 'Add set', exact: true });
-	for (let i = 0; i < n; i++) await button.click();
+	for (let i = 0; i < n; i++) {
+		if ((await button.count()) > 0) await button.click();
+		else await exerciseMenu(page, ex, 'Add set');
+	}
 }
 
 /** Open an exercise's ⋯ menu and pick an item; the menu closes after it. */

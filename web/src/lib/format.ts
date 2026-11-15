@@ -17,12 +17,13 @@ export function parseReps(s: string): number {
 }
 
 /**
- * A routine set's rep target from its reps and max reps boxes. A max above the reps makes a
- * range (8 and 12 plan 8–12); otherwise it is a fixed count, the max when only that is filled in.
+ * A routine set's rep target from its reps and max reps boxes: reps and a max plan a range
+ * (8 and 12 plan 8–12). The range is a guide, so the max stays as typed even when the reps
+ * reach or pass it; only clearing the max box removes it. A max alone is a fixed count.
  * A range always has reps = rep_min; rep_min = rep_max = 0 means no range.
  */
 export function repTarget(reps: number, max: number): { reps: number; rep_min: number; rep_max: number } {
-	if (reps > 0 && max > reps) return { reps, rep_min: reps, rep_max: max };
+	if (reps > 0 && max > 0) return { reps, rep_min: reps, rep_max: max };
 	return { reps: reps || max, rep_min: 0, rep_max: 0 };
 }
 

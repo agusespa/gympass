@@ -8,6 +8,8 @@
 	--accent-text: #ffffff;
 	--danger: #d93636;
 	--superset: #8a4fff;
+	--superset-2: #007aff;
+	--superset-3: #e0457b;
 	--warmup: #f5a300;
 	--radius: 14px;
 	/* See-through glass shared by the tab bar, top bar and toast. */
@@ -31,6 +33,8 @@
 		--accent-text: #1a2e05;
 		--danger: #ff5c5c;
 		--superset: #a77bff;
+		--superset-2: #5ac8fa;
+		--superset-3: #ff6b9a;
 		--warmup: #ffcc00;
 		--bar: rgba(28, 28, 30, 0.58);
 		--bar-edge: inset 0 0.5px 0 rgba(255, 255, 255, 0.16);

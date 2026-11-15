@@ -34,10 +34,9 @@ test('save a workout as a routine and start a workout from it', async ({ page })
 	await page.getByRole('button', { name: `Start Legs ${id}` }).click();
 	await expect(page).toHaveURL(/\/workouts\//);
 	const ex = exercise(page, squat);
+	// The workout starts from what was done last time, not the routine's numbers.
 	await expect(ex.getByLabel('Weight set 1')).toHaveValue('100');
-	await expect(ex.getByLabel('Reps set 1')).toHaveValue('3');
-	// Previous values come from the original workout.
-	await expect(ex.getByTestId('previous')).toHaveText(['100kg × 5']);
+	await expect(ex.getByLabel('Reps set 1')).toHaveValue('5');
 });
 
 test('create a routine from scratch, start it from the list, delete it', async ({ page }) => {

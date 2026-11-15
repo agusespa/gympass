@@ -6,14 +6,16 @@ import {
 	expect,
 	fillSet,
 	finishWorkout,
+	folded,
 	newWorkout,
 	serverData,
 	setText,
 	test,
-	uid
+	uid,
+	unfold
 } from './helpers';
 
-test('log a workout, see previous values, edit and delete', async ({ page, request }) => {
+test("log a workout, start from last time's values, edit and delete", async ({ page, request }) => {
 	const id = uid();
 	const bench = `Bench ${id}`;
 
@@ -26,6 +28,7 @@ test('log a workout, see previous values, edit and delete', async ({ page, reque
 	// A new set copies the previous one.
 	await expect(exercise(page, bench).getByLabel('Weight set 2')).toHaveValue('80');
 	await fillSet(page, bench, 2, '82,5', '6'); // decimal comma from the iPhone keyboard
+	await unfold(page, bench);
 	await expect(exercise(page, bench).getByLabel('Weight set 2')).toHaveValue('82.5');
 
 	// Finish opens a summary of the session; warm-ups aside, every logged set counts.
@@ -51,7 +54,6 @@ test('log a workout, see previous values, edit and delete', async ({ page, reque
 	await page.getByLabel('New exercise name').fill(bench.toLowerCase());
 	await page.getByRole('button', { name: 'Add', exact: true }).click();
 	const again = exercise(page, bench.toLowerCase());
-	await expect(again.getByTestId('previous')).toHaveText(['80kg × 8', '82.5kg × 6']);
 	// The sets start as last time's, still to do.
 	await expect(again.getByLabel('Weight set 1')).toHaveValue('80');
 	await expect(again.getByLabel('Reps set 2')).toHaveValue('6');
@@ -229,9 +231,11 @@ test('only checked-off sets count', async ({ page, request }) => {
 	// Did two sets of rows, the second heavier; skipped the third and the dips.
 	await exercise(page, row).getByRole('button', { name: 'Complete set 1', exact: true }).click();
 	await fillSet(page, row, 2, '65', '8');
-	// A check can be undone.
+	// A check can be undone: the last one folds the exercise, so open it again first.
 	const third = exercise(page, row).getByRole('button', { name: 'Complete set 3', exact: true });
 	await third.click();
+	await expect(folded(page, row)).toBeVisible();
+	await unfold(page, row);
 	await expect(third).toHaveAttribute('aria-pressed', 'true');
 	await third.click();
 	await expect(third).toHaveAttribute('aria-pressed', 'false');
@@ -244,13 +248,13 @@ test('only checked-off sets count', async ({ page, request }) => {
 	await page.getByRole('button', { name: 'Save', exact: true }).click();
 	await expect(page).toHaveURL('/profile');
 
-	// Next time, "Previous" shows what was done, not the skipped plan.
+	// Next time starts from what was done, not the skipped plan.
 	await newWorkout(page, `Pull again ${id}`);
 	await addExercise(page, row);
 	// Only the two done sets are copied in, not the skipped third.
 	await expect(exercise(page, row).getByLabel('Weight set 2')).toHaveValue('65');
-	await addSet(page, row);
-	await expect(exercise(page, row).getByTestId('previous')).toHaveText(['60kg × 10', '65kg × 8', '–']);
+	await expect(exercise(page, row).getByLabel('Weight set 1')).toHaveValue('60');
+	await expect(exercise(page, row).getByLabel('Weight set 3')).toHaveCount(0);
 
 	// The server has the checkmarks too.
 	await expect
@@ -305,4 +309,28 @@ test('an exercise menu near the bottom of the screen opens upward', async ({ pag
 	expect(Math.abs(box.y + box.height - (anchor.y + anchor.height))).toBeLessThan(1);
 	expect(box.y).toBeGreaterThanOrEqual(0);
 	expect(box.y + box.height).toBeLessThanOrEqual(page.viewportSize()!.height);
+});
+
+test('a finished exercise folds away in a running workout', async ({ page }) => {
+	const id = uid();
+	const curl = `Curl ${id}`;
+	await newWorkout(page, `Arms ${id}`);
+	await addExercise(page, curl);
+	// In a workout, extra sets come from the exercise menu.
+	await expect(exercise(page, curl).getByRole('button', { name: 'Add set', exact: true })).toHaveCount(0);
+	await addSet(page, curl);
+	await fillSet(page, curl, 1, '12', '10');
+	await expect(exercise(page, curl).getByLabel('Weight set 2')).toBeVisible();
+
+	// Checking off the last set folds the exercise down to its name.
+	await fillSet(page, curl, 2, '12', '9');
+	const fold = exercise(page, curl).getByRole('button', { name: new RegExp(curl) });
+	await expect(fold).toHaveAttribute('aria-expanded', 'false');
+	await expect(fold).toContainText('2 sets');
+	await expect(exercise(page, curl).getByLabel('Weight set 1')).toHaveCount(0);
+
+	// Tapping the name opens it again.
+	await fold.click();
+	await expect(fold).toHaveAttribute('aria-expanded', 'true');
+	await expect(exercise(page, curl).getByLabel('Weight set 2')).toHaveValue('12');
 });

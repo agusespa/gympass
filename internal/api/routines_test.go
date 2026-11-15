@@ -179,10 +179,14 @@ func TestRoutineRepRange(t *testing.T) {
 		t.Fatalf("fixed set = %+v", st)
 	}
 
-	var e map[string]string
+	// The range is a guide: reps above the max keep both as given.
+	var passed store.Routine
 	res = send(t, "POST", srv.URL+"/api/routines",
-		`{"name":"Push","exercises":[{"name":"Bench press","sets":[{"reps":12,"rep_max":8,"weight_kg":60}]}]}`, &e)
-	if res.StatusCode != http.StatusBadRequest || !strings.Contains(e["error"], "rep_max") {
-		t.Fatalf("status %d, %v", res.StatusCode, e)
+		`{"name":"Push","exercises":[{"name":"Bench press","sets":[{"reps":12,"rep_max":8,"weight_kg":60}]}]}`, &passed)
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("status %d", res.StatusCode)
+	}
+	if st := passed.Exercises[0].Sets[0]; st.Reps != 12 || st.RepMin != 12 || st.RepMax != 8 {
+		t.Fatalf("set past its max = %+v", st)
 	}
 }

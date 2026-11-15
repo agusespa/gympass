@@ -78,7 +78,7 @@
 	</div>
 
 	{#key id}
-		<ExerciseEditor kind="workout" parentId={id} />
+		<ExerciseEditor kind="workout" parentId={id} collapseDone={running} />
 	{/key}
 
 	<!-- A running workout is saved or discarded from the Finish screen. -->
