@@ -24,7 +24,6 @@
 		moveBlock,
 		moveWithinSuperset,
 		previousSets,
-		reachedTopOfRange,
 		renameExercise,
 		setTimed,
 		toBlocks,
@@ -82,12 +81,6 @@
 		if (!s) return '–';
 		const effort = ex.timed ? durationLabel(s.duration_seconds) : String(s.reps);
 		return ex.timed && !s.weight_kg ? effort : `${kg(s.weight_kg)}kg × ${effort}`;
-	}
-
-	/** Workouts only: the last session reached the top of the rep range on every working set. */
-	function addWeightDue(ex: ExerciseView): boolean {
-		if (ex.timed || !ex.sets.some((s) => !s.warmup && s.rep_max > 0)) return false;
-		return reachedTopOfRange(previous.current.get(exerciseKey(ex.name)) ?? []);
 	}
 
 	/** Save a routine set's reps and max reps, and show what was kept (a max at or below the reps is dropped). */
@@ -213,13 +206,6 @@
 					</div>
 				{/if}
 
-				{#if checkable && addWeightDue(ex)}
-					<p class="progress" data-testid="add-weight">
-						<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6" /></svg>
-						Top of the range last time. Add weight.
-					</p>
-				{/if}
-
 				<div class="sets" class:with-prev={kind === 'workout'}>
 					<span class="th">Set</span>
 					{#if kind === 'workout'}<span class="th">Previous</span>{/if}
@@ -305,9 +291,7 @@
 									onchange={(e) => updateSet(kind, set.id, { reps: parseReps(e.currentTarget.value) })}
 								/>
 								{#if set.rep_max > 0 && set.reps}
-									<span class="target" class:top={set.reps >= set.rep_max} data-testid="rep-range"
-										>{repRange(set)}</span
-									>
+									<span class="target" data-testid="rep-range">{repRange(set)}</span>
 								{/if}
 							</span>
 						{:else}
@@ -638,22 +622,6 @@
 		color: var(--text);
 	}
 
-	.progress {
-		display: flex;
-		align-items: center;
-		gap: 0.35rem;
-		margin: -0.25rem 0 0.75rem;
-		color: var(--accent);
-		font-size: 0.9rem;
-		font-weight: 600;
-	}
-
-	.progress svg {
-		width: 16px;
-		height: 16px;
-		stroke-width: 2.5;
-	}
-
 	.reps-cell {
 		position: relative;
 		display: block;
@@ -696,10 +664,6 @@
 		color: var(--muted);
 		pointer-events: none;
 		font-variant-numeric: tabular-nums;
-	}
-
-	.target.top {
-		color: var(--accent);
 	}
 
 	.danger-item {

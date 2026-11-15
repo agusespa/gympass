@@ -42,7 +42,7 @@ type setInput struct {
 	// RepMin is returned when reading a routine, so it is accepted back but
 	// ignored: a range starts at reps.
 	RepMin *int64 `json:"rep_min,omitempty" jsonschema:"ignored; returned when reading a routine, the range starts at reps"`
-	RepMax *int64 `json:"rep_max,omitempty" jsonschema:"top of a target rep range, with reps as the bottom (reps 8 and rep_max 12 plan 8 to 12 reps); leave out for a fixed rep count. For double progression: add weight once every working set reaches rep_max"`
+	RepMax *int64 `json:"rep_max,omitempty" jsonschema:"top of a target rep range, with reps as the bottom (reps 8 and rep_max 12 plan 8 to 12 reps); leave out for a fixed rep count"`
 }
 
 func (in routineInput) routine() (store.Routine, error) {

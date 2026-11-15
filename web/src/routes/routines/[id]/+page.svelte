@@ -35,10 +35,7 @@
 		/>
 	</div>
 
-	<p class="hint muted">
-		Fill in a max next to the reps to aim for a range, like 8 to 12. Workouts tell you when every set reached
-		the top, so you know to add weight.
-	</p>
+	<p class="hint muted">Fill in a max next to the reps to aim for a range, like 8 to 12.</p>
 
 	{#key id}
 		<ExerciseEditor kind="routine" parentId={id} />

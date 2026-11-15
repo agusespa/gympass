@@ -11,7 +11,7 @@ import {
 	uid
 } from './helpers';
 
-test('a rep range in a routine says when to add weight', async ({ page, request }) => {
+test('a rep range in a routine carries into its workouts', async ({ page, request }) => {
 	const id = uid();
 	const bench = `Bench ${id}`;
 	const name = `Push ${id}`;
@@ -42,35 +42,22 @@ test('a rep range in a routine says when to add weight', async ({ page, request 
 			[8, 8, 12]
 		]);
 
-	// First session: start at the bottom of the range, then reach the top on every set.
+	// First session starts at the bottom of the range, with the range under the reps.
 	await page.goto('/');
 	await page.getByRole('button', { name: `Start ${name}` }).click();
 	let ex = exercise(page, bench);
 	await expect(ex.getByLabel('Reps set 1')).toHaveValue('8');
 	await expect(ex.getByTestId('rep-range')).toHaveText(['8–12', '8–12']);
-	await expect(ex.getByTestId('add-weight')).toHaveCount(0);
-	await fillSet(page, bench, 1, '60', '12');
-	await fillSet(page, bench, 2, '60', '12');
-	await finishWorkout(page);
-
-	// Next session keeps the weight, restarts reps at the bottom and says to add weight.
-	await page.goto('/');
-	await page.getByRole('button', { name: `Start ${name}` }).click();
-	ex = exercise(page, bench);
-	await expect(ex.getByTestId('add-weight')).toBeVisible();
-	await expect(ex.getByLabel('Weight set 1')).toHaveValue('60');
-	await expect(ex.getByLabel('Reps set 1')).toHaveValue('8');
-
-	// Missing the top on one set means staying at this weight, starting from the reps done.
-	await fillSet(page, bench, 1, '62.5', '10');
+	await fillSet(page, bench, 1, '62.5', '12');
 	await fillSet(page, bench, 2, '62.5', '9');
 	await finishWorkout(page);
+
+	// The next session continues from the weight and reps done; changing the weight is up to you.
 	await page.goto('/');
 	await page.getByRole('button', { name: `Start ${name}` }).click();
 	ex = exercise(page, bench);
-	await expect(ex.getByTestId('add-weight')).toHaveCount(0);
 	await expect(ex.getByLabel('Weight set 1')).toHaveValue('62.5');
-	await expect(ex.getByLabel('Reps set 1')).toHaveValue('10');
+	await expect(ex.getByLabel('Reps set 1')).toHaveValue('12');
 	await expect(ex.getByLabel('Reps set 2')).toHaveValue('9');
 });
 

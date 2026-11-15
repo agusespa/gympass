@@ -314,27 +314,15 @@ export async function deleteRoutine(id: string) {
 }
 
 /**
- * Whether these sets (the last session of an exercise) earned more weight:
- * every working set had a rep range and reached its top. Double progression:
- * stay at a weight until then, add weight, and start again at the bottom.
- */
-export function reachedTopOfRange(sets: SetView[]): boolean {
-	const working = sets.filter((s) => !s.warmup);
-	return working.length > 0 && working.every((s) => s.rep_max > 0 && s.reps >= s.rep_max);
-}
-
-/**
  * A routine set as a workout target. A set with a rep range continues from
  * the last session's matching set (same type and order): its weight, and its
- * reps unless that session reached the top of the range, when reps start
- * again at the bottom so a heavier weight can be worked up. Fixed sets are the
- * routine's numbers as they are.
+ * reps kept within the range. Fixed sets are the routine's numbers as they are.
  */
-function targetFrom(set: SetView, nth: number, last: SetView[], due: boolean): SetView {
+function targetFrom(set: SetView, nth: number, last: SetView[]): SetView {
 	if (set.rep_max <= 0) return set;
 	const prev = last.filter((s) => s.warmup === set.warmup)[nth];
 	if (!prev) return set;
-	const reps = due ? set.rep_min : Math.min(set.rep_max, Math.max(set.rep_min, prev.reps));
+	const reps = Math.min(set.rep_max, Math.max(set.rep_min, prev.reps));
 	return { ...set, weight_kg: prev.weight_kg, reps };
 }
 
@@ -356,9 +344,8 @@ async function copyExercises(from: Kind, fromId: string, to: Kind, toId: string)
 		let sets = e.sets;
 		if (from === 'routine' && to === 'workout' && sets.some((s) => s.rep_max > 0)) {
 			const last = await lastSetsFor(e.name, { exclude: toId, before: startDate, workoutsOnly: true });
-			const due = reachedTopOfRange(last);
 			const seen = { warm: 0, work: 0 };
-			sets = sets.map((s) => targetFrom(s, s.warmup ? seen.warm++ : seen.work++, last, due));
+			sets = sets.map((s) => targetFrom(s, s.warmup ? seen.warm++ : seen.work++, last));
 		}
 		// Copied sets are targets to work through, so a new workout starts with none checked off.
 		for (const { id: _id, done: _done, ...set } of sets) {
