@@ -22,16 +22,19 @@ export interface SetView {
 	weight_kg: number;
 	warmup: boolean;
 	rest_seconds: number;
+	/** Checked off as performed. Workout sets only; routine sets are always true. */
+	done: boolean;
 }
 
-function toSetView(s: SetRow & { id: string }): SetView {
+function toSetView(s: SetRow & { id: string; done?: boolean }): SetView {
 	return {
 		id: s.id,
 		position: s.position,
 		reps: s.reps,
 		weight_kg: s.weight_kg,
 		warmup: !!s.warmup,
-		rest_seconds: s.rest_seconds ?? DEFAULT_REST_SECONDS
+		rest_seconds: s.rest_seconds ?? DEFAULT_REST_SECONDS,
+		done: s.done ?? true
 	};
 }
 
@@ -141,13 +144,16 @@ function newSet(
 	parentId: string,
 	like?: Partial<Omit<SetView, 'id'>>
 ): SetRow & Synced & Record<string, unknown> {
+	const { done = false, ...rest } = like ?? {};
 	return fresh({
 		position: 1,
 		reps: 0,
 		weight_kg: 0,
 		warmup: false,
 		rest_seconds: DEFAULT_REST_SECONDS,
-		...like,
+		...rest,
+		// Only workout sets get checked off; routine sets are plans.
+		...(parentKey === 'workout_exercise_id' ? { done } : {}),
 		[parentKey]: parentId
 	}) as SetRow & Synced & Record<string, unknown>;
 }
@@ -195,6 +201,10 @@ export async function listRunningWorkouts(): Promise<WorkoutSummary[]> {
 
 export function getWorkout(id: string): Promise<Workout | undefined> {
 	return getLive<Workout>(db.workouts, id);
+}
+
+async function isFinished(workoutId: string): Promise<boolean> {
+	return (await db.workouts.get(workoutId))?.finished_at != null;
 }
 
 export async function createWorkout(name = 'Workout'): Promise<string> {
@@ -273,7 +283,8 @@ async function copyExercises(from: Kind, fromId: string, to: Kind, toId: string)
 		}
 		const ex = fresh({ name: e.name, position: e.position, superset_id: superset, [dst.exParent]: toId });
 		await dst.ex.add(ex);
-		for (const { id: _id, ...set } of e.sets) {
+		// Copied sets are targets to work through, so a new workout starts with none checked off.
+		for (const { id: _id, done: _done, ...set } of e.sets) {
 			await dst.sets.add(newSet(dst.setParent, ex.id, set));
 		}
 	}
@@ -349,7 +360,8 @@ export async function addExercise(kind: Kind, parentId: string, name: string): P
 		const ex = fresh({ name: name.trim(), position, superset_id: null, [t.exParent]: parentId });
 		await t.ex.add(ex);
 		// The only set is the last one, so no rest after it.
-		await t.sets.add(newSet(t.setParent, ex.id, { rest_seconds: 0 }));
+		const done = kind === 'workout' && (await isFinished(parentId));
+		await t.sets.add(newSet(t.setParent, ex.id, { rest_seconds: 0, done }));
 		return ex.id;
 	});
 }
@@ -393,14 +405,20 @@ export async function addSet(kind: Kind, exerciseId: string) {
 			const prev = sets.at(-2)?.rest_seconds ?? DEFAULT_REST_SECONDS;
 			await patch(t.sets, last.id, { rest_seconds: prev || DEFAULT_REST_SECONDS });
 		}
+		// A set added to a running workout is still to do; one added to history already happened.
+		let done = false;
+		if (kind === 'workout') {
+			const ex = await db.workout_exercises.get(exerciseId);
+			done = !!ex && (await isFinished(ex.workout_id));
+		}
 		// Copy the last set's numbers; new sets are working sets (warm-ups are marked from the set menu).
 		await t.sets.add(
 			newSet(
 				t.setParent,
 				exerciseId,
 				last
-					? { position: last.position + 1, reps: last.reps, weight_kg: last.weight_kg, rest_seconds: 0 }
-					: { rest_seconds: 0 }
+					? { position: last.position + 1, reps: last.reps, weight_kg: last.weight_kg, rest_seconds: 0, done }
+					: { rest_seconds: 0, done }
 			)
 		);
 	});
@@ -409,7 +427,7 @@ export async function addSet(kind: Kind, exerciseId: string) {
 export async function updateSet(
 	kind: Kind,
 	id: string,
-	changes: Partial<Pick<SetRow, 'reps' | 'weight_kg' | 'warmup' | 'rest_seconds'>>
+	changes: Partial<Pick<SetRow, 'reps' | 'weight_kg' | 'warmup' | 'rest_seconds'> & { done: boolean }>
 ) {
 	await write(() => patch(tables(kind).sets, id, changes));
 }
@@ -558,7 +576,10 @@ export async function previousSets(workoutId: string): Promise<Map<string, SetVi
 			return wb.date.localeCompare(wa.date) || wb.updated_at - wa.updated_at || b.position - a.position;
 		});
 		for (const c of candidates) {
-			const sets = live(await db.sets.where('workout_exercise_id').equals(c.id).toArray()).sort(byPosition);
+			// Only what was actually performed; unchecked sets were plans that didn't happen.
+			const sets = live(await db.sets.where('workout_exercise_id').equals(c.id).toArray())
+				.filter((s) => s.done ?? true)
+				.sort(byPosition);
 			if (sets.length > 0) {
 				result.set(name, sets.map(toSetView));
 				break;

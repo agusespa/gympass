@@ -74,11 +74,16 @@ export function exercise(page: Page, name: string) {
 	return page.getByRole('region', { name, exact: true });
 }
 
-/** Fill set number n (1-based) of an exercise. */
+/** Fill set number n (1-based) of an exercise and, in a workout, check it off. */
 export async function fillSet(page: Page, ex: string, n: number, kg: string, reps: string) {
 	const section = exercise(page, ex);
 	await setText(section.getByLabel(`Weight set ${n}`), kg);
 	await setText(section.getByLabel(`Reps set ${n}`), reps);
+	const check = section.getByRole('button', { name: `Complete set ${n}`, exact: true });
+	if ((await check.count()) > 0 && (await check.getAttribute('aria-pressed')) !== 'true') {
+		await check.click();
+		await expect(check).toHaveAttribute('aria-pressed', 'true');
+	}
 }
 
 /** Exercise names on the page, in display order. */

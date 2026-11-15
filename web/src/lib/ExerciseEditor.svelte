@@ -78,6 +78,9 @@
 		typeFor = null;
 		if (set.warmup !== warmup) updateSet(kind, set.id, { warmup });
 	}
+
+	/** Workout sets are checked off as they are performed; only checked sets count. */
+	const checkable = $derived(kind === 'workout');
 </script>
 
 <svelte:window
@@ -186,6 +189,7 @@
 					<span class="th"></span>
 
 					{#each ex.sets as set, si (set.id)}
+						{@const done = checkable && set.done}
 						<span class="set-cell">
 							<button
 								class="set-num"
@@ -203,13 +207,27 @@
 									<button role="menuitem" onclick={() => setType(set, true)}>
 										<span class="tag warmup">W</span> Warm-up set
 									</button>
+									{#if checkable}
+										<button
+											role="menuitem"
+											class="danger-item"
+											aria-label="Delete set {si + 1}"
+											onclick={() => {
+												typeFor = null;
+												deleteSet(kind, set.id);
+											}}
+										>
+											<span class="tag">×</span> Delete set
+										</button>
+									{/if}
 								</span>
 							{/if}
 						</span>
 						{#if kind === 'workout'}
-							<span class="prev" data-testid="previous">{prevFor(ex, si)}</span>
+							<span class="prev" class:done data-testid="previous">{prevFor(ex, si)}</span>
 						{/if}
 						<input
+							class:done
 							inputmode="decimal"
 							aria-label="Weight set {si + 1}"
 							placeholder="0"
@@ -217,6 +235,7 @@
 							onchange={(e) => updateSet(kind, set.id, { weight_kg: parseWeight(e.currentTarget.value) })}
 						/>
 						<input
+							class:done
 							inputmode="numeric"
 							pattern="[0-9]*"
 							aria-label="Reps set {si + 1}"
@@ -224,13 +243,25 @@
 							value={set.reps ? String(set.reps) : ''}
 							onchange={(e) => updateSet(kind, set.id, { reps: parseReps(e.currentTarget.value) })}
 						/>
-						<button
-							class="delete-set"
-							aria-label="Delete set {si + 1}"
-							onclick={() => deleteSet(kind, set.id)}
-						>
-							<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17" /></svg>
-						</button>
+						{#if checkable}
+							<button
+								class="check-set"
+								class:done
+								aria-label="Complete set {si + 1}"
+								aria-pressed={set.done}
+								onclick={() => updateSet(kind, set.id, { done: !set.done })}
+							>
+								<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+							</button>
+						{:else}
+							<button
+								class="delete-set"
+								aria-label="Delete set {si + 1}"
+								onclick={() => deleteSet(kind, set.id)}
+							>
+								<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17" /></svg>
+							</button>
+						{/if}
 						<!-- In a superset you only rest after the last exercise of the round. -->
 						{#if !block.superset || ei === block.items.length - 1}
 							<label class="rest" class:warmup={set.warmup} class:none={set.rest_seconds === 0}>
@@ -478,6 +509,41 @@
 		border-radius: 10px;
 		background: var(--surface);
 		color: var(--muted);
+	}
+
+	.check-set {
+		display: grid;
+		place-items: center;
+		height: 44px;
+		padding: 0;
+		border-radius: 10px;
+		background: var(--surface);
+		color: var(--muted);
+	}
+
+	.check-set.done {
+		background: var(--accent);
+		color: var(--accent-text);
+	}
+
+	.check-set svg {
+		width: 22px;
+		height: 22px;
+		stroke-width: 3;
+	}
+
+	/* A checked-off row is tinted so what's left to do stands out. */
+	.sets input.done {
+		background: color-mix(in srgb, var(--accent) 16%, transparent);
+		border-color: transparent;
+	}
+
+	.prev.done {
+		color: var(--text);
+	}
+
+	.danger-item {
+		color: var(--danger);
 	}
 
 	.delete-set svg,

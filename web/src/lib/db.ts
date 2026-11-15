@@ -51,6 +51,8 @@ export const DEFAULT_REST_SECONDS = 120;
 
 export interface WorkoutSet extends SetRow {
 	workout_exercise_id: string;
+	/** Checked off as performed; only done sets count. Missing on rows from before checkmarks, meaning true. */
+	done?: boolean;
 }
 
 export interface RoutineSet extends SetRow {
@@ -104,6 +106,16 @@ export class GymDB extends Dexie {
 				.toCollection()
 				.modify((w: Partial<Workout>) => {
 					if (w.finished_at === undefined) w.finished_at = w.updated_at;
+				})
+		);
+		// Sets logged before checkmarks existed were performed. The server backfills
+		// the same way, so these rows are not marked dirty.
+		this.version(3).upgrade((tx) =>
+			tx
+				.table('sets')
+				.toCollection()
+				.modify((s: Partial<WorkoutSet>) => {
+					if (s.done === undefined) s.done = true;
 				})
 		);
 	}

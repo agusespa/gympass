@@ -38,7 +38,7 @@ type table struct {
 var tables = []table{
 	{"workouts", []column{{"name", colText}, {"date", colDate}, {"started_at", colIntNull}, {"finished_at", colIntNull}}},
 	{"workout_exercises", []column{{"workout_id", colText}, {"name", colText}, {"position", colReal}, {"superset_id", colTextNull}}},
-	{"sets", []column{{"workout_exercise_id", colText}, {"position", colReal}, {"reps", colInt}, {"weight_kg", colReal}, {"warmup", colBool}, {"rest_seconds", colSeconds}}},
+	{"sets", []column{{"workout_exercise_id", colText}, {"position", colReal}, {"reps", colInt}, {"weight_kg", colReal}, {"warmup", colBool}, {"rest_seconds", colSeconds}, {"done", colBool}}},
 	{"routines", []column{{"name", colText}}},
 	{"routine_exercises", []column{{"routine_id", colText}, {"name", colText}, {"position", colReal}, {"superset_id", colTextNull}}},
 	{"routine_sets", []column{{"routine_exercise_id", colText}, {"position", colReal}, {"reps", colInt}, {"weight_kg", colReal}, {"warmup", colBool}, {"rest_seconds", colSeconds}}},

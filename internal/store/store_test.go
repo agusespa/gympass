@@ -244,7 +244,7 @@ func TestMigrateFromV1(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(out["sets"]) != 1 || out["sets"][0]["warmup"] != false || out["sets"][0]["reps"] != int64(8) ||
-		out["sets"][0]["rest_seconds"] != int64(defaultRestSeconds) {
+		out["sets"][0]["rest_seconds"] != int64(defaultRestSeconds) || out["sets"][0]["done"] != true {
 		t.Fatalf("sets = %v", out["sets"])
 	}
 	// Existing workouts are history: finished at their last edit.
@@ -260,7 +260,7 @@ func TestOmittedColumnsKeepStoredValue(t *testing.T) {
 
 	full := Row{
 		"id": "s1", "updated_at": int64(100), "deleted": false,
-		"workout_exercise_id": "e1", "position": 1.0, "reps": int64(8), "weight_kg": 80.0, "warmup": true, "rest_seconds": int64(90),
+		"workout_exercise_id": "e1", "position": 1.0, "reps": int64(8), "weight_kg": 80.0, "warmup": true, "rest_seconds": int64(90), "done": true,
 	}
 	w := workout("w1", 100, "Push")
 	w["started_at"] = int64(1000)
@@ -278,7 +278,7 @@ func TestOmittedColumnsKeepStoredValue(t *testing.T) {
 		t.Fatal(err)
 	}
 	set := out["sets"][0]
-	if set["reps"] != int64(10) || set["warmup"] != true || set["rest_seconds"] != int64(90) {
+	if set["reps"] != int64(10) || set["warmup"] != true || set["rest_seconds"] != int64(90) || set["done"] != true {
 		t.Fatalf("set = %v", set)
 	}
 	wo := out["workouts"][0]

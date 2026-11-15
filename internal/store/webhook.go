@@ -188,7 +188,7 @@ func (s *Store) Workout(ctx context.Context, id string) (w WorkoutSnapshot, ok b
 
 	rs, err := s.db.QueryContext(ctx, `SELECT e.id, e.name, e.superset_id, s.reps, s.weight_kg, s.warmup, s.rest_seconds
 FROM workout_exercises e
-LEFT JOIN sets s ON s.workout_exercise_id = e.id AND s.deleted = 0
+LEFT JOIN sets s ON s.workout_exercise_id = e.id AND s.deleted = 0 AND s.done = 1
 WHERE e.workout_id = ? AND e.deleted = 0
 ORDER BY e.position, e.id, s.position, s.id`, id)
 	if err != nil {

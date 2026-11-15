@@ -90,6 +90,7 @@ func (s *Store) migrate() error {
 		addFinishedAt,                            // 4
 		createWebhookOutbox,                      // 5
 		addStartedAt,                             // 6
+		addSetDone,                               // 7
 	}
 	for i := version; i < len(migrations); i++ {
 		tx, err := s.db.Begin()
@@ -392,6 +393,17 @@ func addFinishedAt(tx *sql.Tx) error {
 // start, so theirs stays NULL (unknown).
 func addStartedAt(tx *sql.Tx) error {
 	return addColumnIfMissing(tx, "workouts", "started_at", sqlType(colIntNull))
+}
+
+// addSetDone adds sets.done, the checkmark on a performed set. Sets that already
+// exist were logged before checkmarks, so they count as done. Clients backfill
+// their local copies the same way, so no seq bump is needed.
+func addSetDone(tx *sql.Tx) error {
+	if err := addColumnIfMissing(tx, "sets", "done", sqlType(colBool)); err != nil {
+		return err
+	}
+	_, err := tx.Exec("UPDATE sets SET done = 1")
+	return err
 }
 
 func addColumnIfMissing(tx *sql.Tx, table, col, typ string) error {

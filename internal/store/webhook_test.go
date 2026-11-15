@@ -155,8 +155,10 @@ func TestWorkoutSnapshot(t *testing.T) {
 		return Row{"id": id, "updated_at": int64(1), "deleted": deleted, "workout_id": "w1", "name": name, "position": pos, "superset_id": nil}
 	}
 	set := func(id, ex string, pos float64, reps int64, kg float64, warmup, deleted bool) Row {
-		return Row{"id": id, "updated_at": int64(1), "deleted": deleted, "workout_exercise_id": ex, "position": pos, "reps": reps, "weight_kg": kg, "warmup": warmup}
+		return Row{"id": id, "updated_at": int64(1), "deleted": deleted, "workout_exercise_id": ex, "position": pos, "reps": reps, "weight_kg": kg, "warmup": warmup, "done": true}
 	}
+	unchecked := set("a4", "e1", 4, 5, 90, false, false)
+	unchecked["done"] = false
 	mustSync(t, s, map[string][]Row{
 		"workouts":          {finishedWorkout("w1", 5000)},
 		"workout_exercises": {ex("e2", 2, "Row", false), ex("e1", 1, "Bench", false), ex("e3", 3, "Gone", true), ex("e4", 4, "Empty", false)},
@@ -165,6 +167,7 @@ func TestWorkoutSnapshot(t *testing.T) {
 			set("a1", "e1", 1, 10, 40, true, false),
 			set("a3", "e1", 3, 1, 1, false, true),
 			set("b1", "e2", 1, 12, 50, false, false),
+			unchecked,
 		},
 	})
 

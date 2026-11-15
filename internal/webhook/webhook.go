@@ -148,7 +148,8 @@ func buildPayload(w store.WorkoutSnapshot, found, sentBefore bool) (Payload, boo
 }
 
 // FromSnapshot converts a finished workout to its JSON form, shared by the
-// webhook and the read API. w.FinishedAt must be set.
+// webhook and the read API. Exercises with no performed sets are left out.
+// w.FinishedAt must be set.
 func FromSnapshot(w store.WorkoutSnapshot) *Workout {
 	out := &Workout{
 		ID:         w.ID,
@@ -156,7 +157,7 @@ func FromSnapshot(w store.WorkoutSnapshot) *Workout {
 		Date:       w.Date,
 		FinishedAt: time.UnixMilli(*w.FinishedAt).UTC().Format(time.RFC3339),
 		Exercises:  make([]Exercise, 0, len(w.Exercises)),
-		Totals:     &Totals{Exercises: len(w.Exercises)},
+		Totals:     &Totals{},
 	}
 	if w.StartedAt != nil {
 		out.StartedAt = time.UnixMilli(*w.StartedAt).UTC().Format(time.RFC3339)
@@ -165,6 +166,10 @@ func FromSnapshot(w store.WorkoutSnapshot) *Workout {
 		}
 	}
 	for _, e := range w.Exercises {
+		// Only performed (checked) sets are in the snapshot; an exercise with none wasn't done.
+		if len(e.Sets) == 0 {
+			continue
+		}
 		ex := Exercise{Name: e.Name, SupersetID: e.SupersetID, Sets: make([]Set, 0, len(e.Sets))}
 		for _, st := range e.Sets {
 			ex.Sets = append(ex.Sets, Set(st))
@@ -176,6 +181,7 @@ func FromSnapshot(w store.WorkoutSnapshot) *Workout {
 		}
 		out.Exercises = append(out.Exercises, ex)
 	}
+	out.Totals.Exercises = len(out.Exercises)
 	out.Totals.VolumeKg = math.Round(out.Totals.VolumeKg*100) / 100
 	return out
 }

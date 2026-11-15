@@ -31,12 +31,13 @@
 		[] as ExerciseView[]
 	);
 
-	/** A set counts once it has reps or weight; warm-ups don't count toward the totals. */
-	const logged = (s: SetView) => s.reps > 0 || s.weight_kg > 0;
+	/** A set counts once it is checked off; warm-ups don't count toward the totals. */
+	const logged = (s: SetView) => s.done;
 	const working = (e: ExerciseView) => e.sets.filter((s) => logged(s) && !s.warmup);
 
 	const done = $derived(exercises.current.filter((e) => e.sets.some(logged)));
 	const sets = $derived(done.flatMap(working));
+	const unchecked = $derived(exercises.current.reduce((n, e) => n + e.sets.filter((s) => !s.done).length, 0));
 	const totals = $derived({
 		exercises: done.length,
 		sets: sets.length,
@@ -153,7 +154,12 @@
 			{/each}
 		</ul>
 	{:else if exercises.loaded}
-		<p class="muted empty">No sets logged yet.</p>
+		<p class="muted empty">No sets checked off yet.</p>
+	{/if}
+	{#if done.length > 0 && unchecked > 0}
+		<p class="muted unchecked" data-testid="unchecked">
+			{unchecked} unchecked {unchecked === 1 ? 'set' : 'sets'} won't count.
+		</p>
 	{/if}
 
 	<div class="end-actions">
@@ -169,7 +175,7 @@
 	<Modal
 		bind:this={nothingLogged}
 		title="Nothing logged yet"
-		message="Discard this workout, or keep logging?"
+		message="No sets are checked off. Discard this workout, or keep logging?"
 	>
 		{#snippet buttons(close)}
 			<button
@@ -256,5 +262,11 @@
 	.empty {
 		text-align: center;
 		margin: 1.5rem 0;
+	}
+
+	.unchecked {
+		text-align: center;
+		font-size: 0.9rem;
+		margin: 0.75rem 0 0;
 	}
 </style>

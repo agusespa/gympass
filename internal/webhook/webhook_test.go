@@ -76,11 +76,15 @@ func TestSendsFinishedWorkout(t *testing.T) {
 			r["started_at"] = finishedAt - (72*time.Minute + 30*time.Second).Milliseconds()
 			return r
 		}()},
-		"workout_exercises": {{"id": "e1", "updated_at": int64(1), "deleted": false, "workout_id": "w1", "name": "Bench", "position": 1.0, "superset_id": nil}},
+		"workout_exercises": {{"id": "e1", "updated_at": int64(1), "deleted": false, "workout_id": "w1", "name": "Bench", "position": 1.0, "superset_id": nil},
+			// Planned but never checked off: left out of the payload and the totals.
+			{"id": "e2", "updated_at": int64(1), "deleted": false, "workout_id": "w1", "name": "Dips", "position": 2.0, "superset_id": nil}},
 		"sets": {
-			{"id": "s1", "updated_at": int64(1), "deleted": false, "workout_exercise_id": "e1", "position": 1.0, "reps": int64(10), "weight_kg": 40.0, "warmup": true},
-			{"id": "s2", "updated_at": int64(1), "deleted": false, "workout_exercise_id": "e1", "position": 2.0, "reps": int64(8), "weight_kg": 82.5},
-			{"id": "s3", "updated_at": int64(1), "deleted": false, "workout_exercise_id": "e1", "position": 3.0, "reps": int64(6), "weight_kg": 85.0},
+			{"id": "s4", "updated_at": int64(1), "deleted": false, "workout_exercise_id": "e1", "position": 4.0, "reps": int64(6), "weight_kg": 85.0},
+			{"id": "s5", "updated_at": int64(1), "deleted": false, "workout_exercise_id": "e2", "position": 1.0, "reps": int64(10), "weight_kg": 0.0, "done": false},
+			{"id": "s1", "updated_at": int64(1), "deleted": false, "workout_exercise_id": "e1", "position": 1.0, "reps": int64(10), "weight_kg": 40.0, "warmup": true, "done": true},
+			{"id": "s2", "updated_at": int64(1), "deleted": false, "workout_exercise_id": "e1", "position": 2.0, "reps": int64(8), "weight_kg": 82.5, "done": true},
+			{"id": "s3", "updated_at": int64(1), "deleted": false, "workout_exercise_id": "e1", "position": 3.0, "reps": int64(6), "weight_kg": 85.0, "done": true},
 		},
 	})
 	flush(t, sender)

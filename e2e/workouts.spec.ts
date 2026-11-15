@@ -6,6 +6,7 @@ import {
 	finishWorkout,
 	newWorkout,
 	serverData,
+	setText,
 	test,
 	uid
 } from './helpers';
@@ -52,8 +53,9 @@ test('log a workout, see previous values, edit and delete', async ({ page, reque
 	await again.getByRole('button', { name: 'Add set' }).click();
 	await expect(again.getByTestId('previous')).toHaveText(['80kg × 8', '82.5kg × 6']);
 
-	// Delete a set and the exercise.
-	await again.getByRole('button', { name: 'Delete set 2' }).click();
+	// Delete a set (from its set menu) and the exercise.
+	await again.getByRole('button', { name: 'Set 2 type: normal' }).click();
+	await again.getByRole('menuitem', { name: 'Delete set 2' }).click();
 	await expect(again.getByLabel('Reps set 2')).toHaveCount(0);
 	await again.getByRole('button', { name: 'Exercise options' }).click();
 	await again.getByRole('button', { name: 'Delete exercise' }).click();
@@ -189,4 +191,69 @@ test('a running workout takes over the app until it is finished', async ({ page,
 	await page.goto(workoutUrl);
 	await expect(page.getByLabel('Workout name')).toHaveValue(`Arms ${id}`);
 	await expect(page.getByRole('timer')).toHaveCount(0);
+});
+
+test('only checked-off sets count', async ({ page, request }) => {
+	const id = uid();
+	const row = `Row ${id}`;
+	const dips = `Dips ${id}`;
+
+	// A routine with three planned sets of rows and some dips.
+	await page.goto('/');
+	await page.getByRole('button', { name: 'New routine' }).click();
+	await setText(page.getByLabel('Routine name'), `Pull ${id}`);
+	await addExercise(page, row);
+	await fillSet(page, row, 1, '60', '10');
+	await exercise(page, row).getByRole('button', { name: 'Add set' }).click();
+	await exercise(page, row).getByRole('button', { name: 'Add set' }).click();
+	await addExercise(page, dips);
+	await fillSet(page, dips, 1, '0', '12');
+	// Routines are plans, so they have no checkmarks.
+	await expect(page.getByRole('button', { name: /^Complete set/ })).toHaveCount(0);
+	await page.goto('/');
+	await page.getByRole('button', { name: `Start Pull ${id}` }).click();
+	await expect(page).toHaveURL(/\/workouts\//);
+
+	// The plan is copied in, but nothing is checked off yet.
+	const checks = exercise(page, row).getByRole('button', { name: /^Complete set/ });
+	await expect(checks).toHaveCount(3);
+	for (const c of await checks.all()) await expect(c).toHaveAttribute('aria-pressed', 'false');
+	// Did two sets of rows, the second heavier; skipped the third and the dips.
+	await exercise(page, row).getByRole('button', { name: 'Complete set 1', exact: true }).click();
+	await fillSet(page, row, 2, '65', '8');
+	// A check can be undone.
+	const third = exercise(page, row).getByRole('button', { name: 'Complete set 3', exact: true });
+	await third.click();
+	await expect(third).toHaveAttribute('aria-pressed', 'true');
+	await third.click();
+	await expect(third).toHaveAttribute('aria-pressed', 'false');
+
+	await page.getByRole('button', { name: 'Finish', exact: true }).click();
+	await expect(page.getByText('Exercises', { exact: true }).locator('..')).toContainText('1');
+	await expect(page.getByText('Sets', { exact: true }).locator('..')).toContainText('2');
+	await expect(page.getByText('Volume', { exact: true }).locator('..')).toContainText('1120 kg');
+	await expect(page.getByRole('list', { name: 'Exercises done' })).not.toContainText(dips);
+	await expect(page.getByTestId('unchecked')).toHaveText('2 unchecked sets won\'t count.');
+	await page.getByRole('button', { name: 'Save', exact: true }).click();
+	await expect(page).toHaveURL('/profile');
+
+	// Next time, "Previous" shows what was done, not the skipped plan.
+	await newWorkout(page, `Pull again ${id}`);
+	await addExercise(page, row);
+	await exercise(page, row).getByRole('button', { name: 'Add set' }).click();
+	await exercise(page, row).getByRole('button', { name: 'Add set' }).click();
+	await expect(exercise(page, row).getByTestId('previous')).toHaveText(['60kg × 10', '65kg × 8', '–']);
+
+	// The server has the checkmarks too.
+	await expect
+		.poll(async () => {
+			const data = await serverData(request);
+			const w = data.workouts?.find((r) => r.name === `Pull ${id}`);
+			const ex = data.workout_exercises?.find((e) => e.workout_id === w?.id && e.name === row);
+			return (data.sets ?? [])
+				.filter((s) => s.workout_exercise_id === ex?.id && !s.deleted)
+				.sort((x, y) => Number(x.position) - Number(y.position))
+				.map((s) => s.done);
+		})
+		.toEqual([true, true, false]);
 });
