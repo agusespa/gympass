@@ -40,8 +40,10 @@
 	{/key}
 
 	<div class="row page-actions">
-		<span class="spacer"></span>
 		<ConfirmButton label="Delete routine" onconfirm={remove} />
+		<span class="spacer"></span>
+		<!-- Edits already autosave; this is just a clear way out. -->
+		<button class="primary" onclick={() => goto('/')}>Done</button>
 	</div>
 {:else if routine.loaded}
 	<p class="muted">Routine not found. <a href="/">Back to routines</a></p>

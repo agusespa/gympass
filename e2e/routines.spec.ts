@@ -48,7 +48,8 @@ test('create a routine from scratch, start it from the list, delete it', async (
 	await addExercise(page, `Curl ${id}`);
 	await fillSet(page, `Curl ${id}`, 1, '15', '12');
 
-	await page.getByRole('button', { name: 'Back' }).click();
+	await page.getByRole('button', { name: 'Done' }).click();
+	await expect(page).toHaveURL(/\/$/);
 	await page.getByRole('button', { name: `Start Arms ${id}` }).click();
 	await expect(page.getByLabel('Workout name')).toHaveValue(`Arms ${id}`);
 	await expect(exercise(page, `Curl ${id}`).getByLabel('Reps set 1')).toHaveValue('12');
