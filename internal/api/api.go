@@ -27,32 +27,22 @@ type syncBody struct {
 	Rejected []store.Rejection      `json:"rejected,omitempty"`
 }
 
-// Tokens are the bearer tokens of the automation API. Read reaches the
-// GET endpoints; Write reaches those and can also create and change
-// routines. An empty token is disabled.
-type Tokens struct {
-	Read, Write string
-}
-
 // New returns the HTTP handler. static is the built frontend (may be empty).
-// The automation API (workouts and routines) is served only for the tokens
-// that are set, and only to requests that carry one as a bearer token.
-func New(s *store.Store, static fs.FS, tokens Tokens) http.Handler {
+// The automation API (workouts, routines and /mcp) is served only when token
+// is set, and only to requests that carry it as a bearer token.
+func New(s *store.Store, static fs.FS, token string) http.Handler {
 	mux := http.NewServeMux()
 	metrics := newSyncMetrics()
 	mux.Handle("POST /api/sync", metrics.instrument(syncHandler(s, metrics)))
-	if tokens.Read != "" || tokens.Write != "" {
-		read := func(h http.Handler) http.Handler { return requireToken(h, tokens.Read, tokens.Write) }
-		mux.Handle("GET /api/workouts", read(listWorkoutsHandler(s)))
-		mux.Handle("GET /api/workouts/{id}", read(getWorkoutHandler(s)))
-		mux.Handle("GET /api/routines", read(listRoutinesHandler(s)))
-		mux.Handle("GET /api/routines/{id}", read(getRoutineHandler(s)))
-		mux.Handle("/mcp", read(newMCPHandler(s, tokens)))
-	}
-	if tokens.Write != "" {
-		write := func(h http.Handler) http.Handler { return requireToken(h, tokens.Write) }
-		mux.Handle("POST /api/routines", write(createRoutineHandler(s)))
-		mux.Handle("PUT /api/routines/{id}", write(replaceRoutineHandler(s)))
+	if token != "" {
+		auth := func(h http.Handler) http.Handler { return requireToken(h, token) }
+		mux.Handle("GET /api/workouts", auth(listWorkoutsHandler(s)))
+		mux.Handle("GET /api/workouts/{id}", auth(getWorkoutHandler(s)))
+		mux.Handle("GET /api/routines", auth(listRoutinesHandler(s)))
+		mux.Handle("GET /api/routines/{id}", auth(getRoutineHandler(s)))
+		mux.Handle("POST /api/routines", auth(createRoutineHandler(s)))
+		mux.Handle("PUT /api/routines/{id}", auth(replaceRoutineHandler(s)))
+		mux.Handle("/mcp", auth(newMCPHandler(s)))
 	}
 	mux.Handle("GET /metrics", metrics.handler())
 	mux.HandleFunc("GET /api/healthz", func(w http.ResponseWriter, _ *http.Request) {

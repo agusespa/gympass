@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -22,18 +21,12 @@ To change a routine, call get_routine, edit the result and pass the whole routin
 
 Changes reach the user's phone on its next sync.`
 
-// newMCPHandler serves the Model Context Protocol at /mcp. Tools that change
-// routines are offered only to requests carrying the write token; the read
-// token sees the read-only tools.
-func newMCPHandler(s *store.Store, tokens Tokens) http.Handler {
-	readOnly := newMCPServer(s, false)
-	readWrite := newMCPServer(s, true)
-	return mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
-		got, _ := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-		if tokens.Write != "" && got == tokens.Write {
-			return readWrite
-		}
-		return readOnly
+// newMCPHandler serves the Model Context Protocol at /mcp. The caller has
+// already checked the bearer token.
+func newMCPHandler(s *store.Store) http.Handler {
+	server := newMCPServer(s)
+	return mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
+		return server
 	}, &mcp.StreamableHTTPOptions{
 		Stateless:    true,
 		JSONResponse: true,
@@ -72,7 +65,7 @@ type updateRoutineArgs struct {
 	Exercises []exerciseInput `json:"exercises,omitempty" jsonschema:"the complete list of exercises in order; exercises left out are deleted"`
 }
 
-func newMCPServer(s *store.Store, write bool) *mcp.Server {
+func newMCPServer(s *store.Store) *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{Name: "gym-tracker", Version: "1"}, &mcp.ServerOptions{
 		Instructions: mcpInstructions,
 	})
@@ -131,10 +124,6 @@ func newMCPServer(s *store.Store, write bool) *mcp.Server {
 		}
 		return nil, r, nil
 	})
-
-	if !write {
-		return server
-	}
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "create_routine",

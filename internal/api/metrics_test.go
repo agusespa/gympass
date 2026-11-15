@@ -17,7 +17,7 @@ func TestSyncMetricsIncludeSuccessValidationAndDatabaseFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = s.Close() })
-	handler := New(s, fstest.MapFS{}, Tokens{})
+	handler := New(s, fstest.MapFS{}, "")
 	request := func(body string, status int) {
 		t.Helper()
 		res := httptest.NewRecorder()

@@ -25,7 +25,7 @@ func newServer(t *testing.T) *httptest.Server {
 		"manifest.webmanifest":  {Data: []byte("{}")},
 		"_app/immutable/app.js": {Data: []byte("js")},
 	}
-	srv := httptest.NewServer(New(s, static, Tokens{}))
+	srv := httptest.NewServer(New(s, static, ""))
 	t.Cleanup(srv.Close)
 	return srv
 }
@@ -158,7 +158,7 @@ func TestStaticNotBuilt(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = s.Close() }()
-	srv := httptest.NewServer(New(s, fstest.MapFS{}, Tokens{}))
+	srv := httptest.NewServer(New(s, fstest.MapFS{}, ""))
 	defer srv.Close()
 	res, err := http.Get(srv.URL + "/")
 	if err != nil {

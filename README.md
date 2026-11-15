@@ -39,8 +39,7 @@ The application is configured using environment variables. All are **optional**:
 - `WEBHOOK_URL`: Endpoint to POST finished workouts to. The webhook is off when unset.
 - `WEBHOOK_SECRET`: Sent as `Authorization: Bearer <secret>`.
 - `WEBHOOK_DELAY`: Wait after the last change before sending, so a burst of edits becomes one send (default: `30s`).
-- `API_TOKEN`: Enables the read endpoints of the [automation API](#automation-api); requests must send `Authorization: Bearer <token>`. Use a long random value, e.g. `openssl rand -hex 32`.
-- `API_WRITE_TOKEN`: Allows creating and changing routines through the automation API, and reading everything `API_TOKEN` can. Must differ from `API_TOKEN`. The API is off while both are unset.
+- `API_TOKEN`: Enables the [automation API](#automation-api) and MCP; requests must send `Authorization: Bearer <token>`. The API is off while it is unset. Use a long random value, e.g. `openssl rand -hex 32`.
 
 Set them in the `environment` section of `docker-compose.yml`, or in a `.env` file next to it.
 
@@ -178,7 +177,7 @@ Set `WEBHOOK_URL` and the server POSTs each **finished** workout there. A runnin
 
 ## Automation API
 
-Lets automations and AI assistants read your workouts (e.g. an n8n schedule building a weekly summary) and manage your routines. Every request needs `Authorization: Bearer <token>`; without a valid one the server answers `401`. `API_TOKEN` reaches the `GET` endpoints, and `API_WRITE_TOKEN` reaches those plus the routine writes. Give an automation the read token unless it needs to change routines.
+Lets automations and AI assistants read your workouts (e.g. an n8n schedule building a weekly summary) and manage your routines. Every request needs `Authorization: Bearer <API_TOKEN>`; without it the server answers `401`.
 
 ### Workouts
 
@@ -204,12 +203,12 @@ Each workout has the same shape as `workout` in the [webhook](#webhook) payload.
 
 ### Routines
 
-| Endpoint | Token | Does |
-|---|---|---|
-| `GET /api/routines` | read | `{"routines": [...], "next_cursor": "…"}`, routines sorted by name. [Paged](#paging). |
-| `GET /api/routines/{id}` | read | One routine, or `404`. |
-| `POST /api/routines` | write | Creates a routine and returns it with `201`. Any ids in the body are ignored. |
-| `PUT /api/routines/{id}` | write | Makes the routine look exactly like the body and returns the result. |
+| Endpoint | Does |
+|---|---|
+| `GET /api/routines` | `{"routines": [...], "next_cursor": "…"}`, routines sorted by name. [Paged](#paging). |
+| `GET /api/routines/{id}` | One routine, or `404`. |
+| `POST /api/routines` | Creates a routine and returns it with `201`. Any ids in the body are ignored. |
+| `PUT /api/routines/{id}` | Makes the routine look exactly like the body and returns the result. |
 
 There is no delete; remove routines in the app.
 
@@ -237,7 +236,7 @@ The list endpoints return at most `limit` items (1–200, default 50). While mor
 
 ### MCP
 
-AI assistants can use the same data through the Model Context Protocol at `/mcp` (Streamable HTTP), with the same bearer tokens. With `API_TOKEN` an assistant gets `list_workouts`, `get_workout`, `list_routines` and `get_routine`. With `API_WRITE_TOKEN` it also gets `create_routine` and `update_routine`, which follow the same rules as `POST` and `PUT` above. `list_workouts` and `list_routines` take the same `limit` and `cursor` arguments as the [paged](#paging) endpoints.
+AI assistants can use the same data through the Model Context Protocol at `/mcp` (Streamable HTTP), with the same bearer token. Its tools are `list_workouts`, `get_workout`, `list_routines`, `get_routine`, `create_routine` and `update_routine`; the last two follow the same rules as `POST` and `PUT` above. `list_workouts` and `list_routines` take the same `limit` and `cursor` arguments as the [paged](#paging) endpoints.
 
 ### Connecting
 

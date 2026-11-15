@@ -81,7 +81,7 @@ func call(t *testing.T, cs *mcp.ClientSession, name string, args any, out any) s
 }
 
 func TestMCPRequiresToken(t *testing.T) {
-	srv := newRoutineServer(t, Tokens{Read: readToken, Write: writeToken})
+	srv := newRoutineServer(t, apiToken)
 	for _, token := range []string{"", "wrong"} {
 		req, _ := http.NewRequest("POST", srv.URL+"/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`))
 		req.Header.Set("Content-Type", "application/json")
@@ -98,33 +98,16 @@ func TestMCPRequiresToken(t *testing.T) {
 			t.Errorf("token %q: status %d, want 401", token, res.StatusCode)
 		}
 	}
-	off := newRoutineServer(t, Tokens{})
+	off := newRoutineServer(t, "")
 	// With the API off, /mcp is just an app path that only serves GET.
 	if res, err := http.Post(off.URL+"/mcp", "application/json", strings.NewReader("{}")); err != nil || res.StatusCode != http.StatusMethodNotAllowed {
 		t.Errorf("API off: %v %v, want 405", res.StatusCode, err)
 	}
 }
 
-func TestMCPReadTokenIsReadOnly(t *testing.T) {
-	srv := newRoutineServer(t, Tokens{Read: readToken, Write: writeToken})
-	cs := mcpSession(t, srv.URL, readToken)
-	want := []string{"get_routine", "get_workout", "list_routines", "list_workouts"}
-	if got := toolNames(t, cs); !slices.Equal(got, want) {
-		t.Fatalf("tools = %v, want %v", got, want)
-	}
-	var list routineList
-	if msg := call(t, cs, "list_routines", map[string]any{}, &list); msg != "" || list.Routines == nil {
-		t.Fatalf("list_routines: %q %+v", msg, list)
-	}
-	_, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "create_routine", Arguments: map[string]any{"name": "x"}})
-	if err == nil || !strings.Contains(err.Error(), "unknown tool") {
-		t.Fatalf("create_routine with the read token: err = %v, want unknown tool", err)
-	}
-}
-
 func TestMCPRoutineFlow(t *testing.T) {
-	srv := newRoutineServer(t, Tokens{Read: readToken, Write: writeToken})
-	cs := mcpSession(t, srv.URL, writeToken)
+	srv := newRoutineServer(t, apiToken)
+	cs := mcpSession(t, srv.URL, apiToken)
 	if got := toolNames(t, cs); len(got) != 6 || !slices.Contains(got, "update_routine") {
 		t.Fatalf("tools = %v", got)
 	}

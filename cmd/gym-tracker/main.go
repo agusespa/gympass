@@ -57,17 +57,14 @@ func main() {
 		log.Printf("webhook enabled (delay %s)", delay)
 	}
 
-	tokens := api.Tokens{Read: os.Getenv("API_TOKEN"), Write: os.Getenv("API_WRITE_TOKEN")}
-	if tokens.Read != "" && tokens.Read == tokens.Write {
-		log.Fatal("API_TOKEN and API_WRITE_TOKEN must differ")
-	}
-	if tokens.Read != "" || tokens.Write != "" {
-		log.Printf("automation API enabled (read token: %t, write token: %t)", tokens.Read != "", tokens.Write != "")
+	token := os.Getenv("API_TOKEN")
+	if token != "" {
+		log.Print("automation API enabled")
 	}
 
 	srv := &http.Server{
 		Addr:              ":" + port,
-		Handler:           api.New(s, ui.FS(), tokens),
+		Handler:           api.New(s, ui.FS(), token),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 

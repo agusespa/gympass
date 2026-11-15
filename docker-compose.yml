@@ -12,7 +12,6 @@ services:
       # Optional: POST finished workouts to n8n (see README, "Webhook").
       # WEBHOOK_URL: https://n8n.example.com/webhook/gym-tracker
       # WEBHOOK_SECRET: change-me
-      # Optional: let automations read workouts and routines, and (write
-      # token) change routines (see README, "Automation API").
+      # Optional: let automations and MCP clients read workouts and manage
+      # routines (see README, "Automation API").
       # API_TOKEN: change-me
-      # API_WRITE_TOKEN: change-me-too

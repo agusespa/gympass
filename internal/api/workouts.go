@@ -38,19 +38,11 @@ type listTotals struct {
 	DurationSeconds int64   `json:"duration_seconds"`
 }
 
-// requireToken accepts only "Authorization: Bearer <t>" for one of tokens.
-// Empty tokens never match.
-func requireToken(next http.Handler, tokens ...string) http.Handler {
+// requireToken accepts only "Authorization: Bearer <token>".
+func requireToken(next http.Handler, token string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		got, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-		match := 0
-		for _, t := range tokens {
-			if t != "" {
-				// Check every token so timing doesn't reveal which one matched.
-				match |= subtle.ConstantTimeCompare([]byte(got), []byte(t))
-			}
-		}
-		if !ok || match != 1 {
+		if !ok || subtle.ConstantTimeCompare([]byte(got), []byte(token)) != 1 {
 			w.Header().Set("WWW-Authenticate", `Bearer realm="gym-tracker"`)
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 			return
