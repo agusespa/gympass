@@ -172,7 +172,9 @@
 		z-index: 10;
 		display: flex;
 		width: min(calc(100% - 48px), 300px);
-		padding: 6px;
+		/* Gap between the bar's edge and the active tab's pill. */
+		--inset: 3px;
+		padding: var(--inset);
 		/* Kept out of the page slide; only its live state is shown so the pill can glide. */
 		view-transition-name: tabbar;
 		border-radius: 999px;
@@ -230,10 +232,10 @@
 	/* The active tab's background, sliding under whichever tab is selected. */
 	.indicator {
 		position: absolute;
-		top: 6px;
-		bottom: 6px;
-		left: 6px;
-		width: calc(50% - 6px);
+		top: var(--inset);
+		bottom: var(--inset);
+		left: var(--inset);
+		width: calc(50% - var(--inset));
 		border-radius: 999px;
 		background: var(--bar-active);
 		transform: translateX(calc(var(--tab) * 100%));
