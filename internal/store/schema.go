@@ -16,6 +16,7 @@ const (
 	colBool    // JSON boolean stored as 0/1; missing means false
 	colSeconds // rest duration, 0..maxRestSeconds; missing means defaultRestSeconds
 	colIntNull // non-negative integer or null (e.g. a ms timestamp not set yet)
+	colPercent // integer 0..100
 )
 
 const (
@@ -42,6 +43,11 @@ var tables = []table{
 	{"routines", []column{{"name", colText}}},
 	{"routine_exercises", []column{{"routine_id", colText}, {"name", colText}, {"position", colReal}, {"superset_id", colTextNull}}},
 	{"routine_sets", []column{{"routine_exercise_id", colText}, {"position", colReal}, {"reps", colInt}, {"weight_kg", colReal}, {"warmup", colBool}, {"rest_seconds", colSeconds}}},
+	// One weigh-in per date; workouts use the latest one on or before their date.
+	{"body_weights", []column{{"date", colDate}, {"weight_kg", colReal}}},
+	// Per-exercise settings, matched by exercise name (trimmed, case-insensitive).
+	// bodyweight_pct is the share of body weight each rep moves, e.g. 100 for pull-ups.
+	{"exercise_settings", []column{{"name", colText}, {"bodyweight_pct", colPercent}}},
 }
 
 var tableByName = func() map[string]*table {
@@ -54,7 +60,7 @@ var tableByName = func() map[string]*table {
 
 func sqlType(t colType) string {
 	switch t {
-	case colInt, colBool:
+	case colInt, colBool, colPercent:
 		return "INTEGER NOT NULL DEFAULT 0"
 	case colSeconds:
 		return fmt.Sprintf("INTEGER NOT NULL DEFAULT %d", defaultRestSeconds)

@@ -239,7 +239,10 @@ func TestMigrateFromV1(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = s.Close() }()
-	_, out, err := s.Sync(context.Background(), 0, nil)
+	// Tables added after the first release exist after migrating.
+	_, out, err := s.Sync(context.Background(), 0, map[string][]Row{
+		"body_weights": {{"id": "bw", "updated_at": int64(1), "deleted": false, "date": "2026-01-01", "weight_kg": 80.0}},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,6 +253,9 @@ func TestMigrateFromV1(t *testing.T) {
 	// Existing workouts are history: finished at their last edit.
 	if len(out["workouts"]) != 1 || out["workouts"][0]["finished_at"] != int64(42) || out["workouts"][0]["started_at"] != nil {
 		t.Fatalf("workouts = %v", out["workouts"])
+	}
+	if len(out["body_weights"]) != 1 {
+		t.Fatalf("body_weights = %v", out["body_weights"])
 	}
 }
 

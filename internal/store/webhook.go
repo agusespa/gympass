@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 )
 
@@ -45,13 +46,18 @@ type WorkoutSnapshot struct {
 	StartedAt  *int64 // ms; nil for workouts from before it was recorded
 	FinishedAt *int64 // ms
 	Deleted    bool
-	Exercises  []ExerciseSnapshot
+	// BodyWeightKg is the weigh-in for the workout's date (see BodyWeightOn);
+	// nil when no body weight was ever logged.
+	BodyWeightKg *float64
+	Exercises    []ExerciseSnapshot
 }
 
 type ExerciseSnapshot struct {
 	Name       string
 	SupersetID *string
-	Sets       []SetSnapshot
+	// BodyweightPct is the share of body weight each rep moves (0..100).
+	BodyweightPct int64
+	Sets          []SetSnapshot
 }
 
 type SetSnapshot struct {
@@ -185,6 +191,13 @@ func (s *Store) Workout(ctx context.Context, id string) (w WorkoutSnapshot, ok b
 		w.FinishedAt = &finished.Int64
 	}
 	w.Deleted = deleted == 1
+	if w.BodyWeightKg, err = s.BodyWeightOn(ctx, w.Date); err != nil {
+		return w, false, err
+	}
+	shares, err := s.BodyweightShares(ctx)
+	if err != nil {
+		return w, false, err
+	}
 
 	rs, err := s.db.QueryContext(ctx, `SELECT e.id, e.name, e.superset_id, s.reps, s.weight_kg, s.warmup, s.rest_seconds
 FROM workout_exercises e
@@ -205,7 +218,7 @@ ORDER BY e.position, e.id, s.position, s.id`, id)
 			return w, false, err
 		}
 		if exID != lastID {
-			ex := ExerciseSnapshot{Name: name, Sets: []SetSnapshot{}}
+			ex := ExerciseSnapshot{Name: name, BodyweightPct: shares[ExerciseKey(name)], Sets: []SetSnapshot{}}
 			if superset.Valid {
 				ex.SupersetID = &superset.String
 			}
@@ -220,4 +233,47 @@ ORDER BY e.position, e.id, s.position, s.id`, id)
 		}
 	}
 	return w, true, rs.Err()
+}
+
+// ExerciseKey is how exercises are matched by name: trimmed and lowercased.
+// The client uses the same rule (exerciseKey in web/src/lib/stats.ts).
+func ExerciseKey(name string) string {
+	return strings.ToLower(strings.TrimSpace(name))
+}
+
+// BodyWeightOn returns the body weight for a date: the latest weigh-in on or
+// before it, or the earliest one for dates before the first weigh-in. It is
+// nil when no body weight was ever logged.
+func (s *Store) BodyWeightOn(ctx context.Context, date string) (*float64, error) {
+	var kg float64
+	err := s.db.QueryRowContext(ctx, `SELECT weight_kg FROM body_weights WHERE deleted = 0
+ORDER BY date <= ?1 DESC, CASE WHEN date <= ?1 THEN date END DESC, date, updated_at DESC LIMIT 1`, date).Scan(&kg)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &kg, nil
+}
+
+// BodyweightShares maps exercise keys to their bodyweight_pct. When several
+// settings rows share a key (e.g. created on two phones), the newest wins.
+func (s *Store) BodyweightShares(ctx context.Context) (map[string]int64, error) {
+	rs, err := s.db.QueryContext(ctx,
+		"SELECT name, bodyweight_pct FROM exercise_settings WHERE deleted = 0 ORDER BY updated_at, id")
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rs.Close() }()
+	out := map[string]int64{}
+	for rs.Next() {
+		var name string
+		var pct int64
+		if err := rs.Scan(&name, &pct); err != nil {
+			return nil, err
+		}
+		out[ExerciseKey(name)] = pct
+	}
+	return out, rs.Err()
 }

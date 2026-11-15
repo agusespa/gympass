@@ -113,6 +113,7 @@ func (s *Store) migrate() error {
 		createWebhookOutbox,                      // 5
 		addStartedAt,                             // 6
 		addSetDone,                               // 7
+		createTablesIfMissing,                    // 8: body_weights, exercise_settings
 	}
 	for i := version; i < len(migrations); i++ {
 		tx, err := s.db.Begin()
@@ -327,6 +328,12 @@ func convert(c column, v any) (any, error) {
 			return nil, fmt.Errorf("%s must be a number", c.name)
 		}
 		return f, nil
+	case colPercent:
+		n, ok := toInt(v)
+		if !ok || n < 0 || n > 100 {
+			return nil, fmt.Errorf("%s must be an integer from 0 to 100", c.name)
+		}
+		return n, nil
 	case colBool:
 		if v == nil {
 			return int64(0), nil
@@ -426,6 +433,24 @@ func addSetDone(tx *sql.Tx) error {
 	}
 	_, err := tx.Exec("UPDATE sets SET done = 1")
 	return err
+}
+
+// createTablesIfMissing creates synced tables added after the first release.
+// Databases created since already have them from migration 1.
+func createTablesIfMissing(tx *sql.Tx) error {
+	for i := range tables {
+		var n int
+		if err := tx.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?", tables[i].name).Scan(&n); err != nil {
+			return err
+		}
+		if n > 0 {
+			continue
+		}
+		if _, err := tx.Exec(tables[i].createSQL()); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func addColumnIfMissing(tx *sql.Tx, table, col, typ string) error {

@@ -10,6 +10,7 @@ A personal, offline-first workout logger PWA for iPhone, installed via **Add to 
 - **Running workouts**: A workout stays open with a live timer until you finish or discard it, even if you close the app.
 - **Finish screen**: A session summary (exercises, sets, reps, volume) with the option to save the workout as a new routine.
 - **History**: Every finished workout in the Profile tab.
+- **Body weight**: Log your weight in Settings and choose, per exercise, how much of it each rep moves (e.g. 100% for pull-ups, 65% for push-ups) so bodyweight work counts toward volume.
 - **Offline-first**: The app and your data live on the phone, so it works with no connection.
 - **Sync**: Changes sync to your own server, so nothing is lost if you lose or reset the phone.
 - **Webhook**: Optionally send each finished workout to an external service.
@@ -169,7 +170,7 @@ Set `WEBHOOK_URL` and the server POSTs each **finished** workout there. A runnin
 }
 ```
 
-`totals` count working sets only. `started_at` and `duration_seconds` are left out for workouts created before start times were recorded. A deletion is `{ "event": "workout.deleted", "workout": { "id": "…" } }`.
+`totals` count working sets only. `volume_kg` adds `reps × (weight_kg + body_weight_kg × bodyweight_pct / 100)` per set: `body_weight_kg` is the latest weigh-in on or before the workout's date (or the first one, for earlier workouts), and an exercise's `bodyweight_pct` is the share of body weight it moves. Both are left out when they don't apply. Logging a new body weight does not resend workouts. `started_at` and `duration_seconds` are left out for workouts created before start times were recorded. A deletion is `{ "event": "workout.deleted", "workout": { "id": "…" } }`.
 
 ## Automation API
 

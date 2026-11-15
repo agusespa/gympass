@@ -2,7 +2,9 @@
 	import TopBar from '#lib/TopBar.svelte';
 	import { db, SYNCED_TABLES } from '#lib/db.ts';
 	import { live } from '#lib/live.svelte.ts';
-	import { today } from '#lib/repo.ts';
+	import { kg, parseWeight, shortDate } from '#lib/format.ts';
+	import { deleteBodyWeight, listBodyWeights, logBodyWeight, today } from '#lib/repo.ts';
+	import type { BodyWeight } from '#lib/db.ts';
 	import { LAST_SYNCED_KEY, sync, syncNow, type SyncStatus } from '#lib/sync.svelte.ts';
 
 	const lastSynced = live(
@@ -19,6 +21,22 @@
 		},
 		0
 	);
+
+	const weights = live(
+		() => null,
+		() => listBodyWeights(),
+		[] as BodyWeight[]
+	);
+	const todayIso = today();
+	const todays = $derived(weights.current.find((w) => w.date === todayIso));
+	const earlier = $derived(weights.current.filter((w) => w.date !== todayIso).slice(0, 5));
+
+	/** Blank clears today's weigh-in. */
+	function saveWeight(text: string) {
+		const v = parseWeight(text);
+		if (v > 0) void logBodyWeight(todayIso, v);
+		else if (todays) void deleteBodyWeight(todayIso);
+	}
 
 	// Re-renders "x min ago" while the screen is open.
 	let now = $state(Date.now());
@@ -112,6 +130,40 @@
 
 <TopBar fallback="/profile" title="Settings" />
 
+<h2 class="group">Body weight</h2>
+<div class="card rows" aria-label="Body weight">
+	<label class="row">
+		<span>Today</span>
+		<span class="weight">
+			<input
+				inputmode="decimal"
+				aria-label="Body weight today"
+				placeholder={earlier[0] ? kg(earlier[0].weight_kg) : '0'}
+				value={todays ? kg(todays.weight_kg) : ''}
+				onchange={(e) => saveWeight(e.currentTarget.value)}
+			/>
+			<span class="muted">kg</span>
+		</span>
+	</label>
+	{#each earlier as w (w.date)}
+		<div class="row">
+			<span>{shortDate(w.date)}</span>
+			<span class="weight">
+				<span class="muted">{kg(w.weight_kg)} kg</span>
+				<button
+					class="remove"
+					aria-label="Delete weigh-in of {shortDate(w.date)}"
+					onclick={() => deleteBodyWeight(w.date)}>×</button
+				>
+			</span>
+		</div>
+	{/each}
+</div>
+<p class="muted note">
+	Counts toward volume for exercises that move your body, like pull-ups. Choose how much on each exercise's
+	page. A workout uses the latest weight logged on or before its date.
+</p>
+
 <h2 class="group">Sync</h2>
 <div class="card rows">
 	<div class="row">
@@ -173,6 +225,26 @@
 		background: none;
 		color: var(--accent);
 		text-align: left;
+	}
+
+	.weight {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+	}
+
+	.weight input {
+		width: 5.5rem;
+		text-align: right;
+		padding: 0.35rem 0.5rem;
+	}
+
+	.remove {
+		min-height: 36px;
+		padding: 0 0.5rem;
+		background: none;
+		color: var(--muted);
+		font-size: 1.2rem;
 	}
 
 	.note {

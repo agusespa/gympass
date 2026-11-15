@@ -1,4 +1,15 @@
-import { addExercise, expect, fillSet, finishWorkout, newWorkout, openApp, test, uid } from './helpers';
+import {
+	addExercise,
+	addSet,
+	expect,
+	fillSet,
+	finishWorkout,
+	newWorkout,
+	openApp,
+	serverData,
+	test,
+	uid
+} from './helpers';
 
 function isoDaysAgo(days: number): string {
 	const d = new Date();
@@ -94,4 +105,41 @@ test('profile shows stats, records and per-exercise progress', async ({ page, re
 	let body = '';
 	for await (const chunk of csv) body += chunk;
 	expect(body).toContain(`${squat},1,105,5,false,true`);
+});
+
+test('body weight counts toward volume for bodyweight exercises', async ({ page, request }) => {
+	const id = uid();
+	const pullup = `Pull-up ${id}`;
+	await openApp(page, '/profile/settings');
+	const today = page.getByLabel('Body weight today');
+	await today.fill('80');
+	await today.blur();
+
+	// Before the exercise is set to count body weight, only the added load counts.
+	await newWorkout(page, `Pull ${id}`);
+	await addExercise(page, pullup);
+	await fillSet(page, pullup, 1, '', '10');
+	await page.getByRole('button', { name: 'Finish', exact: true }).click();
+	await expect(page.getByText('Volume', { exact: true }).locator('..')).toHaveText(/^\s*Volume\s*0 kg\s*$/);
+	await page.getByRole('button', { name: 'Save', exact: true }).click();
+	await expect(page).toHaveURL('/profile');
+
+	await page.goto(`/exercises/${encodeURIComponent(pullup.toLowerCase())}`);
+	await page.getByLabel('Body weight', { exact: true }).selectOption('100');
+	await expect
+		.poll(async () =>
+			((await serverData(request)).exercise_settings ?? []).some(
+				(x) => x.name === pullup && x.bodyweight_pct === 100
+			)
+		)
+		.toBe(true);
+
+	// Now each rep moves 80 kg of body weight plus any added load.
+	await newWorkout(page, `Pull again ${id}`);
+	await addExercise(page, pullup);
+	await fillSet(page, pullup, 1, '', '10');
+	await addSet(page, pullup);
+	await fillSet(page, pullup, 2, '10', '5');
+	await page.getByRole('button', { name: 'Finish', exact: true }).click();
+	await expect(page.getByText('Volume', { exact: true }).locator('..')).toContainText(`${10 * 80 + 5 * 90} kg`);
 });

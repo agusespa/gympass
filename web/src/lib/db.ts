@@ -63,6 +63,20 @@ export interface Routine extends Synced {
 	name: string;
 }
 
+/** One weigh-in. Workouts use the latest one on or before their date. */
+export interface BodyWeight extends Synced {
+	/** YYYY-MM-DD */
+	date: string;
+	weight_kg: number;
+}
+
+/** Settings for an exercise, matched by exerciseKey(name). */
+export interface ExerciseSetting extends Synced {
+	name: string;
+	/** Share of body weight each rep moves, 0–100 (e.g. 100 for pull-ups). */
+	bodyweight_pct: number;
+}
+
 interface Meta {
 	key: string;
 	value: unknown;
@@ -74,7 +88,9 @@ export const SYNCED_TABLES = [
 	'sets',
 	'routines',
 	'routine_exercises',
-	'routine_sets'
+	'routine_sets',
+	'body_weights',
+	'exercise_settings'
 ] as const;
 export type SyncedTable = (typeof SYNCED_TABLES)[number];
 
@@ -85,6 +101,8 @@ export class GymDB extends Dexie {
 	routines!: EntityTable<Routine, 'id'>;
 	routine_exercises!: EntityTable<RoutineExercise, 'id'>;
 	routine_sets!: EntityTable<RoutineSet, 'id'>;
+	body_weights!: EntityTable<BodyWeight, 'id'>;
+	exercise_settings!: EntityTable<ExerciseSetting, 'id'>;
 	meta!: EntityTable<Meta, 'key'>;
 
 	constructor() {
@@ -118,6 +136,10 @@ export class GymDB extends Dexie {
 					if (s.done === undefined) s.done = true;
 				})
 		);
+		this.version(4).stores({
+			body_weights: 'id, date, dirty',
+			exercise_settings: 'id, name, dirty'
+		});
 	}
 }
 

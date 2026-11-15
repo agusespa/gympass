@@ -4,7 +4,15 @@
 	import TopBar from '#lib/TopBar.svelte';
 	import { kg, longDate } from '#lib/format.ts';
 	import { live } from '#lib/live.svelte.ts';
-	import { exerciseSessions, exerciseStats, loadHistory, type History } from '#lib/stats.ts';
+	import { setBodyweightPct } from '#lib/repo.ts';
+	import {
+		exerciseSessions,
+		exerciseStats,
+		loadBodyContext,
+		loadHistory,
+		type BodyContext,
+		type History
+	} from '#lib/stats.ts';
 
 	const key = $derived(page.params.name ?? '');
 	const history = live(
@@ -25,6 +33,23 @@
 				value: weighted ? s.bestE1rm : Math.max(0, ...s.sets.map((x) => x.reps))
 			}))
 			.filter((p) => p.value > 0)
+	);
+
+	const body = live(
+		() => null,
+		() => loadBodyContext(),
+		{ weights: [], shares: new Map() } as BodyContext
+	);
+	const pct = $derived(body.current.shares.get(key) ?? 0);
+	const SHARES = [
+		{ pct: 0, label: 'Not counted' },
+		{ pct: 65, label: '65% · push-ups' },
+		{ pct: 100, label: '100% · pull-ups, dips' }
+	];
+	const shareOptions = $derived(
+		SHARES.some((o) => o.pct === pct)
+			? SHARES
+			: [...SHARES, { pct, label: `${pct}%` }].sort((a, b) => a.pct - b.pct)
 	);
 
 	const oneDecimal = (v: number) => kg(Math.round(v * 10) / 10);
@@ -65,6 +90,22 @@
 		{#if weighted}
 			<p class="muted note">Estimated from your best set each session (weight × reps, up to 12 reps).</p>
 		{/if}
+	{/if}
+
+	<div class="card setting">
+		<label for="bw-share">Body weight</label>
+		<select
+			id="bw-share"
+			value={pct}
+			onchange={(e) => stats && setBodyweightPct(stats.name, Number(e.currentTarget.value))}
+		>
+			{#each shareOptions as o (o.pct)}
+				<option value={o.pct}>{o.label}</option>
+			{/each}
+		</select>
+	</div>
+	{#if pct > 0 && body.loaded && body.current.weights.length === 0}
+		<p class="muted note">Log your body weight in <a href="/profile/settings">Settings</a> to count it.</p>
 	{/if}
 
 	<h2 class="section-title">History</h2>
@@ -125,6 +166,23 @@
 	.note {
 		font-size: 0.8rem;
 		margin: -0.25rem 0.25rem 0;
+	}
+
+	.setting {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.75rem;
+		margin-top: 0.75rem;
+	}
+
+	.setting select {
+		min-width: 0;
+		max-width: 60%;
+		background: none;
+		border: none;
+		color: var(--accent);
+		text-align: right;
 	}
 
 	.section-title {

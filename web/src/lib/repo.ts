@@ -10,8 +10,10 @@ import {
 	type Routine,
 	type SetRow,
 	type Synced,
+	type BodyWeight,
 	type Workout
 } from './db';
+import { exerciseKey } from './stats';
 
 export type Kind = 'workout' | 'routine';
 
@@ -94,7 +96,9 @@ const allTables = () => [
 	db.sets,
 	db.routines,
 	db.routine_exercises,
-	db.routine_sets
+	db.routine_sets,
+	db.body_weights,
+	db.exercise_settings
 ];
 
 async function write<T>(fn: () => Promise<T>): Promise<T> {
@@ -587,4 +591,48 @@ export async function previousSets(workoutId: string): Promise<Map<string, SetVi
 		}
 	}
 	return result;
+}
+
+// ---------- body weight ----------
+
+/** Weigh-ins, newest date first, one per date. */
+export async function listBodyWeights(): Promise<BodyWeight[]> {
+	const byDate = new Map<string, BodyWeight>();
+	for (const w of live(await db.body_weights.toArray())) {
+		const cur = byDate.get(w.date);
+		if (!cur || w.updated_at > cur.updated_at) byDate.set(w.date, w);
+	}
+	return [...byDate.values()].sort((a, b) => b.date.localeCompare(a.date));
+}
+
+/** Record the body weight for a date, replacing that date's weigh-in. */
+export function logBodyWeight(date: string, weight_kg: number) {
+	return write(async () => {
+		const same = live(await db.body_weights.where('date').equals(date).toArray());
+		if (same.length === 0) {
+			await db.body_weights.add(fresh({ date, weight_kg }));
+			return;
+		}
+		for (const w of same) await patch(db.body_weights, w.id, { weight_kg });
+	});
+}
+
+export function deleteBodyWeight(date: string) {
+	return write(async () => {
+		for (const w of live(await db.body_weights.where('date').equals(date).toArray()))
+			await patch(db.body_weights, w.id, { deleted: true });
+	});
+}
+
+/** Set the share of body weight each rep of an exercise moves, 0–100. */
+export function setBodyweightPct(name: string, pct: number) {
+	const key = exerciseKey(name);
+	return write(async () => {
+		const rows = live(await db.exercise_settings.toArray()).filter((x) => exerciseKey(x.name) === key);
+		if (rows.length === 0) {
+			await db.exercise_settings.add(fresh({ name: name.trim(), bodyweight_pct: pct }));
+			return;
+		}
+		for (const x of rows) await patch(db.exercise_settings, x.id, { bodyweight_pct: pct });
+	});
 }
