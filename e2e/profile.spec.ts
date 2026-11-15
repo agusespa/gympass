@@ -4,6 +4,7 @@ import {
   expect,
   fillSet,
   finishWorkout,
+  logBodyWeight,
   newWorkout,
   openApp,
   serverData,
@@ -126,10 +127,7 @@ test("body weight counts toward volume for bodyweight exercises", async ({
 }) => {
   const id = uid();
   const pullup = `Pull-up ${id}`;
-  await openApp(page, "/profile/settings");
-  const today = page.getByLabel("Body weight today");
-  await today.fill("80");
-  await today.blur();
+  await logBodyWeight(page, request, 80);
 
   // Before the exercise is set to count body weight, only the added load counts.
   await newWorkout(page, `Pull ${id}`);

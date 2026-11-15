@@ -613,6 +613,19 @@ export async function listBodyWeights(): Promise<BodyWeight[]> {
 	return live(await db.body_weights.toArray()).sort((a, b) => b.date.localeCompare(a.date));
 }
 
+const BODY_WEIGHT_CARD_KEY = 'body_weight_card_dismissed';
+
+/** Whether Profile should ask for a body weight: none logged yet and the card not dismissed on this phone. */
+export async function showBodyWeightCard(): Promise<boolean> {
+	if ((await db.meta.get(BODY_WEIGHT_CARD_KEY))?.value) return false;
+	return !(await db.body_weights.filter((w) => !w.deleted).first());
+}
+
+/** Hide the body weight card on this phone. Local only: it is not synced. */
+export async function dismissBodyWeightCard() {
+	await db.meta.put({ key: BODY_WEIGHT_CARD_KEY, value: true });
+}
+
 /** Record the body weight for a date, replacing that date's weigh-in. */
 export function logBodyWeight(date: string, weight_kg: number) {
 	return write(() => db.body_weights.put(keyed(date, { date, weight_kg })));
