@@ -1,7 +1,9 @@
 package api
 
 import (
+	"context"
 	"crypto/subtle"
+	"errors"
 	"log"
 	"math"
 	"net/http"
@@ -56,40 +58,57 @@ func requireToken(next http.Handler, tokens ...string) http.Handler {
 func listWorkoutsHandler(s *store.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
-		from, errFrom := time.Parse(time.DateOnly, q.Get("from"))
-		to, errTo := time.Parse(time.DateOnly, q.Get("to"))
-		switch {
-		case errFrom != nil || errTo != nil:
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "from and to are required as YYYY-MM-DD"})
-			return
-		case to.Before(from):
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "to is before from"})
-			return
-		case to.Sub(from) >= maxRangeDays*24*time.Hour:
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "range is longer than 366 days"})
-			return
-		}
-		fromS, toS := from.Format(time.DateOnly), to.Format(time.DateOnly)
-
-		snaps, err := s.FinishedWorkouts(r.Context(), fromS, toS)
+		out, err := workoutRange(r.Context(), s, q.Get("from"), q.Get("to"))
 		if err != nil {
+			var re rangeError
+			if errors.As(err, &re) {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": re.Error()})
+				return
+			}
 			log.Printf("list workouts: %v", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
 			return
 		}
-		out := workoutList{From: fromS, To: toS, Workouts: make([]*webhook.Workout, 0, len(snaps))}
-		for _, snap := range snaps {
-			wo := webhook.FromSnapshot(snap)
-			out.Workouts = append(out.Workouts, wo)
-			out.Totals.WorkingSets += wo.Totals.WorkingSets
-			out.Totals.Reps += wo.Totals.Reps
-			out.Totals.VolumeKg += wo.Totals.VolumeKg
-			out.Totals.DurationSeconds += wo.DurationSeconds
-		}
-		out.Totals.Workouts = len(out.Workouts)
-		out.Totals.VolumeKg = math.Round(out.Totals.VolumeKg*100) / 100
 		writeJSON(w, http.StatusOK, out)
 	}
+}
+
+// rangeError is a bad from/to pair.
+type rangeError string
+
+func (e rangeError) Error() string { return string(e) }
+
+// workoutRange lists finished workouts dated from..to (YYYY-MM-DD, inclusive)
+// with their totals.
+func workoutRange(ctx context.Context, s *store.Store, fromQ, toQ string) (workoutList, error) {
+	from, errFrom := time.Parse(time.DateOnly, fromQ)
+	to, errTo := time.Parse(time.DateOnly, toQ)
+	switch {
+	case errFrom != nil || errTo != nil:
+		return workoutList{}, rangeError("from and to are required as YYYY-MM-DD")
+	case to.Before(from):
+		return workoutList{}, rangeError("to is before from")
+	case to.Sub(from) >= maxRangeDays*24*time.Hour:
+		return workoutList{}, rangeError("range is longer than 366 days")
+	}
+	fromS, toS := from.Format(time.DateOnly), to.Format(time.DateOnly)
+
+	snaps, err := s.FinishedWorkouts(ctx, fromS, toS)
+	if err != nil {
+		return workoutList{}, err
+	}
+	out := workoutList{From: fromS, To: toS, Workouts: make([]*webhook.Workout, 0, len(snaps))}
+	for _, snap := range snaps {
+		wo := webhook.FromSnapshot(snap)
+		out.Workouts = append(out.Workouts, wo)
+		out.Totals.WorkingSets += wo.Totals.WorkingSets
+		out.Totals.Reps += wo.Totals.Reps
+		out.Totals.VolumeKg += wo.Totals.VolumeKg
+		out.Totals.DurationSeconds += wo.DurationSeconds
+	}
+	out.Totals.Workouts = len(out.Workouts)
+	out.Totals.VolumeKg = math.Round(out.Totals.VolumeKg*100) / 100
+	return out, nil
 }
 
 func getWorkoutHandler(s *store.Store) http.HandlerFunc {

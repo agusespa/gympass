@@ -225,9 +225,13 @@ To change a routine, `GET` it, edit the JSON and `PUT` it back:
 - Adjacent exercises with the same `superset_id` form a superset. Any string works as a label for a new one; a lone exercise's label is cleared.
 - Only rows that actually changed are written, and they reach your phone on its next sync like an edit made in the app. If the same set is edited in the app around the same time, the newest edit wins.
 
+### MCP
+
+AI assistants can use the same data through the Model Context Protocol at `/mcp` (Streamable HTTP), with the same bearer tokens. With `API_TOKEN` an assistant gets `list_workouts`, `get_workout`, `list_routines` and `get_routine`. With `API_WRITE_TOKEN` it also gets `create_routine` and `update_routine`, which follow the same rules as `POST` and `PUT` above.
+
 ### Connecting
 
-If n8n runs on the same Docker network, call `http://gym-tracker:8080` directly. If it goes through the Cloudflare Tunnel, Access blocks it before it reaches the app: create an Access **service token**, add a policy with the **Service Auth** action that allows it, and send its `CF-Access-Client-Id` and `CF-Access-Client-Secret` headers alongside the bearer token.
+If n8n or the assistant runs on the same Docker network, call `http://gym-tracker:8080` directly. If it goes through the Cloudflare Tunnel, Access blocks it before it reaches the app: create an Access **service token**, add a policy with the **Service Auth** action that allows it, and send its `CF-Access-Client-Id` and `CF-Access-Client-Secret` headers alongside the bearer token (with `claude mcp add`, pass each as another `--header`).
 
 ## Usage Notes
 

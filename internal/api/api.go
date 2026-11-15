@@ -44,6 +44,7 @@ func New(s *store.Store, static fs.FS, tokens Tokens) http.Handler {
 		mux.Handle("GET /api/workouts/{id}", read(getWorkoutHandler(s)))
 		mux.Handle("GET /api/routines", read(listRoutinesHandler(s)))
 		mux.Handle("GET /api/routines/{id}", read(getRoutineHandler(s)))
+		mux.Handle("/mcp", read(newMCPHandler(s, tokens)))
 	}
 	if tokens.Write != "" {
 		write := func(h http.Handler) http.Handler { return requireToken(h, tokens.Write) }

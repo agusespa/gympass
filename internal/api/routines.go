@@ -14,26 +14,27 @@ const defaultRestSeconds = 120
 
 // routineInput is the body of POST /api/routines and PUT /api/routines/{id}.
 // Unknown fields are rejected so a misspelt field fails loudly instead of
-// being dropped.
+// being dropped. The jsonschema tags describe the MCP tools' input; fields
+// without omitempty are required there.
 type routineInput struct {
-	ID        string          `json:"id"`
+	ID        string          `json:"id,omitempty"`
 	Name      string          `json:"name"`
-	Exercises []exerciseInput `json:"exercises"`
+	Exercises []exerciseInput `json:"exercises,omitempty"`
 }
 
 type exerciseInput struct {
-	ID         string     `json:"id"`
-	Name       string     `json:"name"`
-	SupersetID *string    `json:"superset_id"`
-	Sets       []setInput `json:"sets"`
+	ID         string     `json:"id,omitempty" jsonschema:"id of an existing exercise of this routine to keep it; leave out to add a new exercise"`
+	Name       string     `json:"name" jsonschema:"exercise name, e.g. Bench press"`
+	SupersetID *string    `json:"superset_id,omitempty" jsonschema:"adjacent exercises with the same value form a superset; any string works as a label for a new one"`
+	Sets       []setInput `json:"sets,omitempty" jsonschema:"planned sets, in order"`
 }
 
 type setInput struct {
-	ID          string   `json:"id"`
-	Reps        *int64   `json:"reps"`
-	WeightKg    *float64 `json:"weight_kg"`
-	Warmup      bool     `json:"warmup"`
-	RestSeconds *int64   `json:"rest_seconds"`
+	ID          string   `json:"id,omitempty" jsonschema:"id of an existing set of this exercise to keep it; leave out to add a new set"`
+	Reps        *int64   `json:"reps" jsonschema:"planned repetitions, 0 to 10000"`
+	WeightKg    *float64 `json:"weight_kg" jsonschema:"planned weight in kilograms, 0 for bodyweight"`
+	Warmup      bool     `json:"warmup,omitempty" jsonschema:"true for a warm-up set; warm-ups are left out of totals"`
+	RestSeconds *int64   `json:"rest_seconds,omitempty" jsonschema:"rest after the set in seconds, 0 to 3600; defaults to 120"`
 }
 
 func (in routineInput) routine() (store.Routine, error) {
