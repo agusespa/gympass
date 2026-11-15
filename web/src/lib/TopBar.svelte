@@ -55,8 +55,8 @@
 		margin: calc(-1 * (env(safe-area-inset-top) + 1rem)) -1rem 0;
 		padding: calc(env(safe-area-inset-top) + 0.6rem) 1rem 0.6rem;
 		background: var(--bar);
-		-webkit-backdrop-filter: saturate(180%) blur(20px);
-		backdrop-filter: saturate(180%) blur(20px);
+		-webkit-backdrop-filter: var(--bar-filter);
+		backdrop-filter: var(--bar-filter);
 		border-bottom: 1px solid var(--border);
 	}
 

@@ -143,9 +143,9 @@
 		padding: 0.4rem 0.4rem 0.4rem 1rem;
 		border-radius: 14px;
 		background: var(--bar);
-		-webkit-backdrop-filter: saturate(180%) blur(20px);
-		backdrop-filter: saturate(180%) blur(20px);
-		box-shadow: var(--bar-shadow);
+		-webkit-backdrop-filter: var(--bar-filter);
+		backdrop-filter: var(--bar-filter);
+		box-shadow: var(--bar-edge), var(--bar-shadow);
 		font-size: 0.95rem;
 	}
 
@@ -177,9 +177,9 @@
 		view-transition-name: tabbar;
 		border-radius: 999px;
 		background: var(--bar);
-		-webkit-backdrop-filter: saturate(180%) blur(20px);
-		backdrop-filter: saturate(180%) blur(20px);
-		box-shadow: var(--bar-shadow);
+		-webkit-backdrop-filter: var(--bar-filter);
+		backdrop-filter: var(--bar-filter);
+		box-shadow: var(--bar-edge), var(--bar-shadow);
 	}
 
 	.tabbar a {

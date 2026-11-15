@@ -10,7 +10,10 @@
 	--superset: #8a4fff;
 	--warmup: #f5a300;
 	--radius: 14px;
-	--bar: rgba(255, 255, 255, 0.88);
+	/* See-through glass shared by the tab bar, top bar and toast. */
+	--bar: rgba(255, 255, 255, 0.62);
+	--bar-filter: saturate(200%) blur(28px);
+	--bar-edge: inset 0 0.5px 0 rgba(255, 255, 255, 0.9), inset 0 0 0 0.5px rgba(0, 0, 0, 0.06);
 	--bar-active: rgba(118, 118, 128, 0.14);
 	--separator: rgba(60, 60, 67, 0.29);
 	--bar-shadow: 0 8px 28px rgba(0, 0, 0, 0.14), 0 1px 3px rgba(0, 0, 0, 0.08);
@@ -29,8 +32,9 @@
 		--danger: #ff5c5c;
 		--superset: #a77bff;
 		--warmup: #ffcc00;
-		--bar: rgba(28, 28, 30, 0.88);
-		--bar-active: #000000;
+		--bar: rgba(28, 28, 30, 0.58);
+		--bar-edge: inset 0 0.5px 0 rgba(255, 255, 255, 0.16);
+		--bar-active: rgba(0, 0, 0, 0.75);
 		--separator: rgba(84, 84, 88, 0.6);
 		--bar-shadow: 0 8px 28px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.1);
 	}
@@ -38,6 +42,15 @@
 
 * {
 	box-sizing: border-box;
+}
+
+/*
+ * In the home-screen app (black-translucent status bar), iOS lays out a page shorter than the screen
+ * against a viewport that leaves out the status bar, so fixed bars sit higher than on pages that
+ * scroll. Making every page at least screen tall keeps the tab bar in one place on both tabs.
+ */
+html {
+	min-height: calc(100% + env(safe-area-inset-top));
 }
 
 html,
