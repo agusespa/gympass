@@ -2,17 +2,7 @@
 	import TopBar from '#lib/TopBar.svelte';
 	import { db, SYNCED_TABLES } from '#lib/db.ts';
 	import { live } from '#lib/live.svelte.ts';
-	import { kg, parseWeight, shortDate } from '#lib/format.ts';
-	import {
-		deleteBodyWeight,
-		getWeeklyGoal,
-		listBodyWeights,
-		logBodyWeight,
-		MAX_WEEKLY_GOAL,
-		setWeeklyGoal,
-		today
-	} from '#lib/repo.ts';
-	import type { BodyWeight } from '#lib/db.ts';
+	import { getWeeklyGoal, MAX_WEEKLY_GOAL, setWeeklyGoal, today } from '#lib/repo.ts';
 	import { LAST_SYNCED_KEY, sync, syncNow, type SyncStatus } from '#lib/sync.svelte.ts';
 
 	const goal = live(
@@ -35,22 +25,6 @@
 		},
 		0
 	);
-
-	const weights = live(
-		() => null,
-		() => listBodyWeights(),
-		[] as BodyWeight[]
-	);
-	const todayIso = today();
-	const todays = $derived(weights.current.find((w) => w.date === todayIso));
-	const earlier = $derived(weights.current.filter((w) => w.date !== todayIso).slice(0, 5));
-
-	/** Blank clears today's weigh-in. */
-	function saveWeight(text: string) {
-		const v = parseWeight(text);
-		if (v > 0) void logBodyWeight(todayIso, v);
-		else if (todays) void deleteBodyWeight(todayIso);
-	}
 
 	// Re-renders "x min ago" while the screen is open.
 	let now = $state(Date.now());
@@ -125,7 +99,7 @@
 			.sort(
 				(a, b) =>
 					a.w.date.localeCompare(b.w.date) ||
-					(a.w.started_at ?? 0) - (b.w.started_at ?? 0) ||
+					a.w.started_at - b.w.started_at ||
 					a.e.position - b.e.position ||
 					a.s.position - b.s.position
 			);
@@ -175,40 +149,6 @@
 </div>
 <p class="muted note">
 	Weeks that fall short show in red on your profile, and the streak counts weeks you hit it.
-</p>
-
-<h2 class="group">Body weight</h2>
-<div class="card rows" aria-label="Body weight">
-	<label class="row">
-		<span>Today</span>
-		<span class="weight">
-			<input
-				inputmode="decimal"
-				aria-label="Body weight today"
-				placeholder={earlier[0] ? kg(earlier[0].weight_kg) : '0'}
-				value={todays ? kg(todays.weight_kg) : ''}
-				onchange={(e) => saveWeight(e.currentTarget.value)}
-			/>
-			<span class="muted">kg</span>
-		</span>
-	</label>
-	{#each earlier as w (w.date)}
-		<div class="row">
-			<span>{shortDate(w.date)}</span>
-			<span class="weight">
-				<span class="muted">{kg(w.weight_kg)} kg</span>
-				<button
-					class="remove"
-					aria-label="Delete weigh-in of {shortDate(w.date)}"
-					onclick={() => deleteBodyWeight(w.date)}>×</button
-				>
-			</span>
-		</div>
-	{/each}
-</div>
-<p class="muted note">
-	Counts toward volume for exercises that move your body, like pull-ups. Choose how much on each exercise's
-	page. A workout uses the latest weight logged on or before its date.
 </p>
 
 <h2 class="group">Sync</h2>
@@ -274,18 +214,6 @@
 		text-align: left;
 	}
 
-	.weight {
-		display: flex;
-		align-items: center;
-		gap: 0.4rem;
-	}
-
-	.weight input {
-		width: 5.5rem;
-		text-align: right;
-		padding: 0.35rem 0.5rem;
-	}
-
 	.stepper {
 		display: flex;
 		align-items: center;
@@ -311,14 +239,6 @@
 		min-width: 2.5rem;
 		text-align: center;
 		font-weight: 600;
-	}
-
-	.remove {
-		min-height: 36px;
-		padding: 0 0.5rem;
-		background: none;
-		color: var(--muted);
-		font-size: 1.2rem;
 	}
 
 	.note {

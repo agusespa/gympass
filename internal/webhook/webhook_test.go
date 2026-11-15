@@ -57,7 +57,7 @@ func syncRows(t *testing.T, s *store.Store, changes map[string][]store.Row) {
 }
 
 func workout(updatedAt int64, finished any, deleted bool) store.Row {
-	return store.Row{"id": "w1", "updated_at": updatedAt, "deleted": deleted, "name": "Push", "date": "2026-11-14", "started_at": nil, "finished_at": finished}
+	return store.Row{"id": "w1", "updated_at": updatedAt, "deleted": deleted, "name": "Push", "date": "2026-11-14", "started_at": int64(1), "finished_at": finished}
 }
 
 func flush(t *testing.T, sender *Sender) {
@@ -104,7 +104,7 @@ func TestSendsFinishedWorkout(t *testing.T) {
 	if len(w.Exercises) != 1 || len(w.Exercises[0].Sets) != 3 || !w.Exercises[0].Sets[0].Warmup {
 		t.Fatalf("exercises = %+v", w.Exercises)
 	}
-	want := Totals{Exercises: 1, WorkingSets: 2, Reps: 14, VolumeKg: 8*82.5 + 6*85}
+	want := Totals{Exercises: 1, WorkingSets: 2, Reps: 14}
 	if *w.Totals != want {
 		t.Fatalf("totals = %+v, want %+v", *w.Totals, want)
 	}
@@ -178,56 +178,5 @@ func TestRunStopsOnCancel(t *testing.T) {
 	case <-done:
 	case <-time.After(time.Second):
 		t.Fatal("Run did not stop")
-	}
-}
-
-func TestUnknownStartOmitsDuration(t *testing.T) {
-	finished := int64(10_000)
-	p, ok := buildPayload(store.WorkoutSnapshot{ID: "w1", FinishedAt: &finished}, true, false)
-	if !ok || p.Workout.StartedAt != "" || p.Workout.DurationSeconds != 0 {
-		t.Fatalf("payload = %+v", p.Workout)
-	}
-	body, _ := json.Marshal(p)
-	var raw map[string]map[string]any
-	_ = json.Unmarshal(body, &raw)
-	if _, has := raw["workout"]["duration_seconds"]; has {
-		t.Fatalf("duration_seconds sent for unknown start: %s", body)
-	}
-}
-
-func TestFromSnapshotCountsBodyWeight(t *testing.T) {
-	finished := int64(1)
-	bw := 80.0
-	snap := store.WorkoutSnapshot{
-		ID: "w1", Date: "2026-11-14", FinishedAt: &finished, BodyWeightKg: &bw,
-		Exercises: []store.ExerciseSnapshot{
-			{Name: "Pull-up", BodyweightPct: 100, Sets: []store.SetSnapshot{
-				{Reps: 8, WeightKg: 0},
-				{Reps: 5, WeightKg: 10},
-				{Reps: 10, WeightKg: 0, Warmup: true},
-			}},
-			{Name: "Push-up", BodyweightPct: 50, Sets: []store.SetSnapshot{{Reps: 20}}},
-			{Name: "Bench", Sets: []store.SetSnapshot{{Reps: 5, WeightKg: 100}}},
-		},
-	}
-	w := FromSnapshot(snap)
-	if w.BodyWeightKg == nil || *w.BodyWeightKg != 80 {
-		t.Fatalf("body_weight_kg = %v", w.BodyWeightKg)
-	}
-	if w.Exercises[0].BodyweightPct != 100 || w.Exercises[2].BodyweightPct != 0 {
-		t.Fatalf("exercises = %+v", w.Exercises)
-	}
-	if want := 8*80.0 + 5*90 + 20*40 + 5*100; w.Totals.VolumeKg != want {
-		t.Fatalf("volume = %v, want %v", w.Totals.VolumeKg, want)
-	}
-
-	// Without a logged body weight only the external load counts.
-	snap.BodyWeightKg = nil
-	w = FromSnapshot(snap)
-	if w.BodyWeightKg != nil || w.Exercises[0].BodyweightPct != 0 {
-		t.Fatalf("workout = %+v", w)
-	}
-	if want := 5*10.0 + 5*100; w.Totals.VolumeKg != want {
-		t.Fatalf("volume = %v, want %v", w.Totals.VolumeKg, want)
 	}
 }

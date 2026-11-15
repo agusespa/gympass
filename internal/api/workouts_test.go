@@ -22,7 +22,7 @@ func newReadServer(t *testing.T) *httptest.Server {
 	t.Cleanup(func() { _ = s.Close() })
 
 	// Two finished workouts in the week, one running, one outside it.
-	w := func(id, date string, started, finished any) store.Row {
+	w := func(id, date string, started int64, finished any) store.Row {
 		return store.Row{"id": id, "updated_at": int64(100), "deleted": false, "name": id,
 			"date": date, "started_at": started, "finished_at": finished}
 	}
@@ -36,10 +36,10 @@ func newReadServer(t *testing.T) *httptest.Server {
 	}
 	_, _, _, err = s.Sync(context.Background(), 0, map[string][]store.Row{
 		"workouts": {
-			w("push", "2026-11-10", int64(1_000_000), int64(4_600_000)), // 3600 s
-			w("pull", "2026-11-12", nil, int64(9_000_000)),
-			w("running", "2026-11-13", int64(1_000_000), nil),
-			w("old", "2026-11-01", nil, int64(9_000_000)),
+			w("push", "2026-11-10", 1_000_000, int64(4_600_000)), // 3600 s
+			w("pull", "2026-11-12", 9_000_000, int64(9_000_000)),
+			w("running", "2026-11-13", 1_000_000, nil),
+			w("old", "2026-11-01", 9_000_000, int64(9_000_000)),
 		},
 		"workout_exercises": {ex("e1", "push"), ex("e2", "pull")},
 		"sets": {
@@ -99,8 +99,7 @@ func TestListWorkouts(t *testing.T) {
 		t.Fatalf("workouts = %+v, want push then pull", out.Workouts)
 	}
 	want := map[string]float64{
-		"workouts": 2, "working_sets": 2, "reps": 18,
-		"volume_kg": 8*80 + 10*50.25, "duration_seconds": 3600,
+		"workouts": 2, "working_sets": 2, "reps": 18, "duration_seconds": 3600,
 	}
 	for k, v := range want {
 		if out.Totals[k] != v {

@@ -2,10 +2,6 @@
  * Training stats for the Profile screen, computed from local data. Only
  * finished workouts and their checked, non-warm-up sets count, the same rule
  * as workout totals and the webhook.
- *
- * Volume counts body weight for exercises that move it: each rep adds
- * weight_kg + body weight × bodyweight_pct / 100, the same as the server
- * (internal/webhook FromSnapshot).
  */
 import { db } from './db';
 import { exerciseKey } from './exercise-key';
@@ -27,8 +23,6 @@ export interface Performance {
 	name: string;
 	/** Lowercased, trimmed name: exercises with the same key are the same exercise. */
 	key: string;
-	/** Body weight each rep moves on top of weight_kg, kg (0 for most exercises). */
-	body: number;
 	/** Logged by time instead of reps (the exercise's current setting). */
 	timed: boolean;
 	sets: HistorySet[];
@@ -42,49 +36,6 @@ export interface History {
 }
 
 export { exerciseKey };
-
-// ---------- body weight ----------
-
-export interface BodyContext {
-	/** One weigh-in per date, oldest first. */
-	weights: { date: string; weight_kg: number }[];
-	/** bodyweight_pct by exercise key; missing means 0. */
-	shares: Map<string, number>;
-}
-
-/** Weigh-ins and bodyweight shares. */
-export async function loadBodyContext(): Promise<BodyContext> {
-	const weights = (await db.body_weights.toArray())
-		.filter((w) => !w.deleted)
-		.sort((a, b) => a.date.localeCompare(b.date))
-		.map(({ date, weight_kg }) => ({ date, weight_kg }));
-	const shares = new Map(
-		(await db.exercise_settings.toArray())
-			.filter((x) => !x.deleted && x.bodyweight_pct > 0)
-			.map((x) => [x.id, x.bodyweight_pct])
-	);
-	return { weights, shares };
-}
-
-/**
- * Body weight on a date: the latest weigh-in on or before it, or the first
- * one for earlier dates. Null when nothing was ever logged.
- */
-export function bodyWeightOn(weights: BodyContext['weights'], date: string): number | null {
-	let found: number | null = weights[0]?.weight_kg ?? null;
-	for (const w of weights) {
-		if (w.date > date) break;
-		found = w.weight_kg;
-	}
-	return found;
-}
-
-/** Body weight each rep of this exercise moves on that date, kg. */
-export function bodyLoad(ctx: BodyContext, key: string, date: string): number {
-	const pct = ctx.shares.get(key) ?? 0;
-	if (pct <= 0) return 0;
-	return ((bodyWeightOn(ctx.weights, date) ?? 0) * pct) / 100;
-}
 
 export async function loadHistory(): Promise<History> {
 	const workouts = (await db.workouts.toArray()).filter((w) => !w.deleted && w.finished_at != null);
@@ -101,7 +52,6 @@ export async function loadHistory(): Promise<History> {
 		list.push({ reps: s.reps, weight_kg: s.weight_kg, duration_seconds });
 		setsByExercise.set(s.workout_exercise_id, list);
 	}
-	const body = await loadBodyContext();
 	const timed = new Set(
 		(await db.exercise_settings.toArray()).filter((x) => !x.deleted && x.timed).map((x) => x.id)
 	);
@@ -117,7 +67,6 @@ export async function loadHistory(): Promise<History> {
 			date: w.date,
 			name: e.name.trim(),
 			key,
-			body: bodyLoad(body, key, w.date),
 			timed: timed.has(key),
 			sets
 		});
@@ -152,11 +101,6 @@ function addDays(iso: string, days: number): string {
 
 // ---------- numbers ----------
 
-/** Weight × reps, where each rep also moves `body` kg of body weight. Assisted (negative) loads stop at 0. */
-export function volume(sets: HistorySet[], body = 0): number {
-	return sets.reduce((n, s) => n + Math.max(0, s.weight_kg + body) * s.reps, 0);
-}
-
 /**
  * Estimated one-rep max (Epley). Only sets of 1–12 reps with weight give an
  * estimate; beyond that the formula stops being meaningful.
@@ -182,7 +126,6 @@ export interface Summary {
 	 * back from this week, or from last week while this one has not met it yet.
 	 */
 	streakWeeks: number;
-	totalVolume: number;
 }
 
 export function summary(h: History, today: string, goal = 0): Summary {
@@ -209,8 +152,7 @@ export function summary(h: History, today: string, goal = 0): Summary {
 		thisWeek: h.workoutDates.filter((d) => d >= week && d <= today).length,
 		thisMonth: h.workoutDates.filter((d) => d.startsWith(month)).length,
 		avgPerWeek,
-		streakWeeks,
-		totalVolume: h.performances.reduce((n, p) => n + volume(p.sets, p.body), 0)
+		streakWeeks
 	};
 }
 
@@ -224,12 +166,11 @@ export function behindGoal(thisWeek: number, goal: number, today: string): boole
 	return needed > 0 && needed >= daysLeft;
 }
 
-// ---------- weekly volume ----------
+// ---------- weekly workouts ----------
 
 export interface Week {
 	/** Monday, YYYY-MM-DD */
 	start: string;
-	volume: number;
 	workouts: number;
 }
 
@@ -238,17 +179,12 @@ export function weekly(h: History, today: string, count = 12): Week[] {
 	const first = addDays(weekStart(today), -7 * (count - 1));
 	const weeks: Week[] = Array.from({ length: count }, (_, i) => ({
 		start: addDays(first, 7 * i),
-		volume: 0,
 		workouts: 0
 	}));
 	const index = new Map(weeks.map((w, i) => [w.start, i]));
 	for (const d of h.workoutDates) {
 		const i = index.get(weekStart(d));
 		if (i !== undefined) weeks[i].workouts++;
-	}
-	for (const p of h.performances) {
-		const i = index.get(weekStart(p.date));
-		if (i !== undefined) weeks[i].volume += volume(p.sets, p.body);
 	}
 	return weeks;
 }
@@ -377,7 +313,6 @@ export interface Session {
 	sets: HistorySet[];
 	bestE1rm: number;
 	topWeight: number;
-	volume: number;
 }
 
 /** Every session of one exercise, newest first. */
@@ -390,8 +325,7 @@ export function exerciseSessions(h: History, key: string): Session[] {
 			date: p.date,
 			sets: p.sets,
 			bestE1rm: Math.max(0, ...p.sets.map(e1rm)),
-			topWeight: Math.max(0, ...p.sets.map((s) => s.weight_kg)),
-			volume: volume(p.sets, p.body)
+			topWeight: Math.max(0, ...p.sets.map((s) => s.weight_kg))
 		}))
 		.reverse();
 }

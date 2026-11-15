@@ -1,10 +1,8 @@
 import {
   addExercise,
-  addSet,
   expect,
   fillSet,
   finishWorkout,
-  logBodyWeight,
   newWorkout,
   openApp,
   serverData,
@@ -89,7 +87,7 @@ test("profile shows stats, records and per-exercise progress", async ({
   // The session from last week gives a finished week to average.
   await expect(page.getByTestId("stat-avg")).not.toHaveText("–");
   await expect(
-    page.getByRole("region", { name: "Weekly volume" }),
+    page.getByRole("region", { name: "Weekly workouts" }),
   ).toBeVisible();
   const record = page
     .getByRole("list", { name: "Recent records" })
@@ -124,47 +122,6 @@ test("profile shows stats, records and per-exercise progress", async ({
   let body = "";
   for await (const chunk of csv) body += chunk;
   expect(body).toContain(`${squat},1,105,5,false,true`);
-});
-
-test("body weight counts toward volume for bodyweight exercises", async ({
-  page,
-  request,
-}) => {
-  const id = uid();
-  const pullup = `Pull-up ${id}`;
-  await logBodyWeight(page, request, 80);
-
-  // Before the exercise is set to count body weight, only the added load counts.
-  await newWorkout(page, `Pull ${id}`);
-  await addExercise(page, pullup);
-  await fillSet(page, pullup, 1, "", "10");
-  await page.getByRole("button", { name: "Finish", exact: true }).click();
-  await expect(
-    page.getByText("Volume", { exact: true }).locator(".."),
-  ).toHaveText(/^\s*Volume\s*0 kg\s*$/);
-  await page.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(page).toHaveURL("/profile");
-
-  await page.goto(`/exercises/${encodeURIComponent(pullup.toLowerCase())}`);
-  await page.getByLabel("Body weight", { exact: true }).selectOption("100");
-  await expect
-    .poll(async () =>
-      ((await serverData(request)).exercise_settings ?? []).some(
-        (x) => x.name === pullup && x.bodyweight_pct === 100,
-      ),
-    )
-    .toBe(true);
-
-  // Now each rep moves 80 kg of body weight plus any added load.
-  await newWorkout(page, `Pull again ${id}`);
-  await addExercise(page, pullup);
-  await fillSet(page, pullup, 1, "", "10");
-  await addSet(page, pullup);
-  await fillSet(page, pullup, 2, "10", "5");
-  await page.getByRole("button", { name: "Finish", exact: true }).click();
-  await expect(
-    page.getByText("Volume", { exact: true }).locator(".."),
-  ).toContainText(`${10 * 80 + 5 * 90} kg`);
 });
 
 test("weekly goal syncs and flags weeks that fall short", async ({
@@ -204,12 +161,10 @@ test("weekly goal syncs and flags weeks that fall short", async ({
 
   await page.goto("/profile");
   await expect(page.getByTestId("stat-week")).toContainText("/ 3");
-  const chart = page.getByRole("region", { name: "Weekly volume" });
+  const chart = page.getByRole("region", { name: "Weekly workouts" });
   await expect(
     chart.getByRole("button", { name: /goal missed/ }).first(),
   ).toBeVisible();
-  // The stat tile already shows this week's count, so the chart only shows it for past weeks.
-  await expect(chart.getByTestId("week-workouts")).toHaveCount(0);
   await chart
     .getByRole("button", { name: /goal missed/ })
     .first()

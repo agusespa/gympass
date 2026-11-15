@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"math"
 	"net/http"
 	"time"
 
@@ -50,22 +49,16 @@ type Workout struct {
 	Date       string `json:"date,omitempty"`
 	StartedAt  string `json:"started_at,omitempty"`
 	FinishedAt string `json:"finished_at,omitempty"`
-	// DurationSeconds is finished_at - started_at; omitted when the start is unknown.
-	DurationSeconds int64 `json:"duration_seconds,omitempty"`
-	// BodyWeightKg is the body weight used for bodyweight exercises; omitted
-	// when none was ever logged.
-	BodyWeightKg *float64   `json:"body_weight_kg,omitempty"`
-	Exercises    []Exercise `json:"exercises,omitempty"`
-	Totals       *Totals    `json:"totals,omitempty"`
+	// DurationSeconds is finished_at - started_at.
+	DurationSeconds int64      `json:"duration_seconds,omitempty"`
+	Exercises       []Exercise `json:"exercises,omitempty"`
+	Totals          *Totals    `json:"totals,omitempty"`
 }
 
 type Exercise struct {
 	Name       string  `json:"name"`
 	SupersetID *string `json:"superset_id"`
-	// BodyweightPct is the share of body weight each rep moves, e.g. 100 for
-	// pull-ups; omitted when body weight doesn't count.
-	BodyweightPct int64 `json:"bodyweight_pct,omitempty"`
-	Sets          []Set `json:"sets"`
+	Sets       []Set   `json:"sets"`
 }
 
 type Set struct {
@@ -79,12 +72,10 @@ type Set struct {
 }
 
 // Totals count working sets only; warm-ups are listed but not added up.
-// VolumeKg adds reps × (weight_kg + body_weight_kg × bodyweight_pct / 100).
 type Totals struct {
-	Exercises   int     `json:"exercises"`
-	WorkingSets int     `json:"working_sets"`
-	Reps        int64   `json:"reps"`
-	VolumeKg    float64 `json:"volume_kg"`
+	Exercises   int   `json:"exercises"`
+	WorkingSets int   `json:"working_sets"`
+	Reps        int64 `json:"reps"`
 }
 
 // Run delivers due sends every Poll until ctx is cancelled.
@@ -169,14 +160,9 @@ func FromSnapshot(w store.WorkoutSnapshot) *Workout {
 		Exercises:  make([]Exercise, 0, len(w.Exercises)),
 		Totals:     &Totals{},
 	}
-	if w.BodyWeightKg != nil {
-		out.BodyWeightKg = w.BodyWeightKg
-	}
-	if w.StartedAt != nil {
-		out.StartedAt = time.UnixMilli(*w.StartedAt).UTC().Format(time.RFC3339)
-		if d := *w.FinishedAt - *w.StartedAt; d > 0 {
-			out.DurationSeconds = d / 1000
-		}
+	out.StartedAt = time.UnixMilli(w.StartedAt).UTC().Format(time.RFC3339)
+	if d := *w.FinishedAt - w.StartedAt; d > 0 {
+		out.DurationSeconds = d / 1000
 	}
 	for _, e := range w.Exercises {
 		// Only performed (checked) sets are in the snapshot; an exercise with none wasn't done.
@@ -184,23 +170,16 @@ func FromSnapshot(w store.WorkoutSnapshot) *Workout {
 			continue
 		}
 		ex := Exercise{Name: e.Name, SupersetID: e.SupersetID, Sets: make([]Set, 0, len(e.Sets))}
-		body := 0.0
-		if w.BodyWeightKg != nil && e.BodyweightPct > 0 {
-			ex.BodyweightPct = e.BodyweightPct
-			body = *w.BodyWeightKg * float64(e.BodyweightPct) / 100
-		}
 		for _, st := range e.Sets {
 			ex.Sets = append(ex.Sets, Set(st))
 			if !st.Warmup {
 				out.Totals.WorkingSets++
 				out.Totals.Reps += st.Reps
-				out.Totals.VolumeKg += float64(st.Reps) * max(0, st.WeightKg+body)
 			}
 		}
 		out.Exercises = append(out.Exercises, ex)
 	}
 	out.Totals.Exercises = len(out.Exercises)
-	out.Totals.VolumeKg = math.Round(out.Totals.VolumeKg*100) / 100
 	return out
 }
 

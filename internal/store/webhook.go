@@ -34,21 +34,16 @@ type WorkoutSnapshot struct {
 	ID         string
 	Name       string
 	Date       string
-	StartedAt  *int64 // ms; nil for workouts from before it was recorded
+	StartedAt  int64  // ms
 	FinishedAt *int64 // ms
 	Deleted    bool
-	// BodyWeightKg is the weigh-in for the workout's date (see BodyWeightOn);
-	// nil when no body weight was ever logged.
-	BodyWeightKg *float64
-	Exercises    []ExerciseSnapshot
+	Exercises  []ExerciseSnapshot
 }
 
 type ExerciseSnapshot struct {
 	Name       string
 	SupersetID *string
-	// BodyweightPct is the share of body weight each rep moves (0..100).
-	BodyweightPct int64
-	Sets          []SetSnapshot
+	Sets       []SetSnapshot
 }
 
 type SetSnapshot struct {
@@ -157,30 +152,20 @@ func (s *Store) RetryWebhook(ctx context.Context, p PendingWebhook, after time.D
 
 // Workout returns the current state of a workout, or ok=false if it is unknown.
 func (s *Store) Workout(ctx context.Context, id string) (w WorkoutSnapshot, ok bool, err error) {
-	var started, finished sql.NullInt64
+	var finished sql.NullInt64
 	var deleted int64
 	err = s.db.QueryRowContext(ctx, "SELECT id, name, date, started_at, finished_at, deleted FROM workouts WHERE id = ?", id).
-		Scan(&w.ID, &w.Name, &w.Date, &started, &finished, &deleted)
+		Scan(&w.ID, &w.Name, &w.Date, &w.StartedAt, &finished, &deleted)
 	if errors.Is(err, sql.ErrNoRows) {
 		return w, false, nil
 	}
 	if err != nil {
 		return w, false, err
 	}
-	if started.Valid {
-		w.StartedAt = &started.Int64
-	}
 	if finished.Valid {
 		w.FinishedAt = &finished.Int64
 	}
 	w.Deleted = deleted == 1
-	if w.BodyWeightKg, err = s.BodyWeightOn(ctx, w.Date); err != nil {
-		return w, false, err
-	}
-	shares, err := s.BodyweightShares(ctx)
-	if err != nil {
-		return w, false, err
-	}
 
 	rs, err := s.db.QueryContext(ctx, `SELECT e.id, e.name, e.superset_id, s.reps, s.weight_kg, s.warmup, s.rest_seconds, s.duration_seconds
 FROM workout_exercises e
@@ -201,7 +186,7 @@ ORDER BY e.position, e.id, s.position, s.id`, id)
 			return w, false, err
 		}
 		if exID != lastID {
-			ex := ExerciseSnapshot{Name: name, BodyweightPct: shares[ExerciseKey(name)], Sets: []SetSnapshot{}}
+			ex := ExerciseSnapshot{Name: name, Sets: []SetSnapshot{}}
 			if superset.Valid {
 				ex.SupersetID = &superset.String
 			}
@@ -230,39 +215,4 @@ func ExerciseKey(name string) string {
 // U+FEFF, the same set as the client's trimName (JS \s plus U+0085).
 func TrimName(name string) string {
 	return strings.TrimFunc(name, func(r rune) bool { return unicode.IsSpace(r) || r == '\uFEFF' })
-}
-
-// BodyWeightOn returns the body weight for a date: the latest weigh-in on or
-// before it, or the earliest one for dates before the first weigh-in. It is
-// nil when no body weight was ever logged.
-func (s *Store) BodyWeightOn(ctx context.Context, date string) (*float64, error) {
-	var kg float64
-	err := s.db.QueryRowContext(ctx, `SELECT weight_kg FROM body_weights WHERE deleted = 0
-ORDER BY date <= ?1 DESC, CASE WHEN date <= ?1 THEN date END DESC, date LIMIT 1`, date).Scan(&kg)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	return &kg, nil
-}
-
-// BodyweightShares maps exercise keys to their bodyweight_pct.
-func (s *Store) BodyweightShares(ctx context.Context) (map[string]int64, error) {
-	rs, err := s.db.QueryContext(ctx, "SELECT id, bodyweight_pct FROM exercise_settings WHERE deleted = 0")
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = rs.Close() }()
-	out := map[string]int64{}
-	for rs.Next() {
-		var key string
-		var pct int64
-		if err := rs.Scan(&key, &pct); err != nil {
-			return nil, err
-		}
-		out[key] = pct
-	}
-	return out, rs.Err()
 }

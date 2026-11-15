@@ -112,25 +112,3 @@ export async function finishWorkout(page: Page) {
 	await page.getByRole('button', { name: 'Save', exact: true }).click();
 	await expect(page).toHaveURL('/profile');
 }
-
-/** Type today's body weight in Settings and wait until it has synced, so leaving the page can't drop it. */
-export async function logBodyWeight(page: Page, request: APIRequestContext, kg: number) {
-	await openApp(page, '/profile/settings');
-	const input = page.getByLabel('Body weight today');
-	await input.fill(String(kg));
-	await input.blur();
-	await expect
-		.poll(async () => ((await serverData(request)).body_weights ?? []).some((w) => !w.deleted && w.weight_kg === kg))
-		.toBe(true);
-}
-
-/** Delete every weigh-in on the server. Tests share its database. */
-export async function clearBodyWeights(request: APIRequestContext) {
-	const weights = ((await serverData(request)).body_weights ?? []).filter((w) => !w.deleted);
-	if (weights.length === 0) return;
-	const now = Date.now();
-	const res = await request.post('/api/sync', {
-		data: { cursor: 0, changes: { body_weights: weights.map((w) => ({ ...w, deleted: true, updated_at: now })) } }
-	});
-	expect(res.ok()).toBe(true);
-}

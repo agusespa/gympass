@@ -31,7 +31,6 @@ test('log a workout, see previous values, edit and delete', async ({ page, reque
 	await page.getByRole('button', { name: 'Finish', exact: true }).click();
 	await expect(page).toHaveURL(/\/finish$/);
 	await expect(page.getByText('Sets', { exact: true }).locator('..')).toContainText('2');
-	await expect(page.getByText('Volume', { exact: true }).locator('..')).toContainText('1135 kg');
 	await expect(page.getByRole('list', { name: 'Exercises done' })).toContainText(
 		`${bench} 2 sets · best 82.5 kg × 6`
 	);
@@ -240,7 +239,6 @@ test('only checked-off sets count', async ({ page, request }) => {
 	await page.getByRole('button', { name: 'Finish', exact: true }).click();
 	await expect(page.getByText('Exercises', { exact: true }).locator('..')).toContainText('1');
 	await expect(page.getByText('Sets', { exact: true }).locator('..')).toContainText('2');
-	await expect(page.getByText('Volume', { exact: true }).locator('..')).toContainText('1120 kg');
 	await expect(page.getByRole('list', { name: 'Exercises done' })).not.toContainText(dips);
 	await expect(page.getByTestId('unchecked')).toHaveText('2 unchecked sets won\'t count.');
 	await page.getByRole('button', { name: 'Save', exact: true }).click();

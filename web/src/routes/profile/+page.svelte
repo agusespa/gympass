@@ -1,14 +1,7 @@
 <script lang="ts">
-	import { duration, durationLabel, kg, longDate, setLabel, shortDate, tonnage } from '#lib/format.ts';
+	import { duration, durationLabel, kg, longDate, setLabel, shortDate } from '#lib/format.ts';
 	import { live } from '#lib/live.svelte.ts';
-	import {
-		dismissBodyWeightCard,
-		getWeeklyGoal,
-		listWorkouts,
-		showBodyWeightCard,
-		today,
-		type WorkoutSummary
-	} from '#lib/repo.ts';
+	import { getWeeklyGoal, listWorkouts, today, type WorkoutSummary } from '#lib/repo.ts';
 	import {
 		behindGoal,
 		exerciseStats,
@@ -37,11 +30,6 @@
 		() => null,
 		() => getWeeklyGoal(),
 		0
-	);
-	const askBodyWeight = live(
-		() => null,
-		() => showBodyWeightCard(),
-		false
 	);
 
 	const todayIso = today();
@@ -147,21 +135,7 @@
 			{stats.avgPerWeek == null ? '–' : (Math.round(stats.avgPerWeek * 10) / 10).toLocaleString()}
 		</dd>
 	</div>
-	<div>
-		<dt>Lifted</dt>
-		<dd data-testid="stat-volume">{tonnage(stats.totalVolume)}</dd>
-	</div>
 </dl>
-
-{#if askBodyWeight.current}
-	<section class="card prompt" aria-label="Add your body weight">
-		<a href="/profile/settings">
-			<strong>Add your body weight</strong>
-			<span class="muted">So pull-ups, dips and push-ups count toward what you've lifted.</span>
-		</a>
-		<button class="dismiss" aria-label="Dismiss" onclick={() => dismissBodyWeightCard()}>×</button>
-	</section>
-{/if}
 
 <section class="card calendar" aria-label="Workout calendar">
 	<div class="head">
@@ -210,7 +184,7 @@
 			{w.name}
 			{#if w.finished_at == null}<span class="badge">In progress</span>{/if}
 		</strong>
-		{#if w.started_at && w.finished_at && duration(w.finished_at - w.started_at)}
+		{#if w.finished_at && duration(w.finished_at - w.started_at)}
 			<span class="muted date">{duration(w.finished_at - w.started_at)}</span>
 		{/if}
 		{#if w.exercises.length > 0}
@@ -219,7 +193,7 @@
 	</a>
 {/each}
 
-<h2 class="section-title">Weekly volume</h2>
+<h2 class="section-title">Weekly workouts</h2>
 <WeeklyChart {weeks} goal={goal.current} />
 
 <h2 class="section-title">Records</h2>
@@ -293,15 +267,9 @@
 	/* 2×2 on phones, so a big total like "12,480 kg" still fits. */
 	.stats {
 		display: grid;
-		grid-template-columns: repeat(2, 1fr);
+		grid-template-columns: repeat(3, 1fr);
 		gap: 0.5rem;
 		margin: 0 0 0.75rem;
-	}
-
-	@media (min-width: 480px) {
-		.stats {
-			grid-template-columns: repeat(4, 1fr);
-		}
 	}
 
 	.stats div {
@@ -338,45 +306,6 @@
 		font-size: 0.9rem;
 		font-weight: 500;
 		opacity: 0.7;
-	}
-
-	.prompt {
-		display: flex;
-		align-items: flex-start;
-		gap: 0.5rem;
-		padding: 0.9rem 0.4rem 0.9rem 0.9rem;
-		box-shadow: inset 3px 0 0 var(--accent);
-	}
-
-	.prompt a {
-		flex: 1;
-		min-width: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 0.15rem;
-		color: inherit;
-	}
-
-	.prompt a:active {
-		opacity: 0.7;
-	}
-
-	.prompt strong {
-		color: var(--accent);
-		font-weight: 600;
-	}
-
-	.prompt .muted {
-		font-size: 0.88rem;
-	}
-
-	.dismiss {
-		min-height: 36px;
-		padding: 0 0.6rem;
-		background: none;
-		color: var(--muted);
-		font-size: 1.3rem;
-		line-height: 1;
 	}
 
 	.list {

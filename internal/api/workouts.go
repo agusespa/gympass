@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"log"
-	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -27,13 +26,11 @@ type workoutList struct {
 }
 
 // listTotals add up the per-workout totals (working sets only).
-// DurationSeconds counts only workouts with a recorded start time.
 type listTotals struct {
-	Workouts        int     `json:"workouts"`
-	WorkingSets     int     `json:"working_sets"`
-	Reps            int64   `json:"reps"`
-	VolumeKg        float64 `json:"volume_kg"`
-	DurationSeconds int64   `json:"duration_seconds"`
+	Workouts        int   `json:"workouts"`
+	WorkingSets     int   `json:"working_sets"`
+	Reps            int64 `json:"reps"`
+	DurationSeconds int64 `json:"duration_seconds"`
 }
 
 func listWorkoutsHandler(s *store.Store) http.HandlerFunc {
@@ -103,7 +100,6 @@ func workoutRange(ctx context.Context, s *store.Store, fromQ, toQ string, limit 
 		out.Totals.Workouts++
 		out.Totals.WorkingSets += wo.Totals.WorkingSets
 		out.Totals.Reps += wo.Totals.Reps
-		out.Totals.VolumeKg += wo.Totals.VolumeKg
 		out.Totals.DurationSeconds += wo.DurationSeconds
 
 		key := []string{snap.Date, strconv.FormatInt(*snap.FinishedAt, 10), snap.ID}
@@ -119,7 +115,6 @@ func workoutRange(ctx context.Context, s *store.Store, fromQ, toQ string, limit 
 	if more {
 		out.NextCursor = encodeCursor(lastKey...)
 	}
-	out.Totals.VolumeKg = math.Round(out.Totals.VolumeKg*100) / 100
 	return out, nil
 }
 

@@ -15,7 +15,8 @@ const (
 	colRef                     // id of another row
 	colRefNull                 // id of another row, or null
 	colInt                     // integer from 0 to column.max
-	colTime                    // ms timestamp, or null when not set
+	colTime                    // ms timestamp
+	colTimeNull                // ms timestamp, or null when not set
 	colNum                     // number from 0 to column.max
 	colPosition                // any finite number; orders siblings
 	colBool
@@ -60,7 +61,7 @@ var tables = []table{
 		{name: "name", typ: colText},
 		{name: "date", typ: colDate},
 		{name: "started_at", typ: colTime},
-		{name: "finished_at", typ: colTime}, // null while in progress
+		{name: "finished_at", typ: colTimeNull}, // null while in progress
 	}, indexes: []string{"date"}},
 	{name: "workout_exercises", cols: []column{
 		{name: "workout_id", typ: colRef},
@@ -105,18 +106,10 @@ var tables = []table{
 		{name: "rep_min", typ: colInt, max: maxReps},
 		{name: "rep_max", typ: colInt, max: maxReps},
 	}, indexes: []string{"routine_exercise_id"}},
-	// One weigh-in per date, with the date as id. Workouts use the latest one
-	// on or before their date.
-	{name: "body_weights", cols: []column{
-		{name: "date", typ: colDate},
-		{name: "weight_kg", typ: colNum, max: maxWeightKg},
-	}, id: func(col func(string) any) string { return col("date").(string) }},
-	// Per-exercise settings, with ExerciseKey(name) as id. bodyweight_pct is
-	// the share of body weight each rep moves, e.g. 100 for pull-ups. timed
-	// exercises (e.g. dead hangs) log duration_seconds instead of reps.
+	// Per-exercise settings, with ExerciseKey(name) as id. timed exercises
+	// (e.g. dead hangs) log duration_seconds instead of reps.
 	{name: "exercise_settings", cols: []column{
 		{name: "name", typ: colText},
-		{name: "bodyweight_pct", typ: colInt, max: 100},
 		{name: "timed", typ: colBool},
 	}, id: func(col func(string) any) string { return ExerciseKey(col("name").(string)) }},
 	// User settings: a single row with id SettingsID. weekly_goal is
@@ -134,9 +127,8 @@ var tableByName = func() map[string]*table {
 	return m
 }()
 
-// migrations[i] brings a database from user_version i to i+1. Released
-// migrations are never edited; schema changes append a new one. A new column
-// in tables needs no migration: addMissingColumns adds it on every start.
+// migrations[i] brings a database from user_version i to i+1. Older
+// databases are not supported: after a schema change, start from a new one.
 var migrations = []func(*sql.Tx) error{
 	createSchema,
 }
@@ -166,62 +158,13 @@ func createSchema(tx *sql.Tx) error {
 	return nil
 }
 
-// addMissingColumns adds any column in tables that an older database lacks,
-// filled with the column's zero value. createSchema already makes new
-// databases with every column, so this only changes older ones.
-func addMissingColumns(tx *sql.Tx) error {
-	for i := range tables {
-		t := &tables[i]
-		have := map[string]bool{}
-		rows, err := tx.Query("SELECT name FROM pragma_table_info(?)", t.name)
-		if err != nil {
-			return err
-		}
-		for rows.Next() {
-			var name string
-			if err := rows.Scan(&name); err != nil {
-				_ = rows.Close()
-				return err
-			}
-			have[name] = true
-		}
-		if err := rows.Close(); err != nil {
-			return err
-		}
-		if len(have) == 0 {
-			return fmt.Errorf("table %s is missing", t.name)
-		}
-		for _, c := range t.cols {
-			if have[c.name] {
-				continue
-			}
-			q := fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s%s", t.name, c.name, sqlType(c.typ), sqlDefault(c.typ))
-			if _, err := tx.Exec(q); err != nil {
-				return fmt.Errorf("%s: %w", q, err)
-			}
-		}
-	}
-	return nil
-}
-
-func sqlDefault(t colType) string {
-	switch t {
-	case colRefNull, colTime:
-		return ""
-	case colInt, colBool, colNum, colPosition:
-		return " DEFAULT 0"
-	default:
-		return " DEFAULT ''"
-	}
-}
-
 func sqlType(t colType) string {
 	switch t {
 	case colRefNull:
 		return "TEXT"
-	case colTime:
+	case colTimeNull:
 		return "INTEGER"
-	case colInt, colBool:
+	case colInt, colBool, colTime:
 		return "INTEGER NOT NULL"
 	case colNum, colPosition:
 		return "REAL NOT NULL"

@@ -16,7 +16,7 @@ export interface Workout extends Synced {
 	/** YYYY-MM-DD */
 	date: string;
 	/** ms when the workout was started. */
-	started_at: number | null;
+	started_at: number;
 	/** ms when the workout was finished; null while it is in progress. */
 	finished_at: number | null;
 }
@@ -72,18 +72,9 @@ export interface Routine extends Synced {
 	name: string;
 }
 
-/** One weigh-in per date, with the date as id. Workouts use the latest one on or before their date. */
-export interface BodyWeight extends Synced {
-	/** YYYY-MM-DD */
-	date: string;
-	weight_kg: number;
-}
-
 /** Settings for an exercise, with exerciseKey(name) as id. */
 export interface ExerciseSetting extends Synced {
 	name: string;
-	/** Share of body weight each rep moves, 0–100 (e.g. 100 for pull-ups). */
-	bodyweight_pct: number;
 	/** Logged by time (duration_seconds) instead of reps. */
 	timed: boolean;
 }
@@ -109,7 +100,6 @@ export const SYNCED_TABLES = [
 	'routines',
 	'routine_exercises',
 	'routine_sets',
-	'body_weights',
 	'exercise_settings',
 	'settings'
 ] as const;
@@ -122,7 +112,6 @@ export class GymDB extends Dexie {
 	routines!: EntityTable<Routine, 'id'>;
 	routine_exercises!: EntityTable<RoutineExercise, 'id'>;
 	routine_sets!: EntityTable<RoutineSet, 'id'>;
-	body_weights!: EntityTable<BodyWeight, 'id'>;
 	exercise_settings!: EntityTable<ExerciseSetting, 'id'>;
 	settings!: EntityTable<Settings, 'id'>;
 	meta!: EntityTable<Meta, 'key'>;
@@ -136,7 +125,6 @@ export class GymDB extends Dexie {
 			routines: 'id, dirty',
 			routine_exercises: 'id, routine_id, name, dirty',
 			routine_sets: 'id, routine_exercise_id, dirty',
-			body_weights: 'id, dirty',
 			exercise_settings: 'id, dirty',
 			settings: 'id, dirty',
 			meta: 'key'

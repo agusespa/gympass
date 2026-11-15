@@ -21,7 +21,7 @@ func openTest(t *testing.T) *Store {
 }
 
 func workout(id string, updatedAt int64, name string) Row {
-	return Row{"id": id, "updated_at": updatedAt, "deleted": false, "name": name, "date": "2026-11-14", "started_at": nil, "finished_at": nil}
+	return Row{"id": id, "updated_at": updatedAt, "deleted": false, "name": name, "date": "2026-11-14", "started_at": int64(1), "finished_at": nil}
 }
 
 // exerciseRow is a workout exercise outside any superset.
@@ -172,6 +172,7 @@ func TestValidation(t *testing.T) {
 		{"unknown table", map[string][]Row{"nope": {workout("w1", 1, "x")}}},
 		{"missing id", map[string][]Row{"workouts": {without(workout("w", 1, "x"), "id")}}},
 		{"missing column", map[string][]Row{"workouts": {without(workout("w", 1, "x"), "started_at")}}},
+		{"null started_at", map[string][]Row{"workouts": {func() Row { r := workout("w", 1, "x"); r["started_at"] = nil; return r }()}}},
 		{"bad updated_at", map[string][]Row{"workouts": {w("updated_at", 1.5)}}},
 		{"updated_at in the future", map[string][]Row{"workouts": {w("updated_at", time.Now().Add(25*time.Hour).UnixMilli())}}},
 		{"bad deleted", map[string][]Row{"workouts": {w("deleted", 0)}}},
@@ -185,8 +186,7 @@ func TestValidation(t *testing.T) {
 		{"rest too long", map[string][]Row{"sets": {set("rest_seconds", int64(3601))}}},
 		{"negative rest", map[string][]Row{"sets": {set("rest_seconds", int64(-1))}}},
 		{"string weight", map[string][]Row{"sets": {set("weight_kg", "1")}}},
-		{"weigh-in id not its date", map[string][]Row{"body_weights": {weighIn("x", "2026-11-01", 80, 1, false)}}},
-		{"setting id not its key", map[string][]Row{"exercise_settings": {setting("Pull-up", 100, 1, false, "pull-up ")}}},
+		{"setting id not its key", map[string][]Row{"exercise_settings": {{"id": "pull-up ", "updated_at": int64(1), "deleted": false, "name": "Pull-up", "timed": true}}}},
 		{"settings id", map[string][]Row{"settings": {{"id": "other", "updated_at": int64(1), "deleted": false, "weekly_goal": int64(3)}}}},
 		{"weekly goal too high", map[string][]Row{"settings": {{"id": SettingsID, "updated_at": int64(1), "deleted": false, "weekly_goal": int64(8)}}}},
 	}
@@ -286,7 +286,7 @@ func TestTimedSetsSync(t *testing.T) {
 		"workout_exercises": {exerciseRow("e1", "w1", "Dead hang", 1)},
 		"sets":              {hang, setRow("s2", "e1", 2, 8, 20)},
 		"exercise_settings": {{"id": "dead hang", "updated_at": int64(1), "deleted": false,
-			"name": "Dead hang", "bodyweight_pct": int64(0), "timed": true}},
+			"name": "Dead hang", "timed": true}},
 	})
 	if err != nil || len(rejected) > 0 {
 		t.Fatal(err, rejected)
@@ -334,39 +334,3 @@ func TestRepRangeSync(t *testing.T) {
 
 // A database made before a column existed gets it on the next start, so
 // syncing and reading routines keep working after an upgrade.
-func TestOlderDatabaseGetsNewColumns(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "old.db")
-	s, err := Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Turn it into a database from before timed sets and rep ranges.
-	for _, q := range []string{
-		"ALTER TABLE sets DROP COLUMN duration_seconds",
-		"ALTER TABLE sets DROP COLUMN rep_min",
-		"ALTER TABLE sets DROP COLUMN rep_max",
-		"ALTER TABLE routine_sets DROP COLUMN duration_seconds",
-		"ALTER TABLE routine_sets DROP COLUMN rep_min",
-		"ALTER TABLE routine_sets DROP COLUMN rep_max",
-		"ALTER TABLE exercise_settings DROP COLUMN timed",
-		`INSERT INTO routines (id, updated_at, deleted, seq, name) VALUES ('r1', 1, 0, 1, 'Push')`,
-	} {
-		if _, err := s.db.Exec(q); err != nil {
-			t.Fatalf("%s: %v", q, err)
-		}
-	}
-	_ = s.Close()
-
-	s, err = Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = s.Close() })
-	_, changes, _, err := s.Sync(context.Background(), 0, nil)
-	if err != nil {
-		t.Fatalf("sync after upgrade: %v", err)
-	}
-	if len(changes["routines"]) != 1 {
-		t.Fatalf("routines = %v", changes["routines"])
-	}
-}

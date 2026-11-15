@@ -116,15 +116,7 @@ func (s *Store) migrate() error {
 			return err
 		}
 	}
-	tx, err := s.db.Begin()
-	if err != nil {
-		return err
-	}
-	if err := addMissingColumns(tx); err != nil {
-		_ = tx.Rollback()
-		return fmt.Errorf("adding columns: %w", err)
-	}
-	return tx.Commit()
+	return nil
 }
 
 // Rejection is a row Sync refused, with the reason. The rest of the batch is
@@ -314,13 +306,16 @@ func convert(c column, v any) (any, error) {
 			return nil, fmt.Errorf("%s must be an id of at most %d bytes", c.name, maxIDLen)
 		}
 		return s, nil
-	case colTime:
-		if v == nil {
+	case colTime, colTimeNull:
+		if v == nil && c.typ == colTimeNull {
 			return nil, nil
 		}
 		n, ok := toInt(v)
 		if !ok || n < 0 {
-			return nil, fmt.Errorf("%s must be null or a non-negative integer", c.name)
+			if c.typ == colTimeNull {
+				return nil, fmt.Errorf("%s must be null or a non-negative integer", c.name)
+			}
+			return nil, fmt.Errorf("%s must be a non-negative integer", c.name)
 		}
 		return n, nil
 	case colInt:

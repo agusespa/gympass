@@ -1,9 +1,9 @@
 <script lang="ts">
-	import { shortDate, tonnage } from './format';
+	import { shortDate } from './format';
 	import type { Week } from './stats';
 
 	/**
-	 * Weekly volume bars, oldest first. Tapping or hovering a bar shows that week.
+	 * Workouts per week as bars, oldest first. Tapping or hovering a bar shows that week.
 	 * With a goal (workouts per week), finished weeks that fell short are red.
 	 */
 	let { weeks, goal = 0 }: { weeks: Week[]; goal?: number } = $props();
@@ -11,39 +11,24 @@
 	let picked = $state<number | null>(null);
 	const index = $derived(picked ?? weeks.length - 1);
 	const shown = $derived(weeks[index]);
-	const max = $derived(Math.max(0, ...weeks.map((w) => w.volume)));
+	// Scaled so a week that met the goal reaches at least the goal's height.
+	const max = $derived(Math.max(goal, ...weeks.map((w) => w.workouts)));
 	const missed = (i: number) => goal > 0 && i < weeks.length - 1 && weeks[i].workouts < goal;
 	const count = (w: Week) =>
 		goal > 0
 			? `${w.workouts} / ${goal} workouts`
 			: `${w.workouts} ${w.workouts === 1 ? 'workout' : 'workouts'}`;
-	/**
-	 * The current week, compared with last week's volume. The week is usually still under way,
-	 * so short of last week it reads as progress ("62% of last week") rather than a drop.
-	 */
-	const vsLastWeek = $derived.by(() => {
-		const prev = weeks.at(-2)?.volume ?? 0;
-		const now = weeks.at(-1)?.volume ?? 0;
-		if (!prev) return '';
-		const pct = Math.round((now / prev) * 100);
-		return pct < 100 ? `${pct}% of last week` : `+${pct - 100}% vs last week`;
-	});
 	const label = (w: Week, i: number) =>
-		`Week of ${shortDate(w.start)}: ${tonnage(w.volume)}, ${count(w)}${missed(i) ? ', goal missed' : ''}`;
+		`Week of ${shortDate(w.start)}: ${count(w)}${missed(i) ? ', goal missed' : ''}`;
 </script>
 
-<section class="card chart" aria-label="Weekly volume">
+<section class="card chart" aria-label="Weekly workouts">
 	<div class="head">
 		<span class="muted">{index === weeks.length - 1 ? 'This week' : `Week of ${shortDate(shown.start)}`}</span
 		>
-		<strong data-testid="week-volume">{tonnage(shown.volume)}</strong>
-		{#if index < weeks.length - 1}
-			<span class="muted" class:missed={missed(index)} data-testid="week-workouts">{count(shown)}</span>
-		{:else if vsLastWeek}
-			<span class="muted" data-testid="week-trend">{vsLastWeek}</span>
-		{/if}
+		<strong class:missed={missed(index)} data-testid="week-workouts">{count(shown)}</strong>
 	</div>
-	<div class="plot" role="group" aria-label="Volume per week, last {weeks.length} weeks">
+	<div class="plot" role="group" aria-label="Workouts per week, last {weeks.length} weeks">
 		{#each weeks as w, i (w.start)}
 			<button
 				class="col"
@@ -54,7 +39,7 @@
 				onclick={() => (picked = i)}
 				onpointerenter={(e) => e.pointerType === 'mouse' && (picked = i)}
 			>
-				<span class="bar" class:empty={w.volume === 0} style:height="{max ? (w.volume / max) * 100 : 0}%"
+				<span class="bar" class:empty={w.workouts === 0} style:height="{max ? (w.workouts / max) * 100 : 0}%"
 				></span>
 			</button>
 		{/each}
@@ -80,7 +65,7 @@
 	}
 
 	.head strong {
-		font-size: 1.25rem;
+		font-size: 1.1rem;
 		font-weight: 700;
 	}
 
@@ -147,7 +132,7 @@
 		background: var(--danger);
 	}
 
-	.head .muted.missed {
+	.head strong.missed {
 		color: var(--danger);
 	}
 

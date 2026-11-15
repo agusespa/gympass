@@ -12,8 +12,6 @@ import {
 	type SetRow,
 	type Settings,
 	type Synced,
-	type BodyWeight,
-	type ExerciseSetting,
 	type Workout
 } from './db';
 import { exerciseKey, trimName } from './exercise-key';
@@ -130,7 +128,6 @@ const allTables = () => [
 	db.routines,
 	db.routine_exercises,
 	db.routine_sets,
-	db.body_weights,
 	db.exercise_settings,
 	db.settings
 ];
@@ -730,34 +727,7 @@ export async function previousSets(workoutId: string): Promise<Map<string, SetVi
 	return result;
 }
 
-// ---------- body weight ----------
-
-/** Weigh-ins, newest date first. */
-export async function listBodyWeights(): Promise<BodyWeight[]> {
-	return live(await db.body_weights.toArray()).sort((a, b) => b.date.localeCompare(a.date));
-}
-
-const BODY_WEIGHT_CARD_KEY = 'body_weight_card_dismissed';
-
-/** Whether Profile should ask for a body weight: none logged yet and the card not dismissed on this phone. */
-export async function showBodyWeightCard(): Promise<boolean> {
-	if ((await db.meta.get(BODY_WEIGHT_CARD_KEY))?.value) return false;
-	return !(await db.body_weights.filter((w) => !w.deleted).first());
-}
-
-/** Hide the body weight card on this phone. Local only: it is not synced. */
-export async function dismissBodyWeightCard() {
-	await db.meta.put({ key: BODY_WEIGHT_CARD_KEY, value: true });
-}
-
-/** Record the body weight for a date, replacing that date's weigh-in. */
-export function logBodyWeight(date: string, weight_kg: number) {
-	return write(() => db.body_weights.put(keyed(date, { date, weight_kg: clamp(weight_kg, MAX_WEIGHT_KG) })));
-}
-
-export function deleteBodyWeight(date: string) {
-	return write(() => patch(db.body_weights, date, { deleted: true }));
-}
+// ---------- exercise settings ----------
 
 /** Keys of the exercises logged by time instead of reps. */
 export async function timedExercises(): Promise<Set<string>> {
@@ -765,35 +735,13 @@ export async function timedExercises(): Promise<Set<string>> {
 	return new Set(rows.filter((x) => !x.deleted && x.timed).map((x) => x.id));
 }
 
-/** Change one exercise's settings, keeping the others. */
-function updateExerciseSetting(
-	name: string,
-	changes: Partial<Pick<ExerciseSetting, 'bodyweight_pct' | 'timed'>>
-) {
+/** Log an exercise by time (e.g. dead hangs) instead of reps, everywhere it is used. */
+export function setTimed(name: string, timed: boolean) {
 	// The server derives the id from the stored name, so both come from one cleaned value.
 	const clean = cleanName(name);
 	const key = exerciseKey(clean);
 	if (!key) return Promise.resolve();
-	return write(async () => {
-		const old = await getLive<ExerciseSetting>(db.exercise_settings, key);
-		const row = {
-			name: clean,
-			bodyweight_pct: old?.bodyweight_pct ?? 0,
-			timed: old?.timed ?? false,
-			...changes
-		};
-		await db.exercise_settings.put(keyed(key, row));
-	});
-}
-
-/** Set the share of body weight each rep of an exercise moves, 0–100. */
-export function setBodyweightPct(name: string, pct: number) {
-	return updateExerciseSetting(name, { bodyweight_pct: Math.round(clamp(pct, 100)) });
-}
-
-/** Log an exercise by time (e.g. dead hangs) instead of reps, everywhere it is used. */
-export function setTimed(name: string, timed: boolean) {
-	return updateExerciseSetting(name, { timed });
+	return write(() => db.exercise_settings.put(keyed(key, { name: clean, timed })));
 }
 
 // ---------- settings ----------

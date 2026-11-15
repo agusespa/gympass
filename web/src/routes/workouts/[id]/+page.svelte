@@ -16,11 +16,11 @@
 		undefined as Workout | undefined
 	);
 
-	// Ticks once a second while a running workout with a known start is open.
+	// Ticks once a second while a running workout is open.
 	let now = $state(Date.now());
 	$effect(() => {
 		const w = workout.current;
-		if (!w || w.finished_at != null || !w.started_at) return;
+		if (!w || w.finished_at != null) return;
 		now = Date.now();
 		const timer = setInterval(() => (now = Date.now()), 1000);
 		return () => clearInterval(timer);
@@ -44,8 +44,8 @@
 	<TopBar
 		fallback="/profile"
 		back={!running}
-		title={running && w.started_at ? elapsed(now - w.started_at) : ''}
-		titleLabel={running && w.started_at ? 'Elapsed time' : undefined}
+		title={running ? elapsed(now - w.started_at) : ''}
+		titleLabel={running ? 'Elapsed time' : undefined}
 	>
 		{#snippet action()}
 			{#if running}

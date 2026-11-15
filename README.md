@@ -8,9 +8,8 @@ A personal, offline-first workout logger PWA for iPhone, installed via **Add to 
 - **Routines**: Build reusable templates with exercises, sets, target reps and weight, and start a workout from one with a single tap.
 - **Workout logging**: Track weight, reps and rest per set. Mark sets as warm-ups, group exercises into supersets, and reorder them as you go.
 - **Running workouts**: A workout stays open with a live timer until you finish or discard it, even if you close the app.
-- **Finish screen**: A session summary (exercises, sets, reps, volume) with the option to save the workout as a new routine.
+- **Finish screen**: A session summary (exercises, sets, reps) with the option to save the workout as a new routine.
 - **History**: Every finished workout in the Profile tab.
-- **Body weight**: Log your weight in Settings and choose, per exercise, how much of it each rep moves (e.g. 100% for pull-ups, 65% for push-ups) so bodyweight work counts toward volume.
 - **Offline-first**: The app and your data live on the phone, so it works with no connection.
 - **Sync**: Changes sync to your own server, so nothing is lost if you lose or reset the phone.
 - **Webhook**: Optionally send each finished workout to an external service.
@@ -178,12 +177,12 @@ Set `WEBHOOK_URL` and the server POSTs each **finished** workout there. A runnin
     "started_at": "2026-11-14T17:17:30Z", "finished_at": "2026-11-14T18:30:00Z", "duration_seconds": 4350,
     "exercises": [{ "name": "Bench", "superset_id": null,
       "sets": [{ "reps": 8, "weight_kg": 82.5, "warmup": false, "rest_seconds": 120 }] }],
-    "totals": { "exercises": 1, "working_sets": 1, "reps": 8, "volume_kg": 660 }
+    "totals": { "exercises": 1, "working_sets": 1, "reps": 8 }
   }
 }
 ```
 
-`totals` count working sets only. `volume_kg` adds `reps × (weight_kg + body_weight_kg × bodyweight_pct / 100)` per set: `body_weight_kg` is the latest weigh-in on or before the workout's date (or the first one, for earlier workouts), and an exercise's `bodyweight_pct` is the share of body weight it moves. Both are left out when they don't apply. Logging a new body weight does not resend workouts. `started_at` and `duration_seconds` are left out for workouts created before start times were recorded. A deletion is `{ "event": "workout.deleted", "workout": { "id": "…" } }`.
+`totals` count working sets only. A deletion is `{ "event": "workout.deleted", "workout": { "id": "…" } }`.
 
 ## Automation API
 
@@ -203,7 +202,7 @@ Each workout has the same shape as `workout` in the [webhook](#webhook) payload.
 ```json
 {
   "from": "2026-11-09", "to": "2026-11-15",
-  "totals": { "workouts": 3, "working_sets": 54, "reps": 412, "volume_kg": 24310.5, "duration_seconds": 12600 },
+  "totals": { "workouts": 3, "working_sets": 54, "reps": 412, "duration_seconds": 12600 },
   "workouts": [{ "id": "…", "name": "Push", "date": "2026-11-10", "…": "…" }],
   "next_cursor": "…"
 }

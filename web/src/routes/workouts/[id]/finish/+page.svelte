@@ -16,7 +16,6 @@
 		type ExerciseView,
 		type SetView
 	} from '#lib/repo.ts';
-	import { bodyLoad, exerciseKey, loadBodyContext, volume, type BodyContext } from '#lib/stats.ts';
 	import { showToast } from '#lib/toast.svelte.ts';
 	import { durationLabel } from '#lib/format.ts';
 	import type { Workout } from '#lib/db.ts';
@@ -33,12 +32,6 @@
 		[] as ExerciseView[]
 	);
 
-	const body = live(
-		() => null,
-		() => loadBodyContext(),
-		{ weights: [], shares: new Map() } as BodyContext
-	);
-
 	/** A set counts once it is checked off; warm-ups don't count toward the totals. */
 	const logged = (s: SetView) => s.done;
 	const working = (e: ExerciseView) => e.sets.filter((s) => logged(s) && !s.warmup);
@@ -49,12 +42,7 @@
 	const totals = $derived({
 		exercises: done.length,
 		sets: sets.length,
-		reps: sets.reduce((n, s) => n + s.reps, 0),
-		volume: done.reduce(
-			(n, e) =>
-				n + volume(working(e), bodyLoad(body.current, exerciseKey(e.name), workout.current?.date ?? '')),
-			0
-		)
+		reps: sets.reduce((n, s) => n + s.reps, 0)
 	});
 
 	/** Heaviest working set, ties broken by reps (or time, for timed exercises). */
@@ -158,10 +146,6 @@
 			<dt>Reps</dt>
 			<dd>{totals.reps}</dd>
 		</div>
-		<div>
-			<dt>Volume</dt>
-			<dd>{kg(totals.volume)} kg</dd>
-		</div>
 	</dl>
 
 	{#if done.length > 0}
@@ -227,7 +211,7 @@
 
 	.stats {
 		display: grid;
-		grid-template-columns: repeat(4, 1fr);
+		grid-template-columns: repeat(3, 1fr);
 		gap: 0.5rem;
 		margin: 1rem 0;
 	}
