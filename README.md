@@ -2,171 +2,129 @@
 
 # Gym Tracker
 
-A personal, offline-first workout logger PWA for iPhone, installed via **Add to Home Screen**. Log your sets at the gym without signal; everything syncs to your own server when you're back online.
+A personal, offline-first web app for managing workout gym sessions.
 
 ### Features
-- **Routines**: Build reusable templates with exercises, sets, target reps and weight, and start a workout from one with a single tap.
-- **Workout logging**: Track weight, reps and rest per set. Mark sets as warm-ups, group exercises into supersets, and reorder them as you go.
+- **Routines**: Reusable templates with exercises, sets, target reps or rep ranges and weight. Start a workout from one with a single tap.
+- **Workout logging**: Weight, reps and rest per set. Mark warm-ups, group exercises into supersets and reorder them as you go.
 - **Running workouts**: A workout stays open with a live timer until you finish or discard it, even if you close the app.
-- **Finish screen**: A session summary (exercises, sets, reps) with the option to save the workout as a new routine.
-- **History**: Every finished workout in the Profile tab.
-- **Offline-first**: The app and your data live on the phone, so it works with no connection.
-- **Sync**: Changes sync to your own server, so nothing is lost if you lose or reset the phone.
-- **Webhook**: Optionally send each finished workout to an external service.
+- **Offline-first and synced**: Your data lives on the phone and syncs to your server, so nothing is lost if you lose or reset the phone.
+- **Integrations**: Optionally send finished workouts to a webhook, or read them (and manage routines) through an API or MCP.
 
-## Quick Start
+## Requirements
 
-The application is distributed as a multi-platform Docker image (linux/amd64, linux/arm64) via the GitHub Container Registry. Use the provided `docker-compose.yml`, which runs the app together with the Cloudflare Tunnel it must be reached through.
+- A server with Docker and Docker Compose.
+- A Cloudflare account with a domain, for the Cloudflare Tunnel and Access in front of the app.
+- `sqlite3` on the server, for backups.
 
-First create the tunnel and its Access policy as described in [Secure Hosting](#secure-hosting), and put the tunnel token in a `.env` file next to `docker-compose.yml`:
-
-```
-TUNNEL_TOKEN=<your tunnel token>
-```
-
-Then, from the project root:
-
-```bash
-mkdir -p data && sudo chown 65532:65532 data
-```
-
-```bash
-docker compose up -d
-```
-
-> [!NOTE]
-> The image runs as the distroless `nonroot` user (UID 65532), so it needs to own the `data` directory.
-
-Open the tunnel's address on your phone and choose **Share → Add to Home Screen**.
-
-### Configuration
-The application is configured using environment variables. All are **optional**:
-- `DB_PATH`: Filesystem path to the SQLite database (default: `data/gym.db`; the compose file sets `/app/data/gym.db`).
-- `PORT`: The port to listen on (default: `8080`).
-- `WEBHOOK_URL`: Endpoint to POST finished workouts to. The webhook is off when unset.
-- `WEBHOOK_SECRET`: Sent as `Authorization: Bearer <secret>`.
-- `WEBHOOK_DELAY`: Wait after the last change before sending, so a burst of edits becomes one send (default: `30s`).
-
-Set them in the `environment` section of `docker-compose.yml`.
-
-## Secure Hosting
+## Install
 
 > [!IMPORTANT]
-> The app has no login of its own, and that includes the sync endpoint, the automation API and MCP. It must only be reachable through a Cloudflare Tunnel protected by Cloudflare Access. Never publish its port on the host or your network: anything that can reach the container directly can read and change all your data.
+> The app has no login of its own, and that includes the sync endpoint, the API and MCP. It must only be reachable through a Cloudflare Tunnel protected by Cloudflare Access. Never add a `ports` section to the `gym-tracker` service or otherwise expose it: anything that can reach the container directly can read and change all your data.
 
-The tunnel (`cloudflared`) makes an outbound-only connection to Cloudflare's network, so you can reach the app from anywhere without opening ports on your router. The provided compose file runs `cloudflared` next to the app and publishes no port, so the tunnel is the only way in.
+The provided [`docker-compose.yml`](docker-compose.yml) runs the app (`ghcr.io/agusespa/gym-tracker`) next to `cloudflared`, which connects out to Cloudflare, so no port is opened on the server or your router.
 
-1. In Cloudflare Zero Trust, go to **Networks → Tunnels** and create a tunnel. Copy its token into `.env` as `TUNNEL_TOKEN`.
+1. In Cloudflare Zero Trust, go to **Networks → Tunnels** and create a tunnel.
 2. Add a public hostname to the tunnel (e.g. `gym.example.com`) with the service `http://gym-tracker:8080`.
 3. Add an Access application for that hostname with a policy that only allows your own email address.
+4. On the server, put `docker-compose.yml` in a folder and create a `.env` file next to it with the tunnel's token:
 
-Other containers on the same Docker network (e.g. n8n) can also reach `http://gym-tracker:8080` without going through Access, so only run services you trust there.
+   ```
+   TUNNEL_TOKEN=<your tunnel token>
+   ```
 
-> [!TIP]
-> When the Access session expires, the app keeps your local changes and shows a banner asking you to reload. The reload goes through the Access login and the kept changes sync afterwards.
+5. Create the data folder. The container runs as UID 65532, so it must own it:
 
-## Data Persistence
+   ```bash
+   mkdir -p data && sudo chown 65532:65532 data
+   ```
 
-The application uses a **Bind Mount** so your data persists on the host machine.
+6. Start it:
 
-- **Host Path**: `./data` (relative to your `docker-compose.yml`)
-- **Mount Point**: `/app/data` (inside the container)
-- **Database File**: `./data/gym.db`
+   ```bash
+   docker compose up -d
+   ```
 
-The phone also keeps a full copy in IndexedDB, so the server can be offline for a while without losing anything.
+7. Open `https://gym.example.com` on your iPhone in Safari, log in through Access and choose **Share → Add to Home Screen**.
 
-## Health & Monitoring
+Other containers on the same Docker network can reach `http://gym-tracker:8080` without going through Access, so only run services you trust there.
+
+### Updating
+
+```bash
+docker compose pull && docker compose up -d
+```
+
+The phone picks up the new version within a launch or two.
+
+## Configuration
+
+Set these in the `environment` section of `docker-compose.yml`. All are optional.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `DB_PATH` | `/app/data/gym.db` | Path to the SQLite database inside the container. |
+| `PORT` | `8080` | Port the app listens on. If you change it, update the tunnel's service URL too. |
+| `WEBHOOK_URL` | unset | Endpoint to POST finished workouts to. The webhook is off when unset. See [Webhook](#webhook). |
+| `WEBHOOK_SECRET` | unset | Sent to the webhook as `Authorization: Bearer <secret>`. |
+| `WEBHOOK_DELAY` | `30s` | Wait after the last change before sending, so a burst of edits becomes one send. Go duration format, e.g. `1m`. |
+
+## Data and backups
+
+Your data is in `./data/gym.db` on the server (mounted at `/app/data` in the container). The phone also keeps a full copy, so the server can be offline for a while without losing anything. Server backups only contain changes the phones have already synced.
+
+The database runs in WAL mode, so you can back it up while the app runs. Use `sqlite3` on the server, since copying the file directly can miss recent changes:
+
+```bash
+sqlite3 ./data/gym.db ".backup '/path/to/backups/gym_backup.db'"
+```
+
+For a nightly backup, add a crontab entry on the server:
+
+```bash
+0 3 * * * sqlite3 /path/to/gym-tracker/data/gym.db ".backup '/path/to/backups/gym_backup_$(date +\%Y\%m\%d).db'"
+```
+
+To restore:
+
+1. `docker compose down`
+2. `rm -f ./data/gym.db-wal ./data/gym.db-shm && cp /path/to/backups/gym_backup_20260101.db ./data/gym.db`
+3. `sudo chown 65532:65532 ./data/gym.db`
+4. `docker compose up -d`
+5. `docker compose exec gym-tracker /app/gym-tracker healthcheck`
+
+Restoring an older database can resend pending webhooks, so the webhook receiver should upsert by workout ID.
+
+## Monitoring
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /api/healthz` | Liveness: returns `200` and `{"status":"ok"}` while the HTTP server is responsive. |
-| `GET /api/readyz` | Readiness: verifies SQLite can update its sync metadata in a rolled-back transaction. Returns `200` with `{"status":"ready"}`, or `503` with `{"status":"not_ready"}`. |
-| `GET /metrics` | Prometheus metrics for sync request counts by HTTP response code and request duration. |
+| `GET /api/healthz` | Liveness: `200` with `{"status":"ok"}` while the server responds. |
+| `GET /api/readyz` | Readiness: `200` with `{"status":"ready"}` when the database works, otherwise `503` with `{"status":"not_ready"}`. |
+| `GET /metrics` | Prometheus metrics. |
 
-These responses are not cached. Readiness has a two-second database deadline;
-it does not depend on the optional webhook receiver. Health checks never commit
-changes or advance the sync cursor. Use these explicit endpoints rather than
-`/` or `/health`, since the SPA fallback can return HTML with HTTP 200.
+Use these endpoints rather than `/`, which always returns the app with `200`.
 
-The image includes a health check every 30 seconds, with a 10-second startup
-period and three consecutive failures before Docker marks it unhealthy. It uses
-the Go binary directly, so it works in the distroless image without a shell:
+The container has a built-in Docker health check (every 30 seconds) that calls `/api/readyz`. Check it with `docker compose ps`, or run it by hand with `docker compose exec gym-tracker /app/gym-tracker healthcheck`. Docker does not restart an unhealthy container by itself.
 
-```bash
-docker compose exec gym-tracker /app/gym-tracker healthcheck
-docker compose ps
-```
+To scrape metrics, point Prometheus at `gym-tracker:8080/metrics` on the same Docker network. The metrics are:
 
-The command checks `http://127.0.0.1:${PORT:-8080}/api/readyz` with a three-second
-timeout. It accepts only HTTP 200 with the expected JSON readiness response,
-rejects redirects, and exits nonzero on failure. It does not open the database
-or start the server or webhook worker. Docker's health status does not by itself
-restart an unhealthy container.
+- `gym_tracker_sync_requests_total{code="200|400|500"}`: syncs by response code.
+- `gym_tracker_sync_request_duration_seconds`: sync duration histogram.
+- `gym_tracker_sync_rejected_rows_total`: changes a sync refused. The server log names the first refused row of each sync.
 
-Configure Prometheus to scrape `gym-tracker:8080/metrics` on the shared Docker
-network. The app exports:
-
-- `gym_tracker_sync_requests_total{code="200|400|500"}`: successful syncs,
-  validation failures, and server failures. The `code` label contains one actual
-  status code per series; probes and metric scrapes are excluded.
-- `gym_tracker_sync_request_duration_seconds`: a histogram of sync request
-  duration, including `_bucket`, `_sum`, and `_count` series.
-- `gym_tracker_sync_rejected_rows_total`: rows a sync refused (for example a
-  value out of range). The rest of that sync is stored; each refused row stays
-  unsynced on the phone that sent it, which shows a banner, and is sent again on
-  later syncs. The server log names the first refused row of each sync.
-
-For example, a server-error alert can use:
+For example, to alert on server errors:
 
 ```promql
 sum(rate(gym_tracker_sync_requests_total{code="500"}[5m])) > 0
 ```
 
-Blackbox probes, scrape and backup alerts, dashboards, and automatic monitoring
-configuration reloads are managed by the home-lab infrastructure repository.
-
-## Backups & Recovery
-
-The database runs in **Write-Ahead Logging (WAL)** mode, which allows safe "hot" backups while the application is running.
-
-### Atomic Backups to NAS
-
-Use `sqlite3` on the host for a consistent backup (copying the file directly can miss data still in the WAL):
-
-```bash
-sqlite3 ./data/gym.db ".backup '/path/to/your/nas/gym_backup.db'"
-```
-
-The distroless image has no `sqlite3` shell; run that command on the host.
-Back up the complete database, including sync cursors, deletion tombstones, and
-the webhook outbox. Server backups contain only data already synced from phones;
-pending offline edits remain on the device until its next successful sync.
-
-> [!TIP]
-> Automate it with a crontab entry on the host:
-> ```bash
-> 0 3 * * * sqlite3 /path/to/gym-tracker/data/gym.db ".backup '/path/to/nas/gym_backup_$(date +\%Y\%m\%d).db'"
-> ```
-
-### Restore Procedure
-1. Stop the container: `docker compose down`.
-2. Remove the old WAL files and overwrite the DB: `rm -f ./data/gym.db-wal ./data/gym.db-shm && cp /path/to/nas/gym_backup_20260101.db ./data/gym.db`.
-3. Fix ownership so the container can write to it: `sudo chown 65532:65532 ./data/gym.db`.
-4. Start the container: `docker compose up -d`.
-5. Check readiness with `docker compose exec gym-tracker /app/gym-tracker healthcheck`.
-
-Test restores against a temporary copy before replacing live data, including
-reconnecting a client with an existing sync cursor and pending local edits.
-Restoring an older database can replay pending webhooks, so the receiver should
-continue to upsert by workout ID. Scheduled backups, retention, backup-freshness
-alerts, and automated restore checks belong in the home-lab configuration.
-
 ## Webhook
 
-Set `WEBHOOK_URL` and the server POSTs each **finished** workout there. A running workout is never sent, and neither is one you discard.
+Set `WEBHOOK_URL` and the server POSTs each **finished** workout there. Running and discarded workouts are never sent.
 
 - Pending sends survive restarts. Failed sends are retried with backoff (30 s doubling up to 1 h).
-- Editing a finished workout sends the whole workout again. Deleting a workout that was already delivered sends `workout.deleted`. Upsert on `workout.id` in the receiver.
+- Editing a finished workout sends the whole workout again. Deleting one that was already delivered sends `workout.deleted`. Upsert on `workout.id` in the receiver.
 
 ```json
 {
@@ -184,9 +142,9 @@ Set `WEBHOOK_URL` and the server POSTs each **finished** workout there. A runnin
 
 `totals` count working sets only. A deletion is `{ "event": "workout.deleted", "workout": { "id": "…" } }`.
 
-## Automation API
+## API
 
-Lets automations and AI assistants read your workouts (e.g. an n8n schedule building a weekly summary) and manage your routines. Like the app, it has no login of its own and relies on Cloudflare Access (see [Connecting](#connecting)). Requests that change data are refused (`403`) when a browser marks them as coming from another site, so a page you visit can't use your Access session; scripts, n8n and MCP clients aren't affected.
+Lets automations and AI assistants read your workouts (e.g. an n8n schedule building a weekly summary) and manage your routines. Like the app, it has no login of its own and relies on Cloudflare Access (see [Connecting](#connecting)). Requests that change data are refused (`403`) when a browser marks them as coming from another site; scripts, n8n and MCP clients aren't affected.
 
 ### Workouts
 
@@ -214,7 +172,7 @@ Each workout has the same shape as `workout` in the [webhook](#webhook) payload.
 
 | Endpoint | Does |
 |---|---|
-| `GET /api/routines` | `{"routines": [...], "next_cursor": "…"}`, routines sorted by name. [Paged](#paging). |
+| `GET /api/routines` | `{"routines": [...], "next_cursor": "…"}`, sorted by name. [Paged](#paging). |
 | `GET /api/routines/{id}` | One routine, or `404`. |
 | `POST /api/routines` | Creates a routine and returns it with `201`. Any ids in the body are ignored. |
 | `PUT /api/routines/{id}` | Makes the routine look exactly like the body and returns the result. |
@@ -237,21 +195,21 @@ To change a routine, `GET` it, edit the JSON and `PUT` it back:
 - Exercises and sets that keep their `id` are updated, ones without an `id` are added, and ones you leave out are deleted. An `id` must belong to that routine (a set's to that exercise), otherwise the request fails with `400`.
 - Order in the array is the order in the app.
 - `weight_kg` is required, plus either `reps` or, for a timed exercise such as a dead hang, `duration_seconds` (0–36000). `warmup` defaults to `false` and `rest_seconds` to `120` (0–3600). Unknown fields are rejected, so a typo like `weight` fails instead of being dropped.
-- `rep_max` makes `reps` the bottom of a rep range: `"reps": 8, "rep_max": 12` plans 8–12 reps. Leave it out for a fixed count. Reads return the range as `rep_min` and `rep_max`; `rep_min` is ignored on write, since the range always starts at `reps`.
-- Adjacent exercises with the same `superset_id` form a superset. Any string works as a label for a new one; a lone exercise's label is cleared.
-- Only rows that actually changed are written, and they reach your phone on its next sync like an edit made in the app. If the same set is edited in the app around the same time, the newest edit wins.
+- `rep_max` makes `reps` the bottom of a rep range: `"reps": 8, "rep_max": 12` plans 8–12 reps. Leave it out for a fixed count. Reads return the range as `rep_min` and `rep_max`; `rep_min` is ignored on write.
+- Adjacent exercises with the same `superset_id` form a superset. Any string works as a label for a new one.
+- Changes reach your phone on its next sync, like an edit made in the app. If the same set is edited in the app around the same time, the newest edit wins.
 
 ### Paging
 
-The list endpoints return at most `limit` items (1–200, default 50). While more remain, the response has a `next_cursor`; pass it back as `cursor` (with the same other parameters) to get the next page. It is missing on the last page. Treat cursors as opaque. `totals` in the workout list always cover the whole range, on every page.
+List endpoints return at most `limit` items (1–200, default 50). While more remain, the response has a `next_cursor`; pass it back as `cursor` (with the same other parameters) to get the next page. `totals` in the workout list always cover the whole range.
 
 ### MCP
 
-AI assistants can use the same data through the Model Context Protocol at `/mcp` (Streamable HTTP). Its tools are `list_workouts`, `get_workout`, `list_routines`, `get_routine`, `create_routine` and `update_routine`; the last two follow the same rules as `POST` and `PUT` above. `list_workouts` and `list_routines` take the same `limit` and `cursor` arguments as the [paged](#paging) endpoints.
+AI assistants can use the same data through the Model Context Protocol at `/mcp` (Streamable HTTP). The tools are `list_workouts`, `get_workout`, `list_routines`, `get_routine`, `create_routine` and `update_routine`, with the same rules as the endpoints above.
 
 ### Connecting
 
-If n8n or the assistant runs on the same Docker network, call `http://gym-tracker:8080` directly. Anything that can reach the container this way has full access, just like the sync endpoint, so only run trusted services on that network. If it goes through the Cloudflare Tunnel, Access blocks it before it reaches the app: create an Access **service token**, add a policy with the **Service Auth** action that allows it, and send its `CF-Access-Client-Id` and `CF-Access-Client-Secret` headers with every request.
+Services on the same Docker network can call `http://gym-tracker:8080` directly, with full access. Through the tunnel, Access blocks requests before they reach the app: create an Access **service token**, add a policy with the **Service Auth** action that allows it, and send its `CF-Access-Client-Id` and `CF-Access-Client-Secret` headers with every request.
 
 For Claude Code:
 
@@ -259,26 +217,7 @@ For Claude Code:
 claude mcp add --transport http gym-tracker https://gym.example.com/mcp --header "CF-Access-Client-Id: <client id>" --header "CF-Access-Client-Secret: <client secret>"
 ```
 
-### AI assistants
+Assistants like Claude (web, desktop and phone) and ChatGPT connect from their own cloud and log in with OAuth, so they can't send a service token. Let Cloudflare Access be the OAuth server instead:
 
-Assistants like Claude (web, desktop and phone) and ChatGPT connect to MCP servers from their own cloud and log in with OAuth, so they can't send a service token. Let Cloudflare Access be the OAuth server instead:
-
-1. In Zero Trust, edit the Access application, and under **Advanced settings** turn on **Managed OAuth**. Under **Allowed redirect URIs**, add your assistant's OAuth callback, or it can't register ("redirect_uri is not allowed"). For Claude, add `https://claude.ai/api/mcp/auth_callback` and `https://claude.com/api/mcp/auth_callback`.
-2. Add `https://gym.example.com/mcp` as a custom connector in your assistant (in Claude: **Settings → Connectors → Add custom connector**, OAuth fields left empty). The assistant registers itself, and you log in through your normal Access policy. In Claude, the connector then also shows up in the phone app.
-
-## Usage Notes
-
-- **Syncing**: The app syncs on start, shortly after each edit, when the phone comes back online, and when you return to it. If the same thing is edited on two devices, the newest edit wins.
-- **Offline use**: You can log a whole workout with no signal. Changes are queued on the phone and sent the next time the server is reachable.
-- **Deleting**: Deletes sync too, so removing a workout on one device removes it everywhere.
-- **Updates**: Pull the new image with `docker compose pull && docker compose up -d`. The phone picks up the new version within a launch or two.
-
-## Releasing
-
-Push a version tag. The **Release** workflow runs the checks, builds the image for linux/amd64 and linux/arm64, and pushes it to `ghcr.io/agusespa/gym-tracker` as `:1.2.3`, `:1.2` and `:latest`:
-
-```bash
-git tag v1.2.3 && git push origin v1.2.3
-```
-
-To republish `main` without a new version, run the workflow from the Actions tab (**Release → Run workflow**). That pushes `:latest` and `:sha-<commit>`.
+1. In Zero Trust, edit the Access application and, under **Advanced settings**, turn on **Managed OAuth**. Under **Allowed redirect URIs**, add your assistant's OAuth callback, or it can't register ("redirect_uri is not allowed"). For Claude, add `https://claude.ai/api/mcp/auth_callback` and `https://claude.com/api/mcp/auth_callback`.
+2. Add `https://gym.example.com/mcp` as a custom connector in your assistant (in Claude: **Settings → Connectors → Add custom connector**, OAuth fields left empty). You log in through your normal Access policy.
