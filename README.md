@@ -249,3 +249,13 @@ If n8n or the assistant runs on the same Docker network, call `http://gym-tracke
 - **Offline use**: You can log a whole workout with no signal. Changes are queued on the phone and sent the next time the server is reachable.
 - **Deleting**: Deletes sync too, so removing a workout on one device removes it everywhere.
 - **Updates**: Pull the new image with `docker compose pull && docker compose up -d`. The phone picks up the new version within a launch or two.
+
+## Releasing
+
+Push a version tag. The **Release** workflow runs the checks, builds the image for linux/amd64 and linux/arm64, and pushes it to `ghcr.io/agusespa/gym-tracker` as `:1.2.3`, `:1.2` and `:latest`:
+
+```bash
+git tag v1.2.3 && git push origin v1.2.3
+```
+
+To republish `main` without a new version, run the workflow from the Actions tab (**Release → Run workflow**). That pushes `:latest` and `:sha-<commit>`.
