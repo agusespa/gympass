@@ -5,6 +5,7 @@
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import { installErrorToasts } from '#lib/errors.ts';
+	import PullToRefresh from '#lib/PullToRefresh.svelte';
 	import { startSync, sync } from '#lib/sync.svelte.ts';
 	import { runToastAction, toast } from '#lib/toast.svelte.ts';
 	import type { LayoutProps } from './$types';
@@ -85,6 +86,8 @@
 {/if}
 
 {#if showTabs}
+	<!-- Only on the tab screens: a pull on a workout screen would get in the way of editing sets. -->
+	<PullToRefresh />
 	<nav class="tabbar" style="--tab: {onProfile ? 1 : 0}">
 		<span class="indicator" aria-hidden="true"></span>
 		<a href="/" class:active={!onProfile} aria-current={!onProfile ? 'page' : undefined}>
