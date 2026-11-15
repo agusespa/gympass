@@ -45,9 +45,13 @@ func main() {
 		log.Printf("webhook enabled (delay %s)", delay)
 	}
 
+	if os.Getenv("API_TOKEN") != "" {
+		log.Print("read API enabled")
+	}
+
 	srv := &http.Server{
 		Addr:              ":" + port,
-		Handler:           api.New(s, ui.FS()),
+		Handler:           api.New(s, ui.FS(), os.Getenv("API_TOKEN")),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 

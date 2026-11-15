@@ -144,6 +144,12 @@ func buildPayload(w store.WorkoutSnapshot, found, sentBefore bool) (Payload, boo
 		}
 		return Payload{Event: EventDeleted, SentAt: now, Workout: &Workout{ID: w.ID}}, true
 	}
+	return Payload{Event: EventSaved, SentAt: now, Workout: FromSnapshot(w)}, true
+}
+
+// FromSnapshot converts a finished workout to its JSON form, shared by the
+// webhook and the read API. w.FinishedAt must be set.
+func FromSnapshot(w store.WorkoutSnapshot) *Workout {
 	out := &Workout{
 		ID:         w.ID,
 		Name:       w.Name,
@@ -171,7 +177,7 @@ func buildPayload(w store.WorkoutSnapshot, found, sentBefore bool) (Payload, boo
 		out.Exercises = append(out.Exercises, ex)
 	}
 	out.Totals.VolumeKg = math.Round(out.Totals.VolumeKg*100) / 100
-	return Payload{Event: EventSaved, SentAt: now, Workout: out}, true
+	return out
 }
 
 func (s *Sender) post(ctx context.Context, p Payload) error {

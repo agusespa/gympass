@@ -38,6 +38,7 @@ The application is configured using environment variables. All are **optional**:
 - `WEBHOOK_URL`: Endpoint to POST finished workouts to. The webhook is off when unset.
 - `WEBHOOK_SECRET`: Sent as `Authorization: Bearer <secret>`.
 - `WEBHOOK_DELAY`: Wait after the last change before sending, so a burst of edits becomes one send (default: `30s`).
+- `API_TOKEN`: Enables the [read API](#read-api); requests must send `Authorization: Bearer <token>`. The read API is off when unset. Use a long random value, e.g. `openssl rand -hex 32`.
 
 Set them in the `environment` section of `docker-compose.yml`, or in a `.env` file next to it.
 
@@ -106,6 +107,29 @@ Set `WEBHOOK_URL` and the server POSTs each **finished** workout there. A runnin
 ```
 
 `totals` count working sets only. `started_at` and `duration_seconds` are left out for workouts created before start times were recorded. A deletion is `{ "event": "workout.deleted", "workout": { "id": "…" } }`.
+
+## Read API
+
+Set `API_TOKEN` to let automations (e.g. an n8n schedule building a weekly summary) read finished workouts. Every request needs `Authorization: Bearer <API_TOKEN>`; without it the server answers `401`. Running, discarded and deleted workouts are never returned.
+
+| Endpoint | Returns |
+|---|---|
+| `GET /api/workouts?from=YYYY-MM-DD&to=YYYY-MM-DD` | Finished workouts whose `date` is in the range (both ends included, at most 366 days), oldest first, plus totals for the range. |
+| `GET /api/workouts/{id}` | One finished workout, or `404`. |
+
+Each workout has the same shape as `workout` in the [webhook](#webhook) payload. The list looks like this:
+
+```json
+{
+  "from": "2026-11-09", "to": "2026-11-15",
+  "totals": { "workouts": 3, "working_sets": 54, "reps": 412, "volume_kg": 24310.5, "duration_seconds": 12600 },
+  "workouts": [{ "id": "…", "name": "Push", "date": "2026-11-10", "…": "…" }]
+}
+```
+
+`totals` count working sets only. `duration_seconds` adds up the workouts that have a recorded start time. `date` is the day the phone logged the workout on, so pick the range in your own time zone; in n8n, `{{ $now.minus({ days: 6 }).toFormat('yyyy-MM-dd') }}` to `{{ $now.toFormat('yyyy-MM-dd') }}` is the last seven days.
+
+If n8n runs on the same Docker network, call `http://gym-tracker:8080` directly. If it goes through the Cloudflare Tunnel, Access blocks it before it reaches the app: create an Access **service token**, add a policy with the **Service Auth** action that allows it, and send its `CF-Access-Client-Id` and `CF-Access-Client-Secret` headers alongside the bearer token.
 
 ## Usage Notes
 

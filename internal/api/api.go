@@ -1,4 +1,5 @@
-// Package api serves the sync endpoint and the embedded frontend.
+// Package api serves the sync endpoint, the read-only workout API and the
+// embedded frontend.
 package api
 
 import (
@@ -22,9 +23,15 @@ type syncBody struct {
 }
 
 // New returns the HTTP handler. static is the built frontend (may be empty).
-func New(s *store.Store, static fs.FS) http.Handler {
+// The read-only workout API is served only when apiToken is set, and only to
+// requests that carry it as a bearer token.
+func New(s *store.Store, static fs.FS, apiToken string) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/sync", syncHandler(s))
+	if apiToken != "" {
+		mux.Handle("GET /api/workouts", requireToken(apiToken, listWorkoutsHandler(s)))
+		mux.Handle("GET /api/workouts/{id}", requireToken(apiToken, getWorkoutHandler(s)))
+	}
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 	})
