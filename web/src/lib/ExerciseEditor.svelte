@@ -122,6 +122,11 @@
 							}}
 						/>
 						<div class="chips">
+							<!-- In a workout the sets usually come from the routine, so adding one lives here.
+							     The menu stays open, so repeated taps add several. -->
+							{#if checkable}
+								<button class="chip" onclick={() => addSet(kind, ex.id)}>+ Add set</button>
+							{/if}
 							{#if block.superset}
 								<button
 									class="chip"
@@ -285,10 +290,12 @@
 					{/each}
 				</div>
 
-				<button class="add-set" onclick={() => addSet(kind, ex.id)}>
-					<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
-					Add set
-				</button>
+				{#if !checkable}
+					<button class="add-set" onclick={() => addSet(kind, ex.id)}>
+						<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+						Add set
+					</button>
+				{/if}
 			</section>
 		{/each}
 	</div>

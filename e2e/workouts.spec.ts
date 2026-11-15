@@ -1,5 +1,6 @@
 import {
 	addExercise,
+	addSet,
 	exercise,
 	expect,
 	fillSet,
@@ -20,7 +21,7 @@ test('log a workout, see previous values, edit and delete', async ({ page, reque
 	await expect(page.getByRole('link', { name: 'Profile', exact: true })).toHaveCount(0);
 	await addExercise(page, bench);
 	await fillSet(page, bench, 1, '80', '8');
-	await exercise(page, bench).getByRole('button', { name: 'Add set' }).click();
+	await addSet(page, bench);
 	// A new set copies the previous one.
 	await expect(exercise(page, bench).getByLabel('Weight set 2')).toHaveValue('80');
 	await fillSet(page, bench, 2, '82,5', '6'); // decimal comma from the iPhone keyboard
@@ -50,7 +51,7 @@ test('log a workout, see previous values, edit and delete', async ({ page, reque
 	await page.getByLabel('New exercise name').fill(bench.toLowerCase());
 	await page.getByRole('button', { name: 'Add', exact: true }).click();
 	const again = exercise(page, bench.toLowerCase());
-	await again.getByRole('button', { name: 'Add set' }).click();
+	await addSet(page, bench.toLowerCase());
 	await expect(again.getByTestId('previous')).toHaveText(['80kg × 8', '82.5kg × 6']);
 
 	// Delete a set (from its set menu) and the exercise.
@@ -213,6 +214,8 @@ test('only checked-off sets count', async ({ page, request }) => {
 	await page.goto('/');
 	await page.getByRole('button', { name: `Start Pull ${id}` }).click();
 	await expect(page).toHaveURL(/\/workouts\//);
+	// In a workout the sets come from the routine; adding one is in the exercise menu.
+	await expect(exercise(page, row).getByRole('button', { name: 'Add set', exact: true })).toHaveCount(0);
 
 	// The plan is copied in, but nothing is checked off yet.
 	const checks = exercise(page, row).getByRole('button', { name: /^Complete set/ });
@@ -240,8 +243,7 @@ test('only checked-off sets count', async ({ page, request }) => {
 	// Next time, "Previous" shows what was done, not the skipped plan.
 	await newWorkout(page, `Pull again ${id}`);
 	await addExercise(page, row);
-	await exercise(page, row).getByRole('button', { name: 'Add set' }).click();
-	await exercise(page, row).getByRole('button', { name: 'Add set' }).click();
+	await addSet(page, row, 2);
 	await expect(exercise(page, row).getByTestId('previous')).toHaveText(['60kg × 10', '65kg × 8', '–']);
 
 	// The server has the checkmarks too.
