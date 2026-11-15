@@ -44,12 +44,13 @@
 {#if showTabs}
 	<nav class="tabbar">
 		<a href="/" class:active={!onProfile} aria-current={!onProfile ? 'page' : undefined}>
-			<svg viewBox="1 3.5 26 21.5" aria-hidden="true">
-				<rect x="5.25" y="8.25" width="2.5" height="11.5" rx="1.25" />
-				<rect x="20.25" y="8.25" width="2.5" height="11.5" rx="1.25" />
-				<rect x="9.25" y="5.75" width="2.5" height="16.5" rx="1.25" />
-				<rect x="16.25" y="5.75" width="2.5" height="16.5" rx="1.25" />
-				<path d="M11.75 14h4.5M2.5 14h2.75M22.75 14h2.75" />
+			<!-- The app icon's dumbbell (scripts/icons.mjs) scaled down, filled like the icon. -->
+			<svg class="solid" viewBox="1 3.5 26 21.5" aria-hidden="true">
+				<rect x="7.94" y="12.86" width="12.12" height="2.78" rx="0.63" />
+				<rect x="1.5" y="10.72" width="2.4" height="7.07" rx="1.01" />
+				<rect x="4.28" y="6.93" width="4.04" height="14.64" rx="1.39" />
+				<rect x="19.68" y="6.93" width="4.04" height="14.64" rx="1.39" />
+				<rect x="24.1" y="10.72" width="2.4" height="7.07" rx="1.01" />
 			</svg>
 			<span>Workout</span>
 		</a>
@@ -163,6 +164,11 @@
 		stroke-width: 1.7;
 		stroke-linecap: round;
 		stroke-linejoin: round;
+	}
+
+	.tabbar svg.solid {
+		fill: currentColor;
+		stroke: none;
 	}
 
 	.tabbar a.active {
