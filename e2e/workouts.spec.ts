@@ -2,6 +2,7 @@ import {
 	addExercise,
 	addSet,
 	exercise,
+	exerciseMenu,
 	expect,
 	fillSet,
 	finishWorkout,
@@ -64,11 +65,12 @@ test('log a workout, see previous values, edit and delete', async ({ page, reque
 	await again.getByRole('menuitem', { name: 'Delete set 2' }).click();
 	await expect(again.getByLabel('Reps set 2')).toHaveCount(0);
 	await again.getByRole('button', { name: 'Exercise options' }).click();
-	await again.getByRole('button', { name: 'Delete exercise' }).click();
-	// Nothing is deleted until the second tap.
-	await again.getByRole('button', { name: 'Cancel' }).click();
+	await again.getByRole('menuitem', { name: 'Delete exercise' }).click();
+	// Nothing is deleted until it is confirmed.
+	await page.getByRole('button', { name: 'Cancel' }).click();
 	await expect(again).toHaveCount(1);
-	await again.getByRole('button', { name: 'Delete exercise' }).click();
+	await again.getByRole('button', { name: 'Exercise options' }).click();
+	await again.getByRole('menuitem', { name: 'Delete exercise' }).click();
 	await page
 		.getByRole('dialog', { name: 'Delete exercise?' })
 		.getByRole('button', { name: 'Delete', exact: true })
@@ -219,8 +221,6 @@ test('only checked-off sets count', async ({ page, request }) => {
 	await page.goto('/');
 	await page.getByRole('button', { name: `Start Pull ${id}` }).click();
 	await expect(page).toHaveURL(/\/workouts\//);
-	// In a workout the sets come from the routine; adding one is in the exercise menu.
-	await expect(exercise(page, row).getByRole('button', { name: 'Add set', exact: true })).toHaveCount(0);
 
 	// The plan is copied in, but nothing is checked off yet.
 	const checks = exercise(page, row).getByRole('button', { name: /^Complete set/ });
@@ -264,4 +264,45 @@ test('only checked-off sets count', async ({ page, request }) => {
 				.map((s) => s.done);
 		})
 		.toEqual([true, true, false]);
+});
+
+test('rename an exercise from its menu', async ({ page }) => {
+	const id = uid();
+	const curl = `Curl ${id}`;
+	await newWorkout(page, `Arms ${id}`);
+	await addExercise(page, curl);
+
+	// Tapping outside closes the menu without doing anything.
+	await exercise(page, curl).getByRole('button', { name: 'Exercise options' }).click();
+	await expect(exercise(page, curl).getByRole('menu')).toBeVisible();
+	await page.getByLabel('Workout name').click();
+	await expect(exercise(page, curl).getByRole('menu')).toHaveCount(0);
+
+	await exerciseMenu(page, curl, 'Rename');
+	const name = exercise(page, curl).getByLabel('Exercise name');
+	await expect(name).toBeFocused();
+	await name.fill(`Hammer curl ${id}`);
+	await name.press('Enter');
+	await expect(exercise(page, `Hammer curl ${id}`)).toBeVisible();
+	await expect(page.getByLabel('Exercise name', { exact: true })).toHaveCount(0);
+});
+
+test('an exercise menu near the bottom of the screen opens upward', async ({ page }) => {
+	const id = uid();
+	await newWorkout(page, `Long ${id}`);
+	for (const n of ['A', 'B', 'C']) await addExercise(page, `${n} ${id}`);
+	const last = exercise(page, `C ${id}`);
+	const button = last.getByRole('button', { name: 'Exercise options' });
+	// Put the last exercise's ⋯ button just above the bottom edge.
+	await button.evaluate((el) => window.scrollBy(0, el.getBoundingClientRect().bottom - window.innerHeight + 20));
+	await button.click();
+	const menu = last.getByRole('menu');
+	// Let the grow-in animation finish before measuring.
+	await menu.evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished)));
+	const box = (await menu.boundingBox())!;
+	const anchor = (await last.locator('.ex-menu').boundingBox())!;
+	// It grows up from over the ⋯ button, so its bottom edge lines up with the button's.
+	expect(Math.abs(box.y + box.height - (anchor.y + anchor.height))).toBeLessThan(1);
+	expect(box.y).toBeGreaterThanOrEqual(0);
+	expect(box.y + box.height).toBeLessThanOrEqual(page.viewportSize()!.height);
 });

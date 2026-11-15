@@ -35,8 +35,6 @@
 		/>
 	</div>
 
-	<p class="hint muted">Fill in a max next to the reps to aim for a range, like 8 to 12.</p>
-
 	{#key id}
 		<ExerciseEditor kind="routine" parentId={id} />
 	{/key}
@@ -50,10 +48,3 @@
 {:else if routine.loaded}
 	<p class="muted">Routine not found. <a href="/">Back to routines</a></p>
 {/if}
-
-<style>
-	.hint {
-		margin: 0.25rem 0 0;
-		font-size: 0.85rem;
-	}
-</style>

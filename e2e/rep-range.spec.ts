@@ -48,16 +48,17 @@ test('a rep range in a routine carries into its workouts', async ({ page, reques
 	let ex = exercise(page, bench);
 	await expect(ex.getByLabel('Reps set 1')).toHaveValue('8');
 	await expect(ex.getByTestId('rep-range')).toHaveText(['8–12', '8–12']);
-	await fillSet(page, bench, 1, '62.5', '12');
+	// Going past the top of the range is fine.
+	await fillSet(page, bench, 1, '62.5', '15');
 	await fillSet(page, bench, 2, '62.5', '9');
 	await finishWorkout(page);
 
-	// The next session continues from the weight and reps done; changing the weight is up to you.
+	// The next session continues from exactly the weight and reps done; changing them is up to you.
 	await page.goto('/');
 	await page.getByRole('button', { name: `Start ${name}` }).click();
 	ex = exercise(page, bench);
 	await expect(ex.getByLabel('Weight set 1')).toHaveValue('62.5');
-	await expect(ex.getByLabel('Reps set 1')).toHaveValue('12');
+	await expect(ex.getByLabel('Reps set 1')).toHaveValue('15');
 	await expect(ex.getByLabel('Reps set 2')).toHaveValue('9');
 });
 

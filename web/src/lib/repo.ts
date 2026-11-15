@@ -312,15 +312,14 @@ export async function deleteRoutine(id: string) {
 
 /**
  * A routine set as a workout target. A set with a rep range continues from
- * the last session's matching set (same type and order): its weight, and its
- * reps kept within the range. Fixed sets are the routine's numbers as they are.
+ * the last session's matching set (same type and order) with exactly its
+ * weight and reps. Fixed sets are the routine's numbers as they are.
  */
 function targetFrom(set: SetView, nth: number, last: SetView[]): SetView {
 	if (set.rep_max <= 0) return set;
 	const prev = last.filter((s) => s.warmup === set.warmup)[nth];
 	if (!prev) return set;
-	const reps = Math.min(set.rep_max, Math.max(set.rep_min, prev.reps));
-	return { ...set, weight_kg: prev.weight_kg, reps };
+	return { ...set, weight_kg: prev.weight_kg, reps: prev.reps };
 }
 
 /** Copy one workout's or routine's exercises and sets into another parent. */

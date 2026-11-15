@@ -1,6 +1,8 @@
 import {
   addExercise,
+  addSet,
   exercise,
+  exerciseMenu,
   expect,
   newWorkout,
   serverData,
@@ -16,18 +18,14 @@ test("log a timed exercise such as a dead hang", async ({ page, request }) => {
   await newWorkout(page, `Grip ${id}`);
   await addExercise(page, hang);
   const ex = exercise(page, hang);
-  await ex.getByRole("button", { name: "Exercise options" }).click();
-  await ex.getByRole("button", { name: "Log time" }).click();
-  await ex.getByRole("button", { name: "Exercise options" }).click();
+  await exerciseMenu(page, hang, "Log time");
 
   // Seconds or m:ss, shown as m:ss.
   await setText(ex.getByLabel("Time set 1"), "45");
   await expect(ex.getByLabel("Time set 1")).toHaveValue("0:45");
   await expect(ex.getByLabel("Reps set 1")).toHaveCount(0);
   await ex.getByRole("button", { name: "Complete set 1", exact: true }).click();
-  await ex.getByRole("button", { name: "Exercise options" }).click();
-  await ex.getByRole("button", { name: "+ Add set" }).click();
-  await ex.getByRole("button", { name: "Exercise options" }).click();
+  await addSet(page, hang);
   await setText(ex.getByLabel("Time set 2"), "1:10");
   await expect(ex.getByLabel("Time set 2")).toHaveValue("1:10");
   await ex.getByRole("button", { name: "Complete set 2", exact: true }).click();

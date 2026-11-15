@@ -1,5 +1,5 @@
 <script lang="ts">
-	import ConfirmButton from './ConfirmButton.svelte';
+	import Modal from './Modal.svelte';
 	import { exerciseKey } from './exercise-key';
 	import {
 		durationLabel,
@@ -55,6 +55,13 @@
 	const blocks = $derived(toBlocks(exercises.current));
 	/** Exercise whose options menu is open; one at a time. */
 	let menuFor = $state<string | null>(null);
+	/** The open menu opens upward: there was no room for it below the ⋯ button. */
+	let menuUp = $state(false);
+	/** Exercise whose name is being edited in place. */
+	let renaming = $state<string | null>(null);
+	/** Exercise waiting for its delete to be confirmed. */
+	let deleting = $state<string | null>(null);
+	let deleteModal: Modal;
 	/** Set whose type picker (normal / warm-up) is open. */
 	let typeFor = $state<string | null>(null);
 	let newName = $state('');
@@ -100,13 +107,51 @@
 		if (set.warmup !== warmup) updateSet(kind, set.id, { warmup });
 	}
 
+	/** Run a menu action and close the menu. */
+	function pick(action: () => unknown) {
+		menuFor = null;
+		void action();
+	}
+
+	function saveName(ex: ExerciseView, value: string) {
+		const v = value.trim();
+		if (renaming !== ex.id) return;
+		renaming = null;
+		if (v && v !== ex.name) renameExercise(kind, ex.id, v);
+	}
+
+	/**
+	 * The menu opens over its ⋯ button, growing down from it. Near the bottom of the screen
+	 * it grows up instead, and if neither way fits it is scrolled into view.
+	 */
+	function placeMenu(menu: HTMLElement) {
+		const margin = 8;
+		// offsetHeight, not the bounding box: the grow-in animation starts scaled down.
+		const height = menu.offsetHeight;
+		const button = menu.parentElement!.getBoundingClientRect();
+		if (button.top + height <= innerHeight - margin) return;
+		if (button.bottom - height >= margin) menuUp = true;
+		else menu.scrollIntoView({ block: 'nearest' });
+	}
+
+	/** Focuses and selects the name field as it appears. */
+	function focusSelect(el: HTMLInputElement) {
+		el.focus();
+		el.select();
+	}
+
 	/** Workout sets are checked off as they are performed; only checked sets count. */
 	const checkable = $derived(kind === 'workout');
 </script>
 
 <svelte:window
 	onclick={(e) => {
-		if (typeFor && !(e.target as Element).closest('.set-cell')) typeFor = null;
+		const target = e.target as Element;
+		if (typeFor && !target.closest('.set-cell')) typeFor = null;
+		if (menuFor && !target.closest('.ex-menu')) menuFor = null;
+	}}
+	onkeydown={(e) => {
+		if (e.key === 'Escape') menuFor = typeFor = null;
 	}}
 />
 
@@ -119,92 +164,159 @@
 		{#each block.items as ex, ei (ex.id)}
 			<section aria-label={ex.name}>
 				<header>
-					<h2>{ex.name}</h2>
-					<button
-						class="menu-button"
-						aria-label="Exercise options"
-						aria-expanded={menuFor === ex.id}
-						onclick={() => (menuFor = menuFor === ex.id ? null : ex.id)}
-					>
-						<svg viewBox="0 0 24 24" aria-hidden="true">
-							<circle cx="12" cy="5" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="12" cy="19" r="2" />
-						</svg>
-					</button>
-				</header>
-
-				{#if menuFor === ex.id}
-					<div class="menu">
+					{#if renaming === ex.id}
 						<input
+							class="rename"
 							aria-label="Exercise name"
 							value={ex.name}
-							onchange={(e) => {
-								const v = e.currentTarget.value.trim();
-								if (v) renameExercise(kind, ex.id, v);
+							{@attach focusSelect}
+							onblur={(e) => saveName(ex, e.currentTarget.value)}
+							onkeydown={(e) => {
+								if (e.key === 'Enter') e.currentTarget.blur();
+								if (e.key === 'Escape') renaming = null;
 							}}
 						/>
-						<div class="chips">
-							<!-- In a workout the sets usually come from the routine, so adding one lives here.
-							     The menu stays open, so repeated taps add several. -->
-							{#if checkable}
-								<button class="chip" onclick={() => addSet(kind, ex.id)}>+ Add set</button>
-							{/if}
-							<!-- A per-exercise setting: it applies to this exercise in every workout and routine. -->
-							<button class="chip" onclick={() => setTimed(ex.name, !ex.timed)}>
-								{ex.timed ? 'Log reps' : 'Log time'}
-							</button>
-							{#if block.superset}
-								<button
-									class="chip"
-									aria-label="Move {ex.name} up in superset"
-									disabled={ei === 0}
-									onclick={() => moveWithinSuperset(kind, parentId, ex.id, -1)}>↑ In superset</button
-								>
-								<button
-									class="chip"
-									aria-label="Move {ex.name} down in superset"
-									disabled={ei === block.items.length - 1}
-									onclick={() => moveWithinSuperset(kind, parentId, ex.id, 1)}>↓ In superset</button
-								>
-								<button
-									class="chip"
-									aria-label="Move superset up"
-									disabled={bi === 0}
-									onclick={() => moveBlock(kind, parentId, ex.id, -1)}>↑ Superset</button
-								>
-								<button
-									class="chip"
-									aria-label="Move superset down"
-									disabled={bi === blocks.length - 1}
-									onclick={() => moveBlock(kind, parentId, ex.id, 1)}>↓ Superset</button
-								>
-							{:else}
-								<button
-									class="chip"
-									aria-label="Move {ex.name} up"
-									disabled={bi === 0}
-									onclick={() => moveBlock(kind, parentId, ex.id, -1)}>↑ Move up</button
-								>
-								<button
-									class="chip"
-									aria-label="Move {ex.name} down"
-									disabled={bi === blocks.length - 1}
-									onclick={() => moveBlock(kind, parentId, ex.id, 1)}>↓ Move down</button
-								>
-							{/if}
-							{#if ei === 0 && bi > 0}
-								<button class="chip" onclick={() => linkToAbove(kind, parentId, ex.id)}>
-									Superset with above
+					{:else}
+						<h2>{ex.name}</h2>
+					{/if}
+					<div class="ex-menu">
+						<button
+							class="menu-button"
+							aria-label="Exercise options"
+							aria-haspopup="menu"
+							aria-expanded={menuFor === ex.id}
+							onclick={() => {
+								menuUp = false;
+								menuFor = menuFor === ex.id ? null : ex.id;
+							}}
+						>
+							<svg viewBox="0 0 24 24" aria-hidden="true">
+								<circle cx="12" cy="5" r="2" /><circle cx="12" cy="12" r="2" /><circle
+									cx="12"
+									cy="19"
+									r="2"
+								/>
+							</svg>
+						</button>
+						{#if menuFor === ex.id}
+							<div
+								class="dropdown"
+								class:up={menuUp}
+								role="menu"
+								aria-label="{ex.name} options"
+								{@attach placeMenu}
+							>
+								<button role="menuitem" onclick={() => pick(() => (renaming = ex.id))}>
+									<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z" /></svg>
+									Rename
 								</button>
-							{/if}
-							{#if block.superset}
-								<button class="chip" onclick={() => unlink(kind, parentId, ex.id)}>
-									Remove from superset
+								<!-- A per-exercise setting: it applies to this exercise in every workout and routine. -->
+								<button role="menuitem" onclick={() => pick(() => setTimed(ex.name, !ex.timed))}>
+									{#if ex.timed}
+										<svg viewBox="0 0 24 24" aria-hidden="true"
+											><path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01" /></svg
+										>
+										Log reps
+									{:else}
+										<svg viewBox="0 0 24 24" aria-hidden="true"
+											><circle cx="12" cy="13" r="8" /><path d="M12 9v4l2.5 2.5M10 2.5h4" /></svg
+										>
+										Log time
+									{/if}
 								</button>
-							{/if}
-						</div>
-						<ConfirmButton label="Delete exercise" onconfirm={() => deleteExercise(kind, parentId, ex.id)} />
+								{#if block.superset}
+									<button
+										role="menuitem"
+										aria-label="Move {ex.name} up in superset"
+										disabled={ei === 0}
+										onclick={() => pick(() => moveWithinSuperset(kind, parentId, ex.id, -1))}
+									>
+										<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6" /></svg>
+										Up in superset
+									</button>
+									<button
+										role="menuitem"
+										aria-label="Move {ex.name} down in superset"
+										disabled={ei === block.items.length - 1}
+										onclick={() => pick(() => moveWithinSuperset(kind, parentId, ex.id, 1))}
+									>
+										<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6" /></svg>
+										Down in superset
+									</button>
+									<button
+										role="menuitem"
+										aria-label="Move superset up"
+										disabled={bi === 0}
+										onclick={() => pick(() => moveBlock(kind, parentId, ex.id, -1))}
+									>
+										<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6" /></svg>
+										Move superset up
+									</button>
+									<button
+										role="menuitem"
+										aria-label="Move superset down"
+										disabled={bi === blocks.length - 1}
+										onclick={() => pick(() => moveBlock(kind, parentId, ex.id, 1))}
+									>
+										<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6" /></svg>
+										Move superset down
+									</button>
+								{:else}
+									<button
+										role="menuitem"
+										aria-label="Move {ex.name} up"
+										disabled={bi === 0}
+										onclick={() => pick(() => moveBlock(kind, parentId, ex.id, -1))}
+									>
+										<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6" /></svg>
+										Move up
+									</button>
+									<button
+										role="menuitem"
+										aria-label="Move {ex.name} down"
+										disabled={bi === blocks.length - 1}
+										onclick={() => pick(() => moveBlock(kind, parentId, ex.id, 1))}
+									>
+										<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6" /></svg>
+										Move down
+									</button>
+								{/if}
+								{#if ei === 0 && bi > 0}
+									<button role="menuitem" onclick={() => pick(() => linkToAbove(kind, parentId, ex.id))}>
+										<svg viewBox="0 0 24 24" aria-hidden="true"
+											><path
+												d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"
+											/></svg
+										>
+										Superset with above
+									</button>
+								{/if}
+								{#if block.superset}
+									<button role="menuitem" onclick={() => pick(() => unlink(kind, parentId, ex.id))}>
+										<svg viewBox="0 0 24 24" aria-hidden="true"
+											><path d="M15 9l-6 6M9 9l6 6" /><circle cx="12" cy="12" r="9" /></svg
+										>
+										Remove from superset
+									</button>
+								{/if}
+								<button
+									role="menuitem"
+									class="danger-item"
+									onclick={() =>
+										pick(() => {
+											deleting = ex.id;
+											deleteModal.open();
+										})}
+								>
+									<svg viewBox="0 0 24 24" aria-hidden="true"
+										><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" /></svg
+									>
+									Delete exercise
+								</button>
+							</div>
+						{/if}
 					</div>
-				{/if}
+				</header>
 
 				<div class="sets" class:with-prev={kind === 'workout'}>
 					<span class="th">Set</span>
@@ -314,7 +426,7 @@
 									inputmode="numeric"
 									pattern="[0-9]*"
 									aria-label="Maximum reps for set {si + 1}"
-									placeholder="max"
+									placeholder="0"
 									value={set.rep_max ? String(set.rep_max) : ''}
 									onchange={(e) =>
 										saveRepTarget(set, set.reps, parseReps(e.currentTarget.value), e.currentTarget)}
@@ -363,12 +475,10 @@
 					{/each}
 				</div>
 
-				{#if !checkable}
-					<button class="add-set" onclick={() => addSet(kind, ex.id)}>
-						<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
-						Add set
-					</button>
-				{/if}
+				<button class="add-set" onclick={() => addSet(kind, ex.id)}>
+					<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+					Add set
+				</button>
 			</section>
 		{/each}
 	</div>
@@ -384,6 +494,21 @@
 	/>
 	<button class="primary" type="submit" disabled={!newName.trim()}>Add</button>
 </form>
+
+<!-- One confirm for every exercise; the menu that asked has closed by the time it shows. -->
+<Modal bind:this={deleteModal} title="Delete exercise?" message="This can't be undone.">
+	{#snippet buttons(close)}
+		<button onclick={close}>Cancel</button>
+		<button
+			class="destructive"
+			onclick={async () => {
+				close();
+				if (deleting) await deleteExercise(kind, parentId, deleting);
+				deleting = null;
+			}}>Delete</button
+		>
+	{/snippet}
+</Modal>
 <datalist id="exercise-names">
 	{#each names.current as n (n)}
 		<option value={n}></option>
@@ -435,6 +560,90 @@
 		stroke-linejoin: round;
 	}
 
+	.ex-menu {
+		position: relative;
+		flex: none;
+	}
+
+	.rename {
+		flex: 1;
+		min-width: 0;
+		font-size: 1.3rem;
+		font-weight: 600;
+		color: var(--accent);
+		background: transparent;
+		padding: 0.15rem 0.4rem;
+	}
+
+	/* Options for one exercise, under its ⋯ button. Same look as the set type menu. */
+	/* Opens over the ⋯ button, which it hides, and grows out of its corner. */
+	.dropdown {
+		position: absolute;
+		top: 0;
+		right: 0;
+		z-index: 20;
+		transform-origin: top right;
+		animation: menu-in 0.16s cubic-bezier(0.2, 0.9, 0.3, 1.1);
+		display: flex;
+		flex-direction: column;
+		min-width: 220px;
+		padding: 4px;
+		border-radius: 12px;
+		background: var(--surface);
+		box-shadow:
+			0 12px 32px rgba(0, 0, 0, 0.35),
+			0 0 0 1px var(--border);
+	}
+
+	.dropdown.up {
+		top: auto;
+		bottom: 0;
+		transform-origin: bottom right;
+	}
+
+	@keyframes menu-in {
+		from {
+			opacity: 0;
+			transform: scale(0.85);
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.dropdown {
+			animation: none;
+		}
+	}
+
+	.dropdown button {
+		display: flex;
+		align-items: center;
+		gap: 0.65rem;
+		min-height: 44px;
+		padding: 0 0.7rem;
+		background: transparent;
+		border-radius: 8px;
+		text-align: left;
+		font-size: 0.95rem;
+		white-space: nowrap;
+	}
+
+	.dropdown button:active:not(:disabled) {
+		background: var(--border);
+	}
+
+	.dropdown svg {
+		width: 18px;
+		height: 18px;
+		flex: none;
+	}
+
+	/* Delete sits apart at the bottom. */
+	.dropdown .danger-item {
+		margin-top: 4px;
+		border-top: 1px solid var(--border);
+		border-radius: 0 0 8px 8px;
+	}
+
 	.menu-button {
 		background: transparent;
 		padding: 0;
@@ -442,36 +651,15 @@
 		color: var(--text);
 	}
 
+	.menu-button[aria-expanded='true'] {
+		visibility: hidden;
+	}
+
 	.menu-button svg {
 		width: 22px;
 		height: 22px;
 		fill: currentColor;
 		stroke: none;
-	}
-
-	.menu {
-		display: flex;
-		flex-direction: column;
-		align-items: flex-start;
-		gap: 0.6rem;
-		background: var(--surface);
-		border-radius: var(--radius);
-		padding: 0.75rem;
-		margin-bottom: 1rem;
-	}
-
-	.chips {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.4rem;
-	}
-
-	.chip {
-		background: var(--border);
-		border-radius: 999px;
-		min-height: 36px;
-		padding: 0.35rem 0.85rem;
-		font-size: 0.9rem;
 	}
 
 	/* Set table as a grid: Set | (Previous) | kg | Reps | delete */
@@ -638,10 +826,6 @@
 	.rep-range input {
 		flex: 1;
 		min-width: 0;
-	}
-
-	.rep-range .max::placeholder {
-		font-size: 0.85rem;
 	}
 
 	.dash {

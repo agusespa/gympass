@@ -88,16 +88,16 @@ export async function fillSet(page: Page, ex: string, n: number, kg: string, rep
 
 /** Add n sets to an exercise: the button in a routine, the exercise menu in a workout. */
 export async function addSet(page: Page, ex: string, n = 1) {
+	const button = exercise(page, ex).getByRole('button', { name: 'Add set', exact: true });
+	for (let i = 0; i < n; i++) await button.click();
+}
+
+/** Open an exercise's ⋯ menu and pick an item; the menu closes after it. */
+export async function exerciseMenu(page: Page, ex: string, item: string) {
 	const section = exercise(page, ex);
-	const button = section.getByRole('button', { name: 'Add set', exact: true });
-	if ((await button.count()) > 0) {
-		for (let i = 0; i < n; i++) await button.click();
-		return;
-	}
-	const menu = section.getByRole('button', { name: 'Exercise options' });
-	await menu.click();
-	for (let i = 0; i < n; i++) await section.getByRole('button', { name: '+ Add set' }).click();
-	await menu.click();
+	await section.getByRole('button', { name: 'Exercise options' }).click();
+	await section.getByRole('menuitem', { name: item, exact: true }).click();
+	await expect(section.getByRole('menu')).toHaveCount(0);
 }
 
 /** Exercise names on the page, in display order. */
