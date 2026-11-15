@@ -153,7 +153,7 @@ func newMCPServer(s *store.Store, write bool) *mcp.Server {
 			"Call get_routine first and send back everything you want to keep. Returns the saved routine.",
 		Annotations: &mcp.ToolAnnotations{DestructiveHint: new(true), IdempotentHint: true, OpenWorldHint: new(false)},
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in updateRoutineArgs) (*mcp.CallToolResult, store.Routine, error) {
-		r, err := routineInput{ID: in.ID, Name: in.Name, Exercises: in.Exercises}.routine()
+		r, err := routineInput(in).routine()
 		if err != nil {
 			return nil, store.Routine{}, err
 		}
