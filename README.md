@@ -17,7 +17,15 @@ A personal, offline-first workout logger PWA for iPhone, installed via **Add to 
 
 ## Quick Start
 
-The application is distributed as a multi-platform Docker image (linux/amd64, linux/arm64) via the GitHub Container Registry. Use the provided `docker-compose.yml`. Navigate to the project root and run:
+The application is distributed as a multi-platform Docker image (linux/amd64, linux/arm64) via the GitHub Container Registry. Use the provided `docker-compose.yml`, which runs the app together with the Cloudflare Tunnel it must be reached through.
+
+First create the tunnel and its Access policy as described in [Secure Hosting](#secure-hosting), and put the tunnel token in a `.env` file next to `docker-compose.yml`:
+
+```
+TUNNEL_TOKEN=<your tunnel token>
+```
+
+Then, from the project root:
 
 ```bash
 mkdir -p data && sudo chown 65532:65532 data
@@ -30,7 +38,7 @@ docker compose up -d
 > [!NOTE]
 > The image runs as the distroless `nonroot` user (UID 65532), so it needs to own the `data` directory.
 
-Set up the tunnel in [Secure Hosting](#secure-hosting), then open its address on your phone and choose **Share → Add to Home Screen**.
+Open the tunnel's address on your phone and choose **Share → Add to Home Screen**.
 
 ### Configuration
 The application is configured using environment variables. All are **optional**:
@@ -39,22 +47,21 @@ The application is configured using environment variables. All are **optional**:
 - `WEBHOOK_URL`: Endpoint to POST finished workouts to. The webhook is off when unset.
 - `WEBHOOK_SECRET`: Sent as `Authorization: Bearer <secret>`.
 - `WEBHOOK_DELAY`: Wait after the last change before sending, so a burst of edits becomes one send (default: `30s`).
-- `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD`: Your Zero Trust team domain (e.g. `myteam.cloudflareaccess.com`) and the Access application's **Application Audience (AUD) Tag**. With both set, `/mcp` only accepts requests carrying a valid Cloudflare Access token, which Access's [Managed OAuth](#ai-assistants) needs.
 
-Set them in the `environment` section of `docker-compose.yml`, or in a `.env` file next to it.
+Set them in the `environment` section of `docker-compose.yml`.
 
 ## Secure Hosting
 
-The app has no built-in authentication, so host it on a local server and expose it with a Cloudflare Tunnel. The tunnel (`cloudflared`) makes an outbound-only connection to Cloudflare's network, so you can reach the app from anywhere without opening ports on your router.
+> [!IMPORTANT]
+> The app has no login of its own, and that includes the sync endpoint, the automation API and MCP. It must only be reachable through a Cloudflare Tunnel protected by Cloudflare Access. Never publish its port on the host or your network: anything that can reach the container directly can read and change all your data.
 
-Point the tunnel at `http://localhost:8080`, then add an Access Application in the Cloudflare Dashboard with a Policy that only allows your own email address.
+The tunnel (`cloudflared`) makes an outbound-only connection to Cloudflare's network, so you can reach the app from anywhere without opening ports on your router. The provided compose file runs `cloudflared` next to the app and publishes no port, so the tunnel is the only way in.
 
-The compose file publishes port 8080 on `127.0.0.1` only, so other devices on your network can't bypass the tunnel and Access to reach the app (the sync endpoint has no login of its own). Everything, your phone included, goes through the tunnel.
+1. In Cloudflare Zero Trust, go to **Networks → Tunnels** and create a tunnel. Copy its token into `.env` as `TUNNEL_TOKEN`.
+2. Add a public hostname to the tunnel (e.g. `gym.example.com`) with the service `http://gym-tracker:8080`.
+3. Add an Access application for that hostname with a policy that only allows your own email address.
 
-If `cloudflared` runs in Docker on the same network as this service, use
-`http://gym-tracker:8080` instead, and remove the `ports` section so the app
-isn't published on the host at all. Inside the tunnel container, `localhost`
-refers to that container.
+Other containers on the same Docker network (e.g. n8n) can also reach `http://gym-tracker:8080` without going through Access, so only run services you trust there.
 
 > [!TIP]
 > When the Access session expires, the app keeps your local changes and shows a banner asking you to reload. The reload goes through the Access login and the kept changes sync afterwards.
@@ -255,9 +262,8 @@ claude mcp add --transport http gym-tracker https://gym.example.com/mcp --header
 
 Assistants like Claude (web, desktop and phone) and ChatGPT connect to MCP servers from their own cloud and log in with OAuth, so they can't send a service token. Let Cloudflare Access be the OAuth server instead:
 
-1. Set `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD` so the app checks the token Access attaches to each request (Cloudflare requires this before enabling the next step).
-2. In Zero Trust, edit the Access application, and under **Advanced settings** turn on **Managed OAuth**.
-3. Add `https://gym.example.com/mcp` as a custom connector in your assistant (in Claude: **Settings → Connectors → Add custom connector**, OAuth fields left empty). The assistant registers itself, and you log in through your normal Access policy. In Claude, the connector then also shows up in the phone app.
+1. In Zero Trust, edit the Access application, and under **Advanced settings** turn on **Managed OAuth**. Under **Allowed redirect URIs**, add your assistant's OAuth callback, or it can't register ("redirect_uri is not allowed"). For Claude, add `https://claude.ai/api/mcp/auth_callback` and `https://claude.com/api/mcp/auth_callback`.
+2. Add `https://gym.example.com/mcp` as a custom connector in your assistant (in Claude: **Settings → Connectors → Add custom connector**, OAuth fields left empty). The assistant registers itself, and you log in through your normal Access policy. In Claude, the connector then also shows up in the phone app.
 
 ## Usage Notes
 

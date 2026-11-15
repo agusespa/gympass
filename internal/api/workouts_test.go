@@ -51,7 +51,7 @@ func newReadServer(t *testing.T) *httptest.Server {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := httptest.NewServer(New(s, fstest.MapFS{}, Options{}))
+	srv := httptest.NewServer(New(s, fstest.MapFS{}))
 	t.Cleanup(srv.Close)
 	return srv
 }

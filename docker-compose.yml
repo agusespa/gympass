@@ -1,12 +1,11 @@
+# The app has no login of its own. It must only be reachable through a
+# Cloudflare Tunnel protected by Cloudflare Access (see README, "Secure
+# Hosting"), so it publishes no port: cloudflared reaches it over this
+# compose network. Never add a "ports" section to gym-tracker.
 services:
   gym-tracker:
     image: ghcr.io/agusespa/gym-tracker:latest
     restart: unless-stopped
-    # Reachable only from this machine (for a cloudflared running on the
-    # host), never from the LAN: all other access goes through the tunnel.
-    # If cloudflared runs in Docker on the same network, remove "ports".
-    ports:
-      - "127.0.0.1:8080:8080"
     volumes:
       - ./data:/app/data
     environment:
@@ -15,7 +14,14 @@ services:
       # Optional: POST finished workouts to n8n (see README, "Webhook").
       # WEBHOOK_URL: https://n8n.example.com/webhook/gym-tracker
       # WEBHOOK_SECRET: change-me
-      # Optional: let AI assistants log in to /mcp through Cloudflare Access
-      # (see README, "AI assistants").
-      # CF_ACCESS_TEAM_DOMAIN: myteam.cloudflareaccess.com
-      # CF_ACCESS_AUD: <Application Audience (AUD) Tag>
+
+  cloudflared:
+    image: cloudflare/cloudflared:2026.10.7
+    restart: unless-stopped
+    command: tunnel run
+    environment:
+      # From Zero Trust > Networks > Tunnels. In the tunnel's public
+      # hostname, point the service at http://gym-tracker:8080.
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN}
+    depends_on:
+      - gym-tracker

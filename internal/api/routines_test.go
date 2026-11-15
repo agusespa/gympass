@@ -19,7 +19,7 @@ func newRoutineServer(t *testing.T) *httptest.Server {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = s.Close() })
-	srv := httptest.NewServer(New(s, fstest.MapFS{}, Options{}))
+	srv := httptest.NewServer(New(s, fstest.MapFS{}))
 	t.Cleanup(srv.Close)
 	return srv
 }

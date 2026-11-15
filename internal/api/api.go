@@ -27,21 +27,13 @@ type syncBody struct {
 	Rejected []store.Rejection      `json:"rejected,omitempty"`
 }
 
-// Options configures New. The zero value is fine.
-type Options struct {
-	MCPGuard func(http.Handler) http.Handler
-}
-
 // New returns the HTTP handler. static is the built frontend (may be empty).
 //
 // The app has no login of its own: it is meant to be reached only through
 // Cloudflare Access (see the README). Requests that change data are refused
 // when a browser marks them as coming from another site, so a page you visit
 // can't use your Access session to edit your data.
-//
-// Options.MCPGuard, when set, wraps /mcp (e.g. to require a Cloudflare Access
-// token, which Access's Managed OAuth for MCP clients depends on).
-func New(s *store.Store, static fs.FS, opts Options) http.Handler {
+func New(s *store.Store, static fs.FS) http.Handler {
 	mux := http.NewServeMux()
 	metrics := newSyncMetrics()
 	mux.Handle("POST /api/sync", metrics.instrument(syncHandler(s, metrics)))
@@ -51,11 +43,7 @@ func New(s *store.Store, static fs.FS, opts Options) http.Handler {
 	mux.Handle("GET /api/routines/{id}", getRoutineHandler(s))
 	mux.Handle("POST /api/routines", createRoutineHandler(s))
 	mux.Handle("PUT /api/routines/{id}", replaceRoutineHandler(s))
-	mcpHandler := newMCPHandler(s)
-	if opts.MCPGuard != nil {
-		mcpHandler = opts.MCPGuard(mcpHandler)
-	}
-	mux.Handle("/mcp", mcpHandler)
+	mux.Handle("/mcp", newMCPHandler(s))
 	mux.Handle("GET /metrics", metrics.handler())
 	mux.HandleFunc("GET /api/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
