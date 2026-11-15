@@ -4,7 +4,7 @@
 # compose network. Never add a "ports" section to gym-tracker.
 services:
   gym-tracker:
-    image: ghcr.io/agusespa/gym-tracker:latest
+    image: ghcr.io/agusespa/gympass:latest
     restart: unless-stopped
     volumes:
       - ./data:/app/data

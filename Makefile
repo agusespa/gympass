@@ -1,6 +1,6 @@
 .PHONY: hooks verify dev run web build test lint e2e docker
 
-IMAGE ?= ghcr.io/agusespa/gym-tracker:latest
+IMAGE ?= ghcr.io/agusespa/gympass:latest
 PLATFORMS ?= linux/amd64,linux/arm64
 
 hooks:

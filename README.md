@@ -22,7 +22,7 @@ A personal, offline-first web app for managing workout gym sessions.
 > [!IMPORTANT]
 > The app has no login of its own, and that includes the sync endpoint, the API and MCP. It must only be reachable through a Cloudflare Tunnel protected by Cloudflare Access. Never add a `ports` section to the `gym-tracker` service or otherwise expose it: anything that can reach the container directly can read and change all your data.
 
-The provided [`docker-compose.yml`](docker-compose.yml) runs the app (`ghcr.io/agusespa/gym-tracker`) next to `cloudflared`, which connects out to Cloudflare, so no port is opened on the server or your router.
+The provided [`docker-compose.yml`](docker-compose.yml) runs the app (`ghcr.io/agusespa/gympass`) next to `cloudflared`, which connects out to Cloudflare, so no port is opened on the server or your router.
 
 1. In Cloudflare Zero Trust, go to **Networks → Tunnels** and create a tunnel.
 2. Add a public hostname to the tunnel (e.g. `gym.example.com`) with the service `http://gym-tracker:8080`.
