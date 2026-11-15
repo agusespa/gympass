@@ -17,6 +17,17 @@
 		goal > 0
 			? `${w.workouts} / ${goal} workouts`
 			: `${w.workouts} ${w.workouts === 1 ? 'workout' : 'workouts'}`;
+	/**
+	 * The current week, compared with last week's volume. The week is usually still under way,
+	 * so short of last week it reads as progress ("62% of last week") rather than a drop.
+	 */
+	const vsLastWeek = $derived.by(() => {
+		const prev = weeks.at(-2)?.volume ?? 0;
+		const now = weeks.at(-1)?.volume ?? 0;
+		if (!prev) return '';
+		const pct = Math.round((now / prev) * 100);
+		return pct < 100 ? `${pct}% of last week` : `+${pct - 100}% vs last week`;
+	});
 	const label = (w: Week, i: number) =>
 		`Week of ${shortDate(w.start)}: ${tonnage(w.volume)}, ${count(w)}${missed(i) ? ', goal missed' : ''}`;
 </script>
@@ -26,7 +37,11 @@
 		<span class="muted">{index === weeks.length - 1 ? 'This week' : `Week of ${shortDate(shown.start)}`}</span
 		>
 		<strong data-testid="week-volume">{tonnage(shown.volume)}</strong>
-		<span class="muted" class:missed={missed(index)} data-testid="week-workouts">{count(shown)}</span>
+		{#if index < weeks.length - 1}
+			<span class="muted" class:missed={missed(index)} data-testid="week-workouts">{count(shown)}</span>
+		{:else if vsLastWeek}
+			<span class="muted" data-testid="week-trend">{vsLastWeek}</span>
+		{/if}
 	</div>
 	<div class="plot" role="group" aria-label="Volume per week, last {weeks.length} weeks">
 		{#each weeks as w, i (w.start)}

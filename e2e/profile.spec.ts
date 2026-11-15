@@ -203,6 +203,15 @@ test("weekly goal syncs and flags weeks that fall short", async ({
   await expect(
     chart.getByRole("button", { name: /goal missed/ }).first(),
   ).toBeVisible();
+  // The stat tile already shows this week's count, so the chart only shows it for past weeks.
+  await expect(chart.getByTestId("week-workouts")).toHaveCount(0);
+  await chart
+    .getByRole("button", { name: /goal missed/ })
+    .first()
+    .click();
+  await expect(chart.getByTestId("week-workouts")).toContainText(
+    "/ 3 workouts",
+  );
 
   await page.getByRole("link", { name: "Settings" }).click();
   const fewer = page.getByRole("button", { name: "Fewer workouts per week" });
