@@ -52,3 +52,17 @@ export function duration(ms: number): string {
 	const m = min % 60;
 	return h > 0 ? (m > 0 ? `${h} h ${m} min` : `${h} h`) : `${m} min`;
 }
+
+/** Total weight lifted, e.g. 8450 → "8,450 kg", 124_300 → "124 t" (separators follow the locale). */
+export function tonnage(kgTotal: number): string {
+	if (kgTotal >= 100_000) return `${Math.round(kgTotal / 1000).toLocaleString()} t`;
+	if (kgTotal >= 10_000)
+		return `${(kgTotal / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 })} t`;
+	return `${Math.round(kgTotal).toLocaleString()} kg`;
+}
+
+/** "2026-11-09" → "9 Nov" in the device locale. */
+export function shortDate(iso: string): string {
+	const [y, m, d] = iso.split('-').map(Number);
+	return new Date(y, m - 1, d).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+}

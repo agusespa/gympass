@@ -14,6 +14,8 @@ type Wire = Omit<Synced, 'dirty'> & Record<string, unknown>;
 type Changes = Partial<Record<SyncedTable, Wire[]>>;
 
 const CURSOR_KEY = 'cursor';
+/** Meta key holding when the last sync succeeded, ms. */
+export const LAST_SYNCED_KEY = 'last_synced';
 const DEBOUNCE_MS = 800;
 
 function table(name: SyncedTable) {
@@ -53,6 +55,7 @@ async function apply(sent: Changes, received: Changes, cursor: number) {
 			}
 		}
 		await db.meta.put({ key: CURSOR_KEY, value: cursor });
+		await db.meta.put({ key: LAST_SYNCED_KEY, value: Date.now() });
 	});
 }
 

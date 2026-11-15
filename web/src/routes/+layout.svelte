@@ -13,7 +13,7 @@
 
 	const onProfile = $derived(page.url.pathname.startsWith('/profile'));
 	/** Tabs show only on the two tab screens; workout and routine screens use their back button. */
-	const showTabs = $derived(page.url.pathname === '/' || onProfile);
+	const showTabs = $derived(page.url.pathname === '/' || page.url.pathname === '/profile');
 </script>
 
 <svelte:head>

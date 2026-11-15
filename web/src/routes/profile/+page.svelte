@@ -1,15 +1,59 @@
 <script lang="ts">
-	import { duration, longDate } from '#lib/format.ts';
+	import { duration, kg, longDate, shortDate, tonnage } from '#lib/format.ts';
 	import { live } from '#lib/live.svelte.ts';
 	import { listWorkouts, today, type WorkoutSummary } from '#lib/repo.ts';
+	import {
+		exerciseStats,
+		loadHistory,
+		recentRecords,
+		summary,
+		weekly,
+		type ExerciseStats,
+		type History,
+		type RecentRecord
+	} from '#lib/stats.ts';
+	import WeeklyChart from '#lib/WeeklyChart.svelte';
 
 	const workouts = live(
 		() => null,
 		() => listWorkouts(),
 		[] as WorkoutSummary[]
 	);
+	const history = live(
+		() => null,
+		() => loadHistory(),
+		{ workoutDates: [], performances: [] } as History
+	);
 
 	const todayIso = today();
+	const stats = $derived(summary(history.current, todayIso));
+	const weeks = $derived(weekly(history.current, todayIso));
+	const exercises = $derived(exerciseStats(history.current));
+	const records = $derived(recentRecords(exercises, todayIso).slice(0, 5));
+
+	/** Records from the last two weeks get a "New" badge. */
+	const newSince = (() => {
+		const d = new Date();
+		d.setDate(d.getDate() - 14);
+		return iso(d);
+	})();
+
+	function recordText(r: RecentRecord): string {
+		const s = r.record.set;
+		if (r.kind === 'reps') return `${s.reps} reps`;
+		if (r.kind === 'e1rm') return `${kg(Math.round(r.record.value * 10) / 10)} kg est. 1RM`;
+		return `${kg(s.weight_kg)} kg × ${s.reps}`;
+	}
+
+	function exerciseLine(x: ExerciseStats): string {
+		const sessions = `${x.sessions} ${x.sessions === 1 ? 'session' : 'sessions'}`;
+		const h = x.heaviest?.set;
+		if (h?.weight_kg) return `${sessions} · best ${kg(h.weight_kg)} kg × ${h.reps}`;
+		if (x.mostReps) return `${sessions} · best ${x.mostReps.set.reps} reps`;
+		return sessions;
+	}
+
+	const exerciseHref = (key: string) => `/exercises/${encodeURIComponent(key)}`;
 	let selected = $state(todayIso);
 	// First day of the month on screen.
 	let month = $state(new Date(Number(todayIso.slice(0, 4)), Number(todayIso.slice(5, 7)) - 1, 1));
@@ -50,7 +94,36 @@
 	}
 </script>
 
-<h1 class="large-title">Profile</h1>
+<div class="title-row">
+	<h1 class="large-title">Profile</h1>
+	<a class="settings" href="/profile/settings" aria-label="Settings">
+		<svg viewBox="0 0 24 24" aria-hidden="true">
+			<circle cx="12" cy="12" r="3" />
+			<path
+				d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
+			/>
+		</svg>
+	</a>
+</div>
+
+<dl class="stats" aria-label="Summary">
+	<div>
+		<dt>This week</dt>
+		<dd data-testid="stat-week">{stats.thisWeek}</dd>
+	</div>
+	<div>
+		<dt>Streak</dt>
+		<dd data-testid="stat-streak">{stats.streakWeeks} {stats.streakWeeks === 1 ? 'wk' : 'wks'}</dd>
+	</div>
+	<div>
+		<dt>Workouts</dt>
+		<dd data-testid="stat-total">{stats.total}</dd>
+	</div>
+	<div>
+		<dt>Lifted</dt>
+		<dd data-testid="stat-volume">{tonnage(stats.totalVolume)}</dd>
+	</div>
+</dl>
 
 <section class="card calendar" aria-label="Workout calendar">
 	<div class="head">
@@ -108,7 +181,161 @@
 	</a>
 {/each}
 
+<h2 class="section-title">Weekly volume</h2>
+<WeeklyChart {weeks} />
+
+<h2 class="section-title">Records</h2>
+{#if history.loaded && records.length === 0}
+	<p class="muted">Beat a previous best and it shows up here.</p>
+{:else if records.length > 0}
+	<ul class="card list" aria-label="Recent records">
+		{#each records as r (r.key + r.kind)}
+			<li>
+				<a href={exerciseHref(r.key)}>
+					<span class="row-main">
+						<strong>{r.name}</strong>
+						<span class="muted">{recordText(r)}</span>
+					</span>
+					<span class="row-side">
+						{#if r.record.date >= newSince}<span class="badge">New</span>{/if}
+						<span class="muted">{shortDate(r.record.date)}</span>
+					</span>
+				</a>
+			</li>
+		{/each}
+	</ul>
+{/if}
+
+<h2 class="section-title">Exercises</h2>
+{#if history.loaded && exercises.length === 0}
+	<p class="muted">Exercises you finish show up here.</p>
+{:else if exercises.length > 0}
+	<ul class="card list" aria-label="Exercises">
+		{#each exercises as x (x.key)}
+			<li>
+				<a href={exerciseHref(x.key)}>
+					<span class="row-main">
+						<strong>{x.name}</strong>
+						<span class="muted">{exerciseLine(x)}</span>
+					</span>
+					<svg class="chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7" /></svg>
+				</a>
+			</li>
+		{/each}
+	</ul>
+{/if}
+
 <style>
+	.title-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+	}
+
+	.settings {
+		display: grid;
+		place-items: center;
+		width: 44px;
+		height: 44px;
+		margin: -0.5rem -0.5rem 0.5rem 0;
+		color: var(--accent);
+	}
+
+	.settings svg,
+	.chevron {
+		width: 24px;
+		height: 24px;
+		fill: none;
+		stroke: currentColor;
+		stroke-width: 1.8;
+		stroke-linecap: round;
+		stroke-linejoin: round;
+	}
+
+	.stats {
+		display: grid;
+		grid-template-columns: repeat(4, 1fr);
+		gap: 0.5rem;
+		margin: 0 0 0.75rem;
+	}
+
+	.stats div {
+		background: var(--surface);
+		border-radius: var(--radius);
+		padding: 0.7rem 0.4rem;
+		text-align: center;
+		min-width: 0;
+	}
+
+	.stats dt {
+		font-size: 0.75rem;
+		color: var(--muted);
+	}
+
+	.stats dd {
+		margin: 0.2rem 0 0;
+		font-size: 1.1rem;
+		font-weight: 600;
+		white-space: nowrap;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.list {
+		list-style: none;
+		margin: 0 0 0.75rem;
+		padding: 0 0.9rem;
+	}
+
+	.list li + li {
+		border-top: 1px solid var(--border);
+	}
+
+	.list a {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		padding: 0.7rem 0;
+		color: inherit;
+	}
+
+	.list a:active {
+		opacity: 0.7;
+	}
+
+	.row-main {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.1rem;
+	}
+
+	.row-main strong {
+		font-weight: 600;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.row-main .muted,
+	.row-side .muted {
+		font-size: 0.88rem;
+	}
+
+	.row-side {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+		white-space: nowrap;
+	}
+
+	.chevron {
+		width: 18px;
+		height: 18px;
+		color: var(--muted);
+		flex: none;
+	}
+
 	.calendar {
 		padding: 0.9rem 0.75rem 0.75rem;
 	}
