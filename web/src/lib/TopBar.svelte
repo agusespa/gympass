@@ -33,7 +33,12 @@
 			<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
 		</button>
 	{/if}
-	<span class="title" role={titleLabel ? 'timer' : undefined} aria-label={titleLabel}>{title}</span>
+	<!-- No whitespace around the text, so the timer reads exactly "0:42". -->
+	<span class="title" role={titleLabel ? 'timer' : undefined} aria-label={titleLabel}
+		>{#if titleLabel && title}<svg class="clock" viewBox="0 0 24 24" aria-hidden="true"
+				><circle cx="12" cy="13.5" r="7.5" /><path d="M12 13.5V10M10 2.5h4M12 2.5V6M18.5 6.5l1.5-1.5" /></svg
+			>{/if}{title}</span
+	>
 	{#if action}
 		<span class="action">{@render action()}</span>
 	{/if}
@@ -88,6 +93,17 @@
 		font-weight: 500;
 		/* Digits keep their width so a ticking clock doesn't jitter. */
 		font-variant-numeric: tabular-nums;
+	}
+
+	.clock {
+		width: 20px;
+		height: 20px;
+		margin-right: 0.4rem;
+		fill: none;
+		stroke: var(--accent);
+		stroke-width: 2.2;
+		stroke-linecap: round;
+		stroke-linejoin: round;
 	}
 
 	.action {
