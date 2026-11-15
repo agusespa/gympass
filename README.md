@@ -38,7 +38,8 @@ The application is configured using environment variables. All are **optional**:
 - `WEBHOOK_URL`: Endpoint to POST finished workouts to. The webhook is off when unset.
 - `WEBHOOK_SECRET`: Sent as `Authorization: Bearer <secret>`.
 - `WEBHOOK_DELAY`: Wait after the last change before sending, so a burst of edits becomes one send (default: `30s`).
-- `API_TOKEN`: Enables the [read API](#read-api); requests must send `Authorization: Bearer <token>`. The read API is off when unset. Use a long random value, e.g. `openssl rand -hex 32`.
+- `API_TOKEN`: Enables the read endpoints of the [automation API](#automation-api); requests must send `Authorization: Bearer <token>`. Use a long random value, e.g. `openssl rand -hex 32`.
+- `API_WRITE_TOKEN`: Allows creating and changing routines through the automation API, and reading everything `API_TOKEN` can. Must differ from `API_TOKEN`. The API is off while both are unset.
 
 Set them in the `environment` section of `docker-compose.yml`, or in a `.env` file next to it.
 
@@ -47,6 +48,10 @@ Set them in the `environment` section of `docker-compose.yml`, or in a `.env` fi
 The app has no built-in authentication, so host it on a local server and expose it with a Cloudflare Tunnel. The tunnel (`cloudflared`) makes an outbound-only connection to Cloudflare's network, so you can reach the app from anywhere without opening ports on your router.
 
 Point the tunnel at `http://localhost:8080`, then add an Access Application in the Cloudflare Dashboard with a Policy that only allows your own email address.
+
+If `cloudflared` runs in Docker on the same network as this service, use
+`http://gym-tracker:8080` instead. Inside the tunnel container, `localhost` refers
+to that container.
 
 > [!TIP]
 > When the Access session expires, the app keeps your local changes and shows a banner asking you to reload. The reload goes through the Access login and the kept changes sync afterwards.
@@ -61,6 +66,52 @@ The application uses a **Bind Mount** so your data persists on the host machine.
 
 The phone also keeps a full copy in IndexedDB, so the server can be offline for a while without losing anything.
 
+## Health & Monitoring
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/healthz` | Liveness: returns `200` and `{"status":"ok"}` while the HTTP server is responsive. |
+| `GET /api/readyz` | Readiness: verifies SQLite can update its sync metadata in a rolled-back transaction. Returns `200` with `{"status":"ready"}`, or `503` with `{"status":"not_ready"}`. |
+| `GET /metrics` | Prometheus metrics for sync request counts by HTTP response code and request duration. |
+
+These responses are not cached. Readiness has a two-second database deadline;
+it does not depend on the optional webhook receiver. Health checks never commit
+changes or advance the sync cursor. Use these explicit endpoints rather than
+`/` or `/health`, since the SPA fallback can return HTML with HTTP 200.
+
+The image includes a health check every 30 seconds, with a 10-second startup
+period and three consecutive failures before Docker marks it unhealthy. It uses
+the Go binary directly, so it works in the distroless image without a shell:
+
+```bash
+docker compose exec gym-tracker /app/gym-tracker healthcheck
+docker compose ps
+```
+
+The command checks `http://127.0.0.1:${PORT:-8080}/api/readyz` with a three-second
+timeout. It accepts only HTTP 200 with the expected JSON readiness response,
+rejects redirects, and exits nonzero on failure. It does not open the database
+or start the server or webhook worker. Docker's health status does not by itself
+restart an unhealthy container.
+
+Configure Prometheus to scrape `gym-tracker:8080/metrics` on the shared Docker
+network. The app exports:
+
+- `gym_tracker_sync_requests_total{code="200|400|500"}`: successful syncs,
+  validation failures, and server failures. The `code` label contains one actual
+  status code per series; probes and metric scrapes are excluded.
+- `gym_tracker_sync_request_duration_seconds`: a histogram of sync request
+  duration, including `_bucket`, `_sum`, and `_count` series.
+
+For example, a server-error alert can use:
+
+```promql
+sum(rate(gym_tracker_sync_requests_total{code="500"}[5m])) > 0
+```
+
+Blackbox probes, scrape and backup alerts, dashboards, and automatic monitoring
+configuration reloads are managed by the home-lab infrastructure repository.
+
 ## Backups & Recovery
 
 The database runs in **Write-Ahead Logging (WAL)** mode, which allows safe "hot" backups while the application is running.
@@ -73,6 +124,11 @@ Use `sqlite3` on the host for a consistent backup (copying the file directly can
 sqlite3 ./data/gym.db ".backup '/path/to/your/nas/gym_backup.db'"
 ```
 
+The distroless image has no `sqlite3` shell; run that command on the host.
+Back up the complete database, including sync cursors, deletion tombstones, and
+the webhook outbox. Server backups contain only data already synced from phones;
+pending offline edits remain on the device until its next successful sync.
+
 > [!TIP]
 > Automate it with a crontab entry on the host:
 > ```bash
@@ -84,6 +140,13 @@ sqlite3 ./data/gym.db ".backup '/path/to/your/nas/gym_backup.db'"
 2. Remove the old WAL files and overwrite the DB: `rm -f ./data/gym.db-wal ./data/gym.db-shm && cp /path/to/nas/gym_backup_20260101.db ./data/gym.db`.
 3. Fix ownership so the container can write to it: `sudo chown 65532:65532 ./data/gym.db`.
 4. Start the container: `docker compose up -d`.
+5. Check readiness with `docker compose exec gym-tracker /app/gym-tracker healthcheck`.
+
+Test restores against a temporary copy before replacing live data, including
+reconnecting a client with an existing sync cursor and pending local edits.
+Restoring an older database can replay pending webhooks, so the receiver should
+continue to upsert by workout ID. Scheduled backups, retention, backup-freshness
+alerts, and automated restore checks belong in the home-lab configuration.
 
 ## Webhook
 
@@ -108,9 +171,13 @@ Set `WEBHOOK_URL` and the server POSTs each **finished** workout there. A runnin
 
 `totals` count working sets only. `started_at` and `duration_seconds` are left out for workouts created before start times were recorded. A deletion is `{ "event": "workout.deleted", "workout": { "id": "…" } }`.
 
-## Read API
+## Automation API
 
-Set `API_TOKEN` to let automations (e.g. an n8n schedule building a weekly summary) read finished workouts. Every request needs `Authorization: Bearer <API_TOKEN>`; without it the server answers `401`. Running, discarded and deleted workouts are never returned.
+Lets automations and AI assistants read your workouts (e.g. an n8n schedule building a weekly summary) and manage your routines. Every request needs `Authorization: Bearer <token>`; without a valid one the server answers `401`. `API_TOKEN` reaches the `GET` endpoints, and `API_WRITE_TOKEN` reaches those plus the routine writes. Give an automation the read token unless it needs to change routines.
+
+### Workouts
+
+Running, discarded and deleted workouts are never returned.
 
 | Endpoint | Returns |
 |---|---|
@@ -128,6 +195,37 @@ Each workout has the same shape as `workout` in the [webhook](#webhook) payload.
 ```
 
 `totals` count working sets only. `duration_seconds` adds up the workouts that have a recorded start time. `date` is the day the phone logged the workout on, so pick the range in your own time zone; in n8n, `{{ $now.minus({ days: 6 }).toFormat('yyyy-MM-dd') }}` to `{{ $now.toFormat('yyyy-MM-dd') }}` is the last seven days.
+
+### Routines
+
+| Endpoint | Token | Does |
+|---|---|---|
+| `GET /api/routines` | read | `{"routines": [...]}`, every routine sorted by name. |
+| `GET /api/routines/{id}` | read | One routine, or `404`. |
+| `POST /api/routines` | write | Creates a routine and returns it with `201`. Any ids in the body are ignored. |
+| `PUT /api/routines/{id}` | write | Makes the routine look exactly like the body and returns the result. |
+
+There is no delete; remove routines in the app.
+
+```json
+{
+  "id": "…", "name": "Push",
+  "exercises": [
+    { "id": "…", "name": "Bench", "superset_id": null,
+      "sets": [{ "id": "…", "reps": 8, "weight_kg": 82.5, "warmup": false, "rest_seconds": 120 }] }
+  ]
+}
+```
+
+To change a routine, `GET` it, edit the JSON and `PUT` it back:
+
+- Exercises and sets that keep their `id` are updated, ones without an `id` are added, and ones you leave out are deleted. An `id` must belong to that routine (a set's to that exercise), otherwise the request fails with `400`.
+- Order in the array is the order in the app.
+- `reps` and `weight_kg` are required; `warmup` defaults to `false` and `rest_seconds` to `120` (0–3600). Unknown fields are rejected, so a typo like `weight` fails instead of being dropped.
+- Adjacent exercises with the same `superset_id` form a superset. Any string works as a label for a new one; a lone exercise's label is cleared.
+- Only rows that actually changed are written, and they reach your phone on its next sync like an edit made in the app. If the same set is edited in the app around the same time, the newest edit wins.
+
+### Connecting
 
 If n8n runs on the same Docker network, call `http://gym-tracker:8080` directly. If it goes through the Cloudflare Tunnel, Access blocks it before it reaches the app: create an Access **service token**, add a policy with the **Service Auth** action that allows it, and send its `CF-Access-Client-Id` and `CF-Access-Client-Secret` headers alongside the bearer token.
 

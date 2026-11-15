@@ -18,6 +18,18 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 {
+		if len(os.Args) != 2 || os.Args[1] != "healthcheck" {
+			log.Print("usage: gym-tracker [healthcheck]")
+			os.Exit(2)
+		}
+		if err := checkReadiness(context.Background(), "http://127.0.0.1:"+env("PORT", "8080")+"/api/readyz"); err != nil {
+			log.Printf("healthcheck: %v", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	dbPath := env("DB_PATH", "data/gym.db")
 	port := env("PORT", "8080")
 
@@ -45,13 +57,17 @@ func main() {
 		log.Printf("webhook enabled (delay %s)", delay)
 	}
 
-	if os.Getenv("API_TOKEN") != "" {
-		log.Print("read API enabled")
+	tokens := api.Tokens{Read: os.Getenv("API_TOKEN"), Write: os.Getenv("API_WRITE_TOKEN")}
+	if tokens.Read != "" && tokens.Read == tokens.Write {
+		log.Fatal("API_TOKEN and API_WRITE_TOKEN must differ")
+	}
+	if tokens.Read != "" || tokens.Write != "" {
+		log.Printf("automation API enabled (read token: %t, write token: %t)", tokens.Read != "", tokens.Write != "")
 	}
 
 	srv := &http.Server{
 		Addr:              ":" + port,
-		Handler:           api.New(s, ui.FS(), os.Getenv("API_TOKEN")),
+		Handler:           api.New(s, ui.FS(), tokens),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 

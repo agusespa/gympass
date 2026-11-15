@@ -28,4 +28,6 @@ ENV DB_PATH=/app/data/gym.db \
     PORT=8080
 EXPOSE 8080
 VOLUME /app/data
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD ["/app/gym-tracker", "healthcheck"]
 ENTRYPOINT ["/app/gym-tracker"]

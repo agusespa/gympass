@@ -1,8 +1,9 @@
-// Package api serves the sync endpoint, the read-only workout API and the
-// embedded frontend.
+// Package api serves the sync endpoint, the automation API (workouts and
+// routines) and the embedded frontend.
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io/fs"
@@ -10,6 +11,7 @@ import (
 	"net/http"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/agusespa/gym-tracker/internal/store"
 )
@@ -22,16 +24,46 @@ type syncBody struct {
 	Changes map[string][]store.Row `json:"changes"`
 }
 
+// Tokens are the bearer tokens of the automation API. Read reaches the
+// GET endpoints; Write reaches those and can also create and change
+// routines. An empty token is disabled.
+type Tokens struct {
+	Read, Write string
+}
+
 // New returns the HTTP handler. static is the built frontend (may be empty).
-// The read-only workout API is served only when apiToken is set, and only to
-// requests that carry it as a bearer token.
-func New(s *store.Store, static fs.FS, apiToken string) http.Handler {
+// The automation API (workouts and routines) is served only for the tokens
+// that are set, and only to requests that carry one as a bearer token.
+func New(s *store.Store, static fs.FS, tokens Tokens) http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /api/sync", syncHandler(s))
-	if apiToken != "" {
-		mux.Handle("GET /api/workouts", requireToken(apiToken, listWorkoutsHandler(s)))
-		mux.Handle("GET /api/workouts/{id}", requireToken(apiToken, getWorkoutHandler(s)))
+	metrics := newSyncMetrics()
+	mux.Handle("POST /api/sync", metrics.instrument(syncHandler(s)))
+	if tokens.Read != "" || tokens.Write != "" {
+		read := func(h http.Handler) http.Handler { return requireToken(h, tokens.Read, tokens.Write) }
+		mux.Handle("GET /api/workouts", read(listWorkoutsHandler(s)))
+		mux.Handle("GET /api/workouts/{id}", read(getWorkoutHandler(s)))
+		mux.Handle("GET /api/routines", read(listRoutinesHandler(s)))
+		mux.Handle("GET /api/routines/{id}", read(getRoutineHandler(s)))
 	}
+	if tokens.Write != "" {
+		write := func(h http.Handler) http.Handler { return requireToken(h, tokens.Write) }
+		mux.Handle("POST /api/routines", write(createRoutineHandler(s)))
+		mux.Handle("PUT /api/routines/{id}", write(replaceRoutineHandler(s)))
+	}
+	mux.Handle("GET /metrics", metrics.handler())
+	mux.HandleFunc("GET /api/healthz", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	})
+	mux.HandleFunc("GET /api/readyz", func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+		if err := s.Ready(ctx); err != nil {
+			log.Printf("readiness: %v", err)
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "not_ready"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
+	})
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 	})
