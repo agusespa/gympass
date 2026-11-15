@@ -12,3 +12,6 @@ internal/ui/dist/*
 !internal/ui/dist/.gitkeep
 /bin/
 /data/
+
+# Claude Code local config
+.claude/
