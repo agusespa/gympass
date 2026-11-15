@@ -1,6 +1,6 @@
 <p align="center"> <img src="web/static/icon-192.png" alt="Gym Tracker Icon" width="128"> </p>
 
-# Gym Tracker
+# Gympass
 
 A personal, offline-first web app for managing workout gym sessions.
 
