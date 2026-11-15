@@ -163,7 +163,12 @@ export function e1rm(s: HistorySet): number {
 export interface Summary {
 	thisWeek: number;
 	thisMonth: number;
-	total: number;
+	/**
+	 * Workouts per week over the finished weeks of the last 12, counted from the first
+	 * workout so a new user isn't averaged over weeks before they started. Null until
+	 * a full week has passed, since this week alone would just repeat `thisWeek`.
+	 */
+	avgPerWeek: number | null;
 	/**
 	 * Weeks in a row that met the weekly goal (any workout when there is none), counting
 	 * back from this week, or from last week while this one has not met it yet.
@@ -184,10 +189,18 @@ export function summary(h: History, today: string, goal = 0): Summary {
 		streakWeeks++;
 		cursor = addDays(cursor, -7);
 	}
+	const first = h.workoutDates.reduce<string | null>((a, d) => (a == null || d < a ? d : a), null);
+	let avgPerWeek: number | null = null;
+	if (first) {
+		const from = [weekStart(first), addDays(week, -7 * 12)].sort()[1];
+		const finished = h.workoutDates.filter((d) => d >= from && d < week).length;
+		const weeks = Math.round((parse(week).getTime() - parse(from).getTime()) / (7 * 86_400_000));
+		if (weeks > 0) avgPerWeek = finished / weeks;
+	}
 	return {
 		thisWeek: h.workoutDates.filter((d) => d >= week && d <= today).length,
 		thisMonth: h.workoutDates.filter((d) => d.startsWith(month)).length,
-		total: h.workoutDates.length,
+		avgPerWeek,
 		streakWeeks,
 		totalVolume: h.performances.reduce((n, p) => n + volume(p.sets, p.body), 0)
 	};

@@ -83,6 +83,8 @@ test("profile shows stats, records and per-exercise progress", async ({
   await finishWorkout(page);
 
   await expect(page.getByTestId("stat-week")).not.toHaveText("0");
+  // The session from last week gives a finished week to average.
+  await expect(page.getByTestId("stat-avg")).not.toHaveText("–");
   await expect(
     page.getByRole("region", { name: "Weekly volume" }),
   ).toBeVisible();

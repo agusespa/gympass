@@ -18,7 +18,7 @@ test("profile asks for a body weight until one is logged", async ({
 
   await logBodyWeight(page, request, 80);
   await page.goto("/profile");
-  await expect(page.getByTestId("stat-total")).toBeVisible();
+  await expect(page.getByTestId("stat-avg")).toBeVisible();
   await expect(card).toHaveCount(0);
 });
 
@@ -29,6 +29,6 @@ test("the body weight card can be dismissed", async ({ page, request }) => {
   await card.getByRole("button", { name: "Dismiss" }).click();
   await expect(card).toHaveCount(0);
   await page.reload();
-  await expect(page.getByTestId("stat-total")).toBeVisible();
+  await expect(page.getByTestId("stat-avg")).toBeVisible();
   await expect(card).toHaveCount(0);
 });

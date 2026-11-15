@@ -139,8 +139,10 @@
 		<dd data-testid="stat-streak">{stats.streakWeeks} {stats.streakWeeks === 1 ? 'wk' : 'wks'}</dd>
 	</div>
 	<div>
-		<dt>Workouts</dt>
-		<dd data-testid="stat-total">{stats.total}</dd>
+		<dt>Avg / week</dt>
+		<dd data-testid="stat-avg">
+			{stats.avgPerWeek == null ? '–' : (Math.round(stats.avgPerWeek * 10) / 10).toLocaleString()}
+		</dd>
 	</div>
 	<div>
 		<dt>Lifted</dt>
