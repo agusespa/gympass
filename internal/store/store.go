@@ -32,10 +32,10 @@ func invalid(format string, args ...any) error {
 	return &ValidationError{fmt.Sprintf(format, args...)}
 }
 
-const (
-	maxIDLen   = 64
-	maxTextLen = 200
-)
+// maxClockSkew is how far ahead of the server a client's updated_at may be.
+// A device with a clock further ahead would otherwise win every conflict on
+// the rows it touches until real time caught up.
+const maxClockSkew = 24 * time.Hour
 
 var dateRe = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
 
@@ -49,11 +49,13 @@ type Store struct {
 
 // Open opens (creating if needed) the database at path and applies migrations.
 func Open(path string) (*Store, error) {
-	dsn := "file:" + path + "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)"
+	dsn := "file:" + path + "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(FULL)"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err
 	}
+	// FULL makes every commit durable before Sync answers: a phone marks its
+	// rows synced on that answer and never resends them.
 	// Single user: one connection serialises writes and avoids SQLITE_BUSY.
 	db.SetMaxOpenConns(1)
 	s := &Store{db: db}
@@ -93,27 +95,8 @@ func (s *Store) migrate() error {
 	if err := s.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	migrations := []func(*sql.Tx) error{
-		func(tx *sql.Tx) error {
-			if _, err := tx.Exec("CREATE TABLE sync_state (id INTEGER PRIMARY KEY CHECK (id = 1), seq INTEGER NOT NULL); INSERT INTO sync_state VALUES (1, 0);"); err != nil {
-				return err
-			}
-			for i := range tables {
-				if _, err := tx.Exec(tables[i].createSQL()); err != nil {
-					return err
-				}
-			}
-			return nil
-		},
-		// Columns added to the set tables later. Databases created after a change
-		// already have the column from migration 1, so these skip existing ones.
-		addSetColumn("warmup", colBool),          // 2
-		addSetColumn("rest_seconds", colSeconds), // 3
-		addFinishedAt,                            // 4
-		createWebhookOutbox,                      // 5
-		addStartedAt,                             // 6
-		addSetDone,                               // 7
-		createTablesIfMissing,                    // 8: body_weights, exercise_settings
+	if version > len(migrations) {
+		return fmt.Errorf("database schema version %d is newer than this build supports (%d)", version, len(migrations))
 	}
 	for i := version; i < len(migrations); i++ {
 		tx, err := s.db.Begin()
@@ -143,22 +126,19 @@ func (s *Store) Sync(ctx context.Context, cursor int64, changes map[string][]Row
 		return 0, nil, invalid("cursor must be >= 0")
 	}
 	// Validate everything before touching the database.
-	type prepRow struct {
-		args    []any
-		present []bool
-	}
-	prepared := make(map[*table][]prepRow, len(changes))
-	for name, rows := range changes {
+	now := s.nowMs()
+	rows := make(map[*table][][]any, len(changes))
+	for name, list := range changes {
 		t, ok := tableByName[name]
 		if !ok {
 			return 0, nil, invalid("unknown table %q", name)
 		}
-		for i, r := range rows {
-			args, present, err := t.args(r)
+		for i, r := range list {
+			args, err := t.args(r, now)
 			if err != nil {
 				return 0, nil, invalid("%s[%d]: %v", name, i, err)
 			}
-			prepared[t] = append(prepared[t], prepRow{args, present})
+			rows[t] = append(rows[t], args)
 		}
 	}
 
@@ -168,61 +148,13 @@ func (s *Store) Sync(ctx context.Context, cursor int64, changes map[string][]Row
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	var seq int64
-	if err := tx.QueryRowContext(ctx, "SELECT seq FROM sync_state WHERE id = 1").Scan(&seq); err != nil {
+	seq, written, err := writeRows(ctx, tx, rows)
+	if err != nil {
 		return 0, nil, err
 	}
 	if cursor > seq {
 		// Client is ahead of us (e.g. the database was replaced): resend everything.
 		cursor = 0
-	}
-	written := make(map[*table][][]any)
-	if len(prepared) > 0 {
-		next := seq + 1
-		wrote := false
-		for i := range tables {
-			t := &tables[i]
-			rows := prepared[t]
-			if len(rows) == 0 {
-				continue
-			}
-			// Rows usually carry the same columns, so statements are shared per column set.
-			stmts := map[string]*sql.Stmt{}
-			for _, row := range rows {
-				row.args[3] = next
-				query := t.upsertSQL(row.present)
-				stmt, ok := stmts[query]
-				if !ok {
-					if stmt, err = tx.PrepareContext(ctx, query); err != nil {
-						closeAll(stmts)
-						return 0, nil, err
-					}
-					stmts[query] = stmt
-				}
-				var vals []any
-				for j, v := range row.args {
-					if row.present[j] {
-						vals = append(vals, v)
-					}
-				}
-				res, err := stmt.ExecContext(ctx, vals...)
-				if err != nil {
-					closeAll(stmts)
-					return 0, nil, err
-				}
-				if n, _ := res.RowsAffected(); n > 0 {
-					wrote = true
-					written[t] = append(written[t], row.args)
-				}
-			}
-			closeAll(stmts)
-		}
-		if wrote {
-			seq = next
-			if _, err := tx.ExecContext(ctx, "UPDATE sync_state SET seq = ? WHERE id = 1", seq); err != nil {
-				return 0, nil, err
-			}
-		}
 	}
 	if s.outboxOn && len(written) > 0 {
 		if err := s.scheduleWebhooks(ctx, tx, written); err != nil {
@@ -246,45 +178,86 @@ func (s *Store) Sync(ctx context.Context, cursor int64, changes map[string][]Row
 	return seq, out, nil
 }
 
-// args validates r and returns the values in colNames order (seq left as 0)
-// and which of them r carries. Optional columns r leaves out are nil and
-// marked not present.
-func (t *table) args(r Row) ([]any, []bool, error) {
+// writeRows upserts rows (values in colNames order) where they are newer than
+// the stored ones, stamping all that change with one new seq. It returns the
+// current seq and the rows actually written.
+func writeRows(ctx context.Context, tx *sql.Tx, rows map[*table][][]any) (int64, map[*table][][]any, error) {
+	var seq int64
+	if err := tx.QueryRowContext(ctx, "SELECT seq FROM sync_state WHERE id = 1").Scan(&seq); err != nil {
+		return 0, nil, err
+	}
+	next := seq + 1
+	written := make(map[*table][][]any)
+	for i := range tables {
+		t := &tables[i]
+		if len(rows[t]) == 0 {
+			continue
+		}
+		stmt, err := tx.PrepareContext(ctx, t.upsertSQL())
+		if err != nil {
+			return 0, nil, err
+		}
+		for _, args := range rows[t] {
+			args[3] = next
+			res, err := stmt.ExecContext(ctx, args...)
+			if err != nil {
+				_ = stmt.Close()
+				return 0, nil, err
+			}
+			if n, _ := res.RowsAffected(); n > 0 {
+				written[t] = append(written[t], args)
+			}
+		}
+		if err := stmt.Close(); err != nil {
+			return 0, nil, err
+		}
+	}
+	if len(written) == 0 {
+		return seq, written, nil
+	}
+	if _, err := tx.ExecContext(ctx, "UPDATE sync_state SET seq = ? WHERE id = 1", next); err != nil {
+		return 0, nil, err
+	}
+	return next, written, nil
+}
+
+// args validates r and returns its values in colNames order, seq left as 0.
+// now (ms) bounds updated_at.
+func (t *table) args(r Row, now int64) ([]any, error) {
 	id, ok := r["id"].(string)
 	if !ok || id == "" || len(id) > maxIDLen {
-		return nil, nil, errors.New("id must be a non-empty string of at most 64 bytes")
+		return nil, fmt.Errorf("id must be a non-empty string of at most %d bytes", maxIDLen)
 	}
 	updatedAt, ok := toInt(r["updated_at"])
 	if !ok || updatedAt <= 0 {
-		return nil, nil, errors.New("updated_at must be a positive integer")
+		return nil, errors.New("updated_at must be a positive integer")
+	}
+	if updatedAt > now+maxClockSkew.Milliseconds() {
+		return nil, errors.New("updated_at is more than a day ahead of the server; check the device clock")
 	}
 	deleted, ok := r["deleted"].(bool)
 	if !ok {
-		return nil, nil, errors.New("deleted must be a boolean")
+		return nil, errors.New("deleted must be a boolean")
 	}
 	args := []any{id, updatedAt, boolInt(deleted), int64(0)}
-	present := []bool{true, true, true, true}
 	for _, c := range t.cols {
 		v, has := r[c.name]
-		if !has && optional(c.typ) {
-			args = append(args, nil)
-			present = append(present, false)
-			continue
+		if !has {
+			return nil, fmt.Errorf("%s is missing", c.name)
 		}
 		v, err := convert(c, v)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		args = append(args, v)
-		present = append(present, true)
 	}
-	return args, present, nil
-}
-
-func closeAll(stmts map[string]*sql.Stmt) {
-	for _, s := range stmts {
-		_ = s.Close()
+	if t.id != nil {
+		col := func(name string) any { return args[t.colIndex(name)] }
+		if want := t.id(col); id != want {
+			return nil, fmt.Errorf("id must be %q", want)
+		}
 	}
+	return args, nil
 }
 
 func convert(c column, v any) (any, error) {
@@ -298,16 +271,16 @@ func convert(c column, v any) (any, error) {
 			return nil, fmt.Errorf("%s must be YYYY-MM-DD", c.name)
 		}
 		return s, nil
-	case colTextNull:
-		if v == nil {
+	case colRef, colRefNull:
+		if v == nil && c.typ == colRefNull {
 			return nil, nil
 		}
 		s, ok := v.(string)
-		if !ok || len(s) > maxIDLen {
-			return nil, fmt.Errorf("%s must be null or a string of at most %d bytes", c.name, maxIDLen)
+		if !ok || s == "" || len(s) > maxIDLen {
+			return nil, fmt.Errorf("%s must be an id of at most %d bytes", c.name, maxIDLen)
 		}
 		return s, nil
-	case colIntNull:
+	case colTime:
 		if v == nil {
 			return nil, nil
 		}
@@ -318,40 +291,28 @@ func convert(c column, v any) (any, error) {
 		return n, nil
 	case colInt:
 		n, ok := toInt(v)
-		if !ok || n < 0 {
-			return nil, fmt.Errorf("%s must be a non-negative integer", c.name)
+		if !ok || n < 0 || float64(n) > c.max {
+			return nil, fmt.Errorf("%s must be an integer from 0 to %v", c.name, c.max)
 		}
 		return n, nil
-	case colReal:
+	case colNum:
+		f, ok := toFloat(v)
+		if !ok || f < 0 || f > c.max {
+			return nil, fmt.Errorf("%s must be a number from 0 to %v", c.name, c.max)
+		}
+		return f, nil
+	case colPosition:
 		f, ok := toFloat(v)
 		if !ok {
 			return nil, fmt.Errorf("%s must be a number", c.name)
 		}
 		return f, nil
-	case colPercent:
-		n, ok := toInt(v)
-		if !ok || n < 0 || n > 100 {
-			return nil, fmt.Errorf("%s must be an integer from 0 to 100", c.name)
-		}
-		return n, nil
 	case colBool:
-		if v == nil {
-			return int64(0), nil
-		}
 		b, ok := v.(bool)
 		if !ok {
 			return nil, fmt.Errorf("%s must be a boolean", c.name)
 		}
 		return boolInt(b), nil
-	case colSeconds:
-		if v == nil {
-			return int64(defaultRestSeconds), nil
-		}
-		n, ok := toInt(v)
-		if !ok || n < 0 || n > maxRestSeconds {
-			return nil, fmt.Errorf("%s must be an integer from 0 to %d", c.name, maxRestSeconds)
-		}
-		return n, nil
 	}
 	return nil, fmt.Errorf("%s: unsupported column type", c.name)
 }
@@ -381,7 +342,7 @@ func (t *table) since(ctx context.Context, tx *sql.Tx, cursor int64) ([]Row, err
 		for i, c := range t.cols {
 			v := vals[4+i]
 			switch c.typ {
-			case colReal:
+			case colNum, colPosition:
 				if f, ok := toFloat(v); ok {
 					v = f
 				}
@@ -393,76 +354,6 @@ func (t *table) since(ctx context.Context, tx *sql.Tx, cursor int64) ([]Row, err
 		out = append(out, r)
 	}
 	return out, rs.Err()
-}
-
-// addSetColumn returns a migration adding a column to both set tables.
-func addSetColumn(col string, typ colType) func(*sql.Tx) error {
-	return func(tx *sql.Tx) error {
-		for _, t := range []string{"sets", "routine_sets"} {
-			if err := addColumnIfMissing(tx, t, col, sqlType(typ)); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-}
-
-// addFinishedAt adds workouts.finished_at. Workouts that already exist are
-// history, so they count as finished at their last edit. Clients backfill
-// their local copies the same way, so no seq bump is needed.
-func addFinishedAt(tx *sql.Tx) error {
-	if err := addColumnIfMissing(tx, "workouts", "finished_at", sqlType(colIntNull)); err != nil {
-		return err
-	}
-	_, err := tx.Exec("UPDATE workouts SET finished_at = updated_at WHERE finished_at IS NULL")
-	return err
-}
-
-// addStartedAt adds workouts.started_at. Older workouts never recorded a
-// start, so theirs stays NULL (unknown).
-func addStartedAt(tx *sql.Tx) error {
-	return addColumnIfMissing(tx, "workouts", "started_at", sqlType(colIntNull))
-}
-
-// addSetDone adds sets.done, the checkmark on a performed set. Sets that already
-// exist were logged before checkmarks, so they count as done. Clients backfill
-// their local copies the same way, so no seq bump is needed.
-func addSetDone(tx *sql.Tx) error {
-	if err := addColumnIfMissing(tx, "sets", "done", sqlType(colBool)); err != nil {
-		return err
-	}
-	_, err := tx.Exec("UPDATE sets SET done = 1")
-	return err
-}
-
-// createTablesIfMissing creates synced tables added after the first release.
-// Databases created since already have them from migration 1.
-func createTablesIfMissing(tx *sql.Tx) error {
-	for i := range tables {
-		var n int
-		if err := tx.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?", tables[i].name).Scan(&n); err != nil {
-			return err
-		}
-		if n > 0 {
-			continue
-		}
-		if _, err := tx.Exec(tables[i].createSQL()); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func addColumnIfMissing(tx *sql.Tx, table, col, typ string) error {
-	var n int
-	if err := tx.QueryRow("SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?", table, col).Scan(&n); err != nil {
-		return err
-	}
-	if n > 0 {
-		return nil
-	}
-	_, err := tx.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", table, col, typ))
-	return err
 }
 
 func boolInt(b bool) int64 {

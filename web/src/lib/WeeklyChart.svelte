@@ -2,15 +2,23 @@
 	import { shortDate, tonnage } from './format';
 	import type { Week } from './stats';
 
-	/** Weekly volume bars, oldest first. Tapping or hovering a bar shows that week. */
-	let { weeks }: { weeks: Week[] } = $props();
+	/**
+	 * Weekly volume bars, oldest first. Tapping or hovering a bar shows that week.
+	 * With a goal (workouts per week), finished weeks that fell short are red.
+	 */
+	let { weeks, goal = 0 }: { weeks: Week[]; goal?: number } = $props();
 
 	let picked = $state<number | null>(null);
 	const index = $derived(picked ?? weeks.length - 1);
 	const shown = $derived(weeks[index]);
 	const max = $derived(Math.max(0, ...weeks.map((w) => w.volume)));
-	const label = (w: Week) =>
-		`Week of ${shortDate(w.start)}: ${tonnage(w.volume)}, ${w.workouts} ${w.workouts === 1 ? 'workout' : 'workouts'}`;
+	const missed = (i: number) => goal > 0 && i < weeks.length - 1 && weeks[i].workouts < goal;
+	const count = (w: Week) =>
+		goal > 0
+			? `${w.workouts} / ${goal} workouts`
+			: `${w.workouts} ${w.workouts === 1 ? 'workout' : 'workouts'}`;
+	const label = (w: Week, i: number) =>
+		`Week of ${shortDate(w.start)}: ${tonnage(w.volume)}, ${count(w)}${missed(i) ? ', goal missed' : ''}`;
 </script>
 
 <section class="card chart" aria-label="Weekly volume">
@@ -18,14 +26,15 @@
 		<span class="muted">{index === weeks.length - 1 ? 'This week' : `Week of ${shortDate(shown.start)}`}</span
 		>
 		<strong data-testid="week-volume">{tonnage(shown.volume)}</strong>
-		<span class="muted">{shown.workouts} {shown.workouts === 1 ? 'workout' : 'workouts'}</span>
+		<span class="muted" class:missed={missed(index)} data-testid="week-workouts">{count(shown)}</span>
 	</div>
 	<div class="plot" role="group" aria-label="Volume per week, last {weeks.length} weeks">
 		{#each weeks as w, i (w.start)}
 			<button
 				class="col"
 				class:selected={i === index}
-				aria-label={label(w)}
+				class:missed={missed(i)}
+				aria-label={label(w, i)}
 				aria-pressed={i === index}
 				onclick={() => (picked = i)}
 				onpointerenter={(e) => e.pointerType === 'mouse' && (picked = i)}
@@ -109,6 +118,22 @@
 
 	.col.selected .bar.empty {
 		background: var(--muted);
+	}
+
+	.col.missed .bar {
+		background: color-mix(in srgb, var(--danger) 45%, transparent);
+	}
+
+	.col.missed .bar.empty {
+		background: color-mix(in srgb, var(--danger) 60%, transparent);
+	}
+
+	.col.missed.selected .bar {
+		background: var(--danger);
+	}
+
+	.head .muted.missed {
+		color: var(--danger);
 	}
 
 	.axis {

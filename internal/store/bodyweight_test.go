@@ -9,6 +9,10 @@ func weighIn(id, date string, kg float64, updatedAt int64, deleted bool) Row {
 	return Row{"id": id, "updated_at": updatedAt, "deleted": deleted, "date": date, "weight_kg": kg}
 }
 
+func setting(name string, pct, updatedAt int64, deleted bool, id string) Row {
+	return Row{"id": id, "updated_at": updatedAt, "deleted": deleted, "name": name, "bodyweight_pct": pct}
+}
+
 func TestBodyWeightOn(t *testing.T) {
 	s := openTest(t)
 	ctx := context.Background()
@@ -19,13 +23,13 @@ func TestBodyWeightOn(t *testing.T) {
 	}
 
 	mustSync(t, s, map[string][]Row{"body_weights": {
-		weighIn("a", "2026-11-01", 80, 1, false),
-		weighIn("b", "2026-11-10", 82, 1, false),
-		// Two entries on one date: the newest edit wins.
-		weighIn("c", "2026-11-12", 83, 1, false),
-		weighIn("d", "2026-11-12", 84, 2, false),
-		weighIn("gone", "2026-11-11", 99, 1, true),
+		weighIn("2026-11-01", "2026-11-01", 80, 1, false),
+		weighIn("2026-11-10", "2026-11-10", 82, 1, false),
+		weighIn("2026-11-12", "2026-11-12", 83, 1, false),
+		weighIn("2026-11-11", "2026-11-11", 99, 1, true),
 	}})
+	// A second phone logging the same date edits the same row.
+	mustSync(t, s, map[string][]Row{"body_weights": {weighIn("2026-11-12", "2026-11-12", 84, 2, false)}})
 	for date, want := range map[string]float64{
 		"2026-10-01": 80, // before the first weigh-in: the earliest one
 		"2026-11-01": 80,
@@ -47,15 +51,13 @@ func TestBodyWeightOn(t *testing.T) {
 
 func TestBodyweightShares(t *testing.T) {
 	s := openTest(t)
-	setting := func(id, name string, pct, updatedAt int64, deleted bool) Row {
-		return Row{"id": id, "updated_at": updatedAt, "deleted": deleted, "name": name, "bodyweight_pct": pct}
-	}
 	mustSync(t, s, map[string][]Row{"exercise_settings": {
-		setting("a", "Pull-up", 50, 1, false),
-		setting("b", " pull-UP ", 100, 2, false), // same exercise, newer
-		setting("c", "Push-up", 65, 1, false),
-		setting("d", "Dip", 100, 1, true),
+		setting("Pull-up", 50, 1, false, "pull-up"),
+		setting("Push-up", 65, 1, false, "push-up"),
+		setting("Dip", 100, 1, true, "dip"),
 	}})
+	// Same exercise typed differently on another phone: same row, newer wins.
+	mustSync(t, s, map[string][]Row{"exercise_settings": {setting(" pull-UP ", 100, 2, false, "pull-up")}})
 	got, err := s.BodyweightShares(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -64,7 +66,7 @@ func TestBodyweightShares(t *testing.T) {
 		t.Fatalf("shares = %v", got)
 	}
 
-	_, _, err = s.Sync(context.Background(), 0, map[string][]Row{"exercise_settings": {setting("x", "Dip", 101, 1, false)}})
+	_, _, err = s.Sync(context.Background(), 0, map[string][]Row{"exercise_settings": {setting("Dip", 101, 1, false, "dip")}})
 	if err == nil {
 		t.Fatal("bodyweight_pct 101 accepted")
 	}
@@ -72,17 +74,12 @@ func TestBodyweightShares(t *testing.T) {
 
 func TestWorkoutSnapshotBodyWeight(t *testing.T) {
 	s := openTest(t)
-	w := workout("w1", 1, "Pull")
-	w["date"] = "2026-11-14"
-	w["finished_at"] = int64(5)
+	w := finishedWorkout("w1", 5)
 	mustSync(t, s, map[string][]Row{
-		"workouts": {w},
-		"workout_exercises": {
-			{"id": "e1", "updated_at": int64(1), "deleted": false, "workout_id": "w1", "name": "Pull-up", "position": 1.0},
-			{"id": "e2", "updated_at": int64(1), "deleted": false, "workout_id": "w1", "name": "Row", "position": 2.0},
-		},
-		"body_weights":      {weighIn("bw", "2026-11-01", 80, 1, false)},
-		"exercise_settings": {{"id": "x", "updated_at": int64(1), "deleted": false, "name": "pull-up", "bodyweight_pct": int64(100)}},
+		"workouts":          {w},
+		"workout_exercises": {exerciseRow("e1", "w1", "Pull-up", 1), exerciseRow("e2", "w1", "Row", 2)},
+		"body_weights":      {weighIn("2026-11-01", "2026-11-01", 80, 1, false)},
+		"exercise_settings": {setting("pull-up", 100, 1, false, "pull-up")},
 	})
 	snap, ok, err := s.Workout(context.Background(), "w1")
 	if err != nil || !ok {

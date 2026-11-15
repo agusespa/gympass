@@ -13,16 +13,6 @@ import (
 // exercises or sets, changes; the delay groups a burst of edits into one send.
 // due_at is NULL once the latest version has been delivered.
 
-func createWebhookOutbox(tx *sql.Tx) error {
-	_, err := tx.Exec(`CREATE TABLE webhook_outbox (
-  workout_id TEXT PRIMARY KEY,
-  due_at INTEGER,
-  attempts INTEGER NOT NULL DEFAULT 0,
-  sent INTEGER NOT NULL DEFAULT 0
-)`)
-	return err
-}
-
 // EnableWebhookOutbox makes Sync schedule a webhook send delay after a
 // finished workout changes. Call it before serving requests.
 func (s *Store) EnableWebhookOutbox(delay time.Duration) {
@@ -72,16 +62,6 @@ func (s *Store) nowMs() int64 {
 		return s.now().UnixMilli()
 	}
 	return time.Now().UnixMilli()
-}
-
-// colIndex returns the position of a column in colNames order.
-func (t *table) colIndex(name string) int {
-	for i, n := range t.colNames() {
-		if n == name {
-			return i
-		}
-	}
-	panic("unknown column " + name)
 }
 
 // scheduleWebhooks queues a send for every finished workout touched by the
@@ -247,7 +227,7 @@ func ExerciseKey(name string) string {
 func (s *Store) BodyWeightOn(ctx context.Context, date string) (*float64, error) {
 	var kg float64
 	err := s.db.QueryRowContext(ctx, `SELECT weight_kg FROM body_weights WHERE deleted = 0
-ORDER BY date <= ?1 DESC, CASE WHEN date <= ?1 THEN date END DESC, date, updated_at DESC LIMIT 1`, date).Scan(&kg)
+ORDER BY date <= ?1 DESC, CASE WHEN date <= ?1 THEN date END DESC, date LIMIT 1`, date).Scan(&kg)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -257,23 +237,21 @@ ORDER BY date <= ?1 DESC, CASE WHEN date <= ?1 THEN date END DESC, date, updated
 	return &kg, nil
 }
 
-// BodyweightShares maps exercise keys to their bodyweight_pct. When several
-// settings rows share a key (e.g. created on two phones), the newest wins.
+// BodyweightShares maps exercise keys to their bodyweight_pct.
 func (s *Store) BodyweightShares(ctx context.Context) (map[string]int64, error) {
-	rs, err := s.db.QueryContext(ctx,
-		"SELECT name, bodyweight_pct FROM exercise_settings WHERE deleted = 0 ORDER BY updated_at, id")
+	rs, err := s.db.QueryContext(ctx, "SELECT id, bodyweight_pct FROM exercise_settings WHERE deleted = 0")
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = rs.Close() }()
 	out := map[string]int64{}
 	for rs.Next() {
-		var name string
+		var key string
 		var pct int64
-		if err := rs.Scan(&name, &pct); err != nil {
+		if err := rs.Scan(&key, &pct); err != nil {
 			return nil, err
 		}
-		out[ExerciseKey(name)] = pct
+		out[key] = pct
 	}
 	return out, rs.Err()
 }

@@ -46,7 +46,7 @@ func post(t *testing.T, url, body string) (*http.Response, map[string]any) {
 
 func TestSyncEndpoint(t *testing.T) {
 	srv := newServer(t)
-	body := `{"cursor":0,"changes":{"workouts":[{"id":"w1","updated_at":1731571200000,"deleted":false,"name":"Push","date":"2026-11-14"}]}}`
+	body := `{"cursor":0,"changes":{"workouts":[{"id":"w1","updated_at":1731571200000,"deleted":false,"name":"Push","date":"2026-11-14","started_at":null,"finished_at":null}]}}`
 	res, out := post(t, srv.URL+"/api/sync", body)
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("status %d: %v", res.StatusCode, out)

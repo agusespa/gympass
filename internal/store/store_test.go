@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func openTest(t *testing.T) *Store {
@@ -19,7 +21,18 @@ func openTest(t *testing.T) *Store {
 }
 
 func workout(id string, updatedAt int64, name string) Row {
-	return Row{"id": id, "updated_at": updatedAt, "deleted": false, "name": name, "date": "2026-11-14"}
+	return Row{"id": id, "updated_at": updatedAt, "deleted": false, "name": name, "date": "2026-11-14", "started_at": nil, "finished_at": nil}
+}
+
+// exerciseRow is a workout exercise outside any superset.
+func exerciseRow(id, workoutID, name string, pos float64) Row {
+	return Row{"id": id, "updated_at": int64(1), "deleted": false, "workout_id": workoutID, "name": name, "position": pos, "superset_id": nil}
+}
+
+// setRow is a checked working set with the default rest; tests override fields.
+func setRow(id, exercise string, pos float64, reps int64, kg float64) Row {
+	return Row{"id": id, "updated_at": int64(1), "deleted": false, "workout_exercise_id": exercise, "position": pos,
+		"reps": reps, "weight_kg": kg, "warmup": false, "rest_seconds": int64(120), "done": true}
 }
 
 func TestSyncRoundTrip(t *testing.T) {
@@ -34,7 +47,7 @@ func TestSyncRoundTrip(t *testing.T) {
 		}},
 		"sets": {{
 			"id": "s1", "updated_at": int64(100), "deleted": false,
-			"workout_exercise_id": "e1", "position": 1.0, "reps": int64(8), "weight_kg": 82.5, "warmup": true, "rest_seconds": int64(90),
+			"workout_exercise_id": "e1", "position": 1.0, "reps": int64(8), "weight_kg": 82.5, "warmup": true, "rest_seconds": int64(90), "done": true,
 		}},
 	})
 	if err != nil {
@@ -137,20 +150,44 @@ func TestCursorAheadResendsAll(t *testing.T) {
 func TestValidation(t *testing.T) {
 	s := openTest(t)
 	ctx := context.Background()
+	w := func(k string, v any) Row {
+		r := workout("w", 1, "x")
+		r[k] = v
+		return r
+	}
+	set := func(k string, v any) Row {
+		r := setRow("s", "e", 1, 1, 1)
+		r[k] = v
+		return r
+	}
+	without := func(r Row, k string) Row {
+		delete(r, k)
+		return r
+	}
 	bad := []struct {
 		name    string
 		changes map[string][]Row
 	}{
 		{"unknown table", map[string][]Row{"nope": {workout("w1", 1, "x")}}},
-		{"missing id", map[string][]Row{"workouts": {{"updated_at": int64(1), "deleted": false, "name": "x", "date": "2026-01-01"}}}},
-		{"bad updated_at", map[string][]Row{"workouts": {{"id": "w", "updated_at": 1.5, "deleted": false, "name": "x", "date": "2026-01-01"}}}},
-		{"bad deleted", map[string][]Row{"workouts": {{"id": "w", "updated_at": int64(1), "deleted": 0, "name": "x", "date": "2026-01-01"}}}},
-		{"bad date", map[string][]Row{"workouts": {{"id": "w", "updated_at": int64(1), "deleted": false, "name": "x", "date": "14/11/2026"}}}},
-		{"negative reps", map[string][]Row{"sets": {{"id": "s", "updated_at": int64(1), "deleted": false, "workout_exercise_id": "e", "position": 1.0, "reps": int64(-1), "weight_kg": 1.0}}}},
-		{"string warmup", map[string][]Row{"sets": {{"id": "s", "updated_at": int64(1), "deleted": false, "workout_exercise_id": "e", "position": 1.0, "reps": int64(1), "weight_kg": 1.0, "warmup": "yes"}}}},
-		{"rest too long", map[string][]Row{"sets": {{"id": "s", "updated_at": int64(1), "deleted": false, "workout_exercise_id": "e", "position": 1.0, "reps": int64(1), "weight_kg": 1.0, "rest_seconds": int64(3601)}}}},
-		{"negative rest", map[string][]Row{"sets": {{"id": "s", "updated_at": int64(1), "deleted": false, "workout_exercise_id": "e", "position": 1.0, "reps": int64(1), "weight_kg": 1.0, "rest_seconds": int64(-1)}}}},
-		{"string weight", map[string][]Row{"sets": {{"id": "s", "updated_at": int64(1), "deleted": false, "workout_exercise_id": "e", "position": 1.0, "reps": int64(1), "weight_kg": "1"}}}},
+		{"missing id", map[string][]Row{"workouts": {without(workout("w", 1, "x"), "id")}}},
+		{"missing column", map[string][]Row{"workouts": {without(workout("w", 1, "x"), "started_at")}}},
+		{"bad updated_at", map[string][]Row{"workouts": {w("updated_at", 1.5)}}},
+		{"updated_at in the future", map[string][]Row{"workouts": {w("updated_at", time.Now().Add(25*time.Hour).UnixMilli())}}},
+		{"bad deleted", map[string][]Row{"workouts": {w("deleted", 0)}}},
+		{"bad date", map[string][]Row{"workouts": {w("date", "14/11/2026")}}},
+		{"empty ref", map[string][]Row{"sets": {set("workout_exercise_id", "")}}},
+		{"negative reps", map[string][]Row{"sets": {set("reps", int64(-1))}}},
+		{"too many reps", map[string][]Row{"sets": {set("reps", int64(10001))}}},
+		{"negative weight", map[string][]Row{"sets": {set("weight_kg", -1.0)}}},
+		{"string warmup", map[string][]Row{"sets": {set("warmup", "yes")}}},
+		{"null done", map[string][]Row{"sets": {set("done", nil)}}},
+		{"rest too long", map[string][]Row{"sets": {set("rest_seconds", int64(3601))}}},
+		{"negative rest", map[string][]Row{"sets": {set("rest_seconds", int64(-1))}}},
+		{"string weight", map[string][]Row{"sets": {set("weight_kg", "1")}}},
+		{"weigh-in id not its date", map[string][]Row{"body_weights": {weighIn("x", "2026-11-01", 80, 1, false)}}},
+		{"setting id not its key", map[string][]Row{"exercise_settings": {setting("Pull-up", 100, 1, false, "pull-up ")}}},
+		{"settings id", map[string][]Row{"settings": {{"id": "other", "updated_at": int64(1), "deleted": false, "weekly_goal": int64(3)}}}},
+		{"weekly goal too high", map[string][]Row{"settings": {{"id": SettingsID, "updated_at": int64(1), "deleted": false, "weekly_goal": int64(8)}}}},
 	}
 	for _, tc := range bad {
 		t.Run(tc.name, func(t *testing.T) {
@@ -193,113 +230,19 @@ func TestReopenKeepsData(t *testing.T) {
 	}
 }
 
-// Older clients don't send the newer set fields.
-func TestMissingSetFieldsGetDefaults(t *testing.T) {
-	s := openTest(t)
-	_, out, err := s.Sync(context.Background(), 0, map[string][]Row{"routine_sets": {{
-		"id": "rs1", "updated_at": int64(1), "deleted": false,
-		"routine_exercise_id": "re1", "position": 1.0, "reps": int64(5), "weight_kg": 60.0,
-	}}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	rs := out["routine_sets"][0]
-	if rs["warmup"] != false || rs["rest_seconds"] != int64(defaultRestSeconds) {
-		t.Fatalf("routine set = %v", rs)
-	}
-}
-
-// A database created before warm-ups and rest times gains the columns and keeps its rows.
-func TestMigrateFromV1(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "old.db")
+// A database written by a newer build is refused rather than misread.
+func TestNewerSchemaRefused(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "test.db")
 	db, err := sql.Open("sqlite", "file:"+path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, q := range []string{
-		"CREATE TABLE sync_state (id INTEGER PRIMARY KEY CHECK (id = 1), seq INTEGER NOT NULL); INSERT INTO sync_state VALUES (1, 1);",
-		"CREATE TABLE workouts (id TEXT PRIMARY KEY, updated_at INTEGER NOT NULL, deleted INTEGER NOT NULL DEFAULT 0, seq INTEGER NOT NULL, name TEXT NOT NULL DEFAULT '', date TEXT NOT NULL DEFAULT '')",
-		"CREATE TABLE workout_exercises (id TEXT PRIMARY KEY, updated_at INTEGER NOT NULL, deleted INTEGER NOT NULL DEFAULT 0, seq INTEGER NOT NULL, workout_id TEXT NOT NULL DEFAULT '', name TEXT NOT NULL DEFAULT '', position REAL NOT NULL DEFAULT 0, superset_id TEXT)",
-		"CREATE TABLE sets (id TEXT PRIMARY KEY, updated_at INTEGER NOT NULL, deleted INTEGER NOT NULL DEFAULT 0, seq INTEGER NOT NULL, workout_exercise_id TEXT NOT NULL DEFAULT '', position REAL NOT NULL DEFAULT 0, reps INTEGER NOT NULL DEFAULT 0, weight_kg REAL NOT NULL DEFAULT 0)",
-		"CREATE TABLE routines (id TEXT PRIMARY KEY, updated_at INTEGER NOT NULL, deleted INTEGER NOT NULL DEFAULT 0, seq INTEGER NOT NULL, name TEXT NOT NULL DEFAULT '')",
-		"CREATE TABLE routine_exercises (id TEXT PRIMARY KEY, updated_at INTEGER NOT NULL, deleted INTEGER NOT NULL DEFAULT 0, seq INTEGER NOT NULL, routine_id TEXT NOT NULL DEFAULT '', name TEXT NOT NULL DEFAULT '', position REAL NOT NULL DEFAULT 0, superset_id TEXT)",
-		"CREATE TABLE routine_sets (id TEXT PRIMARY KEY, updated_at INTEGER NOT NULL, deleted INTEGER NOT NULL DEFAULT 0, seq INTEGER NOT NULL, routine_exercise_id TEXT NOT NULL DEFAULT '', position REAL NOT NULL DEFAULT 0, reps INTEGER NOT NULL DEFAULT 0, weight_kg REAL NOT NULL DEFAULT 0)",
-		"INSERT INTO sets VALUES ('s1', 1, 0, 1, 'e1', 1, 8, 80)",
-		"INSERT INTO workouts VALUES ('w1', 42, 0, 1, 'Old', '2026-01-01')",
-		"PRAGMA user_version = 1",
-	} {
-		if _, err := db.Exec(q); err != nil {
-			t.Fatalf("%s: %v", q, err)
-		}
+	if _, err := db.Exec(fmt.Sprintf("PRAGMA user_version = %d", len(migrations)+1)); err != nil {
+		t.Fatal(err)
 	}
 	_ = db.Close()
-
-	s, err := Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = s.Close() }()
-	// Tables added after the first release exist after migrating.
-	_, out, err := s.Sync(context.Background(), 0, map[string][]Row{
-		"body_weights": {{"id": "bw", "updated_at": int64(1), "deleted": false, "date": "2026-01-01", "weight_kg": 80.0}},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(out["sets"]) != 1 || out["sets"][0]["warmup"] != false || out["sets"][0]["reps"] != int64(8) ||
-		out["sets"][0]["rest_seconds"] != int64(defaultRestSeconds) || out["sets"][0]["done"] != true {
-		t.Fatalf("sets = %v", out["sets"])
-	}
-	// Existing workouts are history: finished at their last edit.
-	if len(out["workouts"]) != 1 || out["workouts"][0]["finished_at"] != int64(42) || out["workouts"][0]["started_at"] != nil {
-		t.Fatalf("workouts = %v", out["workouts"])
-	}
-	if len(out["body_weights"]) != 1 {
-		t.Fatalf("body_weights = %v", out["body_weights"])
-	}
-}
-
-// An outdated client that does not know a column must not erase it.
-func TestOmittedColumnsKeepStoredValue(t *testing.T) {
-	s := openTest(t)
-	ctx := context.Background()
-
-	full := Row{
-		"id": "s1", "updated_at": int64(100), "deleted": false,
-		"workout_exercise_id": "e1", "position": 1.0, "reps": int64(8), "weight_kg": 80.0, "warmup": true, "rest_seconds": int64(90), "done": true,
-	}
-	w := workout("w1", 100, "Push")
-	w["started_at"] = int64(1000)
-	if _, _, err := s.Sync(ctx, 0, map[string][]Row{"sets": {full}, "workouts": {w}}); err != nil {
-		t.Fatal(err)
-	}
-
-	// Newer edits that leave out warmup, rest_seconds and started_at.
-	old := Row{
-		"id": "s1", "updated_at": int64(200), "deleted": false,
-		"workout_exercise_id": "e1", "position": 1.0, "reps": int64(10), "weight_kg": 80.0,
-	}
-	_, out, err := s.Sync(ctx, 0, map[string][]Row{"sets": {old}, "workouts": {workout("w1", 200, "Push day")}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	set := out["sets"][0]
-	if set["reps"] != int64(10) || set["warmup"] != true || set["rest_seconds"] != int64(90) || set["done"] != true {
-		t.Fatalf("set = %v", set)
-	}
-	wo := out["workouts"][0]
-	if wo["name"] != "Push day" || wo["started_at"] != int64(1000) {
-		t.Fatalf("workout = %v", wo)
-	}
-
-	// An explicit null still clears a nullable column (e.g. resuming a workout).
-	w3 := workout("w1", 300, "Push day")
-	w3["started_at"] = nil
-	_, out, err = s.Sync(ctx, 0, map[string][]Row{"workouts": {w3}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if out["workouts"][0]["started_at"] != nil {
-		t.Fatalf("explicit null ignored: %v", out["workouts"][0])
+	if s, err := Open(path); err == nil {
+		_ = s.Close()
+		t.Fatal("opened a database from a newer build")
 	}
 }

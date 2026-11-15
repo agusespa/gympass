@@ -44,8 +44,6 @@ var ErrNotFound = errors.New("not found")
 const (
 	maxRoutineExercises = 50
 	maxExerciseSets     = 50
-	maxWeightKg         = 10000
-	maxReps             = 10000
 )
 
 // Routines returns every live routine, sorted by name.
@@ -426,34 +424,17 @@ func (w *rowWriter) deleteSet(exerciseID string, s storedSet) {
 
 // flush writes the planned rows under one new seq, as Sync does.
 func (w *rowWriter) flush(ctx context.Context, tx *sql.Tx) error {
-	if len(w.rows) == 0 {
-		return nil
-	}
-	var seq int64
-	if err := tx.QueryRowContext(ctx, "SELECT seq FROM sync_state WHERE id = 1").Scan(&seq); err != nil {
-		return err
-	}
-	seq++
-	for i := range tables {
-		t := &tables[i]
-		for _, r := range w.rows[t] {
-			args, present, err := t.args(r)
+	rows := make(map[*table][][]any, len(w.rows))
+	for t, list := range w.rows {
+		for _, r := range list {
+			args, err := t.args(r, w.now)
 			if err != nil {
 				return fmt.Errorf("%s row: %w", t.name, err)
 			}
-			args[3] = seq
-			var vals []any
-			for j, v := range args {
-				if present[j] {
-					vals = append(vals, v)
-				}
-			}
-			if _, err := tx.ExecContext(ctx, t.upsertSQL(present), vals...); err != nil {
-				return err
-			}
+			rows[t] = append(rows[t], args)
 		}
 	}
-	_, err := tx.ExecContext(ctx, "UPDATE sync_state SET seq = ? WHERE id = 1", seq)
+	_, _, err := writeRows(ctx, tx, rows)
 	return err
 }
 

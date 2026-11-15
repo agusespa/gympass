@@ -32,10 +32,9 @@ func TestFinishedWorkouts(t *testing.T) {
 		},
 		"workout_exercises": {{
 			"id": "e1", "updated_at": int64(100), "deleted": false,
-			"workout_id": "early", "name": "Bench", "position": 1.0,
+			"workout_id": "early", "name": "Bench", "position": 1.0, "superset_id": nil,
 		}},
-		"sets": {{"id": "s1", "updated_at": int64(100), "deleted": false, "workout_exercise_id": "e1",
-			"position": 1.0, "reps": int64(8), "weight_kg": 80.0, "done": true}},
+		"sets": {setRow("s1", "e1", 1, 8, 80)},
 	})
 
 	got, err := s.FinishedWorkouts(ctx, "2026-11-10", "2026-11-16")

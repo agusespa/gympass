@@ -198,7 +198,7 @@ func TestReplaceRoutineRejects(t *testing.T) {
 	phoneRoutine(t, s, 1_000_000)
 	mustSync(t, s, map[string][]Row{
 		"routines":          {{"id": "r2", "updated_at": int64(1), "deleted": false, "name": "Other"}},
-		"routine_exercises": {{"id": "other-ex", "updated_at": int64(1), "deleted": false, "routine_id": "r2", "name": "Row", "position": 1.0}},
+		"routine_exercises": {{"id": "other-ex", "updated_at": int64(1), "deleted": false, "routine_id": "r2", "name": "Row", "position": 1.0, "superset_id": nil}},
 	})
 	base, _, _ := s.Routine(ctx, "r1")
 	cursor := cursorNow(t, s)

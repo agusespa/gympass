@@ -49,27 +49,17 @@ export interface BodyContext {
 	shares: Map<string, number>;
 }
 
-/** Weigh-ins and bodyweight shares. Where rows clash (same date or exercise), the newest edit wins, as on the server. */
+/** Weigh-ins and bodyweight shares. */
 export async function loadBodyContext(): Promise<BodyContext> {
-	const byDate = new Map<string, { date: string; weight_kg: number; updated_at: number }>();
-	for (const w of await db.body_weights.toArray()) {
-		if (w.deleted) continue;
-		const cur = byDate.get(w.date);
-		if (!cur || w.updated_at > cur.updated_at) byDate.set(w.date, w);
-	}
-	const weights = [...byDate.values()]
+	const weights = (await db.body_weights.toArray())
+		.filter((w) => !w.deleted)
 		.sort((a, b) => a.date.localeCompare(b.date))
 		.map(({ date, weight_kg }) => ({ date, weight_kg }));
-
-	const newest = new Map<string, { pct: number; updated_at: number }>();
-	for (const x of await db.exercise_settings.toArray()) {
-		if (x.deleted) continue;
-		const key = exerciseKey(x.name);
-		const cur = newest.get(key);
-		if (!cur || x.updated_at > cur.updated_at)
-			newest.set(key, { pct: x.bodyweight_pct, updated_at: x.updated_at });
-	}
-	const shares = new Map([...newest].filter(([, v]) => v.pct > 0).map(([k, v]) => [k, v.pct]));
+	const shares = new Map(
+		(await db.exercise_settings.toArray())
+			.filter((x) => !x.deleted && x.bodyweight_pct > 0)
+			.map((x) => [x.id, x.bodyweight_pct])
+	);
 	return { weights, shares };
 }
 
@@ -102,7 +92,7 @@ export async function loadHistory(): Promise<History> {
 	const setsByExercise = new Map<string, HistorySet[]>();
 	for (const s of await db.sets.toArray()) {
 		// A set with no reps was not performed, checked or not.
-		if (s.deleted || s.warmup || !(s.done ?? true) || s.reps <= 0) continue;
+		if (s.deleted || s.warmup || !s.done || s.reps <= 0) continue;
 		const list = setsByExercise.get(s.workout_exercise_id) ?? [];
 		list.push({ reps: s.reps, weight_kg: s.weight_kg });
 		setsByExercise.set(s.workout_exercise_id, list);
@@ -174,18 +164,23 @@ export interface Summary {
 	thisWeek: number;
 	thisMonth: number;
 	total: number;
-	/** Weeks in a row with a workout, counting back from this week (or last week while this one is empty). */
+	/**
+	 * Weeks in a row that met the weekly goal (any workout when there is none), counting
+	 * back from this week, or from last week while this one has not met it yet.
+	 */
 	streakWeeks: number;
 	totalVolume: number;
 }
 
-export function summary(h: History, today: string): Summary {
+export function summary(h: History, today: string, goal = 0): Summary {
 	const week = weekStart(today);
 	const month = today.slice(0, 7);
-	const weeks = new Set(h.workoutDates.map(weekStart));
-	let cursor = weeks.has(week) ? week : addDays(week, -7);
+	const perWeek = new Map<string, number>();
+	for (const d of h.workoutDates) perWeek.set(weekStart(d), (perWeek.get(weekStart(d)) ?? 0) + 1);
+	const met = (start: string) => (perWeek.get(start) ?? 0) >= Math.max(1, goal);
+	let cursor = met(week) ? week : addDays(week, -7);
 	let streakWeeks = 0;
-	while (weeks.has(cursor)) {
+	while (met(cursor)) {
 		streakWeeks++;
 		cursor = addDays(cursor, -7);
 	}
@@ -196,6 +191,16 @@ export function summary(h: History, today: string): Summary {
 		streakWeeks,
 		totalVolume: h.performances.reduce((n, p) => n + volume(p.sets, p.body), 0)
 	};
+}
+
+/**
+ * Whether this week's goal is at risk: the workouts still needed take every day
+ * left in the week, today included, or more.
+ */
+export function behindGoal(thisWeek: number, goal: number, today: string): boolean {
+	const needed = goal - thisWeek;
+	const daysLeft = 7 - ((parse(today).getDay() + 6) % 7);
+	return needed > 0 && needed >= daysLeft;
 }
 
 // ---------- weekly volume ----------

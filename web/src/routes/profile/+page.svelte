@@ -1,8 +1,9 @@
 <script lang="ts">
 	import { duration, kg, longDate, shortDate, tonnage } from '#lib/format.ts';
 	import { live } from '#lib/live.svelte.ts';
-	import { listWorkouts, today, type WorkoutSummary } from '#lib/repo.ts';
+	import { getWeeklyGoal, listWorkouts, today, type WorkoutSummary } from '#lib/repo.ts';
 	import {
+		behindGoal,
 		exerciseStats,
 		loadHistory,
 		recentRecords,
@@ -25,8 +26,16 @@
 		{ workoutDates: [], performances: [] } as History
 	);
 
+	const goal = live(
+		() => null,
+		() => getWeeklyGoal(),
+		0
+	);
+
 	const todayIso = today();
-	const stats = $derived(summary(history.current, todayIso));
+	const stats = $derived(summary(history.current, todayIso, goal.current));
+	const goalMet = $derived(goal.current > 0 && stats.thisWeek >= goal.current);
+	const behind = $derived(goal.current > 0 && behindGoal(stats.thisWeek, goal.current, todayIso));
 	const weeks = $derived(weekly(history.current, todayIso));
 	const exercises = $derived(exerciseStats(history.current));
 	const records = $derived(recentRecords(exercises, todayIso).slice(0, 5));
@@ -109,7 +118,9 @@
 <dl class="stats" aria-label="Summary">
 	<div>
 		<dt>This week</dt>
-		<dd data-testid="stat-week">{stats.thisWeek}</dd>
+		<dd data-testid="stat-week" class:met={goalMet} class:behind>
+			{stats.thisWeek}{#if goal.current}<span class="of"> / {goal.current}</span>{/if}
+		</dd>
 	</div>
 	<div>
 		<dt>Streak</dt>
@@ -182,7 +193,7 @@
 {/each}
 
 <h2 class="section-title">Weekly volume</h2>
-<WeeklyChart {weeks} />
+<WeeklyChart {weeks} goal={goal.current} />
 
 <h2 class="section-title">Records</h2>
 {#if history.loaded && records.length === 0}
@@ -285,6 +296,20 @@
 		font-weight: 600;
 		white-space: nowrap;
 		font-variant-numeric: tabular-nums;
+	}
+
+	.stats dd.met {
+		color: var(--accent);
+	}
+
+	.stats dd.behind {
+		color: var(--danger);
+	}
+
+	.stats .of {
+		font-size: 0.9rem;
+		font-weight: 500;
+		opacity: 0.7;
 	}
 
 	.list {

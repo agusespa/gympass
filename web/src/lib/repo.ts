@@ -6,9 +6,11 @@ import type { Table } from 'dexie';
 import {
 	db,
 	DEFAULT_REST_SECONDS,
+	SETTINGS_ID,
 	type Exercise,
 	type Routine,
 	type SetRow,
+	type Settings,
 	type Synced,
 	type BodyWeight,
 	type Workout
@@ -28,14 +30,15 @@ export interface SetView {
 	done: boolean;
 }
 
-function toSetView(s: SetRow & { id: string; done?: boolean }): SetView {
+/** Routine sets have no done flag: they are plans, so they count as done. */
+function toSetView(s: SetRow & { done?: boolean }): SetView {
 	return {
 		id: s.id,
 		position: s.position,
 		reps: s.reps,
 		weight_kg: s.weight_kg,
-		warmup: !!s.warmup,
-		rest_seconds: s.rest_seconds ?? DEFAULT_REST_SECONDS,
+		warmup: s.warmup,
+		rest_seconds: s.rest_seconds,
 		done: s.done ?? true
 	};
 }
@@ -87,7 +90,16 @@ export function today(): string {
 }
 
 function fresh<T extends object>(row: T): T & Synced {
-	return { ...row, id: uuid(), updated_at: stamp(), deleted: false, dirty: 1 } as T & Synced;
+	return keyed(uuid(), row);
+}
+
+/**
+ * A row whose id comes from what it describes (a date, an exercise, the
+ * settings singleton), so every device writes the same row. Putting it
+ * replaces any earlier version, deleted or not.
+ */
+function keyed<T extends object>(id: string, row: T): T & Synced {
+	return { ...row, id, updated_at: stamp(), deleted: false, dirty: 1 } as T & Synced;
 }
 
 const allTables = () => [
@@ -98,7 +110,8 @@ const allTables = () => [
 	db.routine_exercises,
 	db.routine_sets,
 	db.body_weights,
-	db.exercise_settings
+	db.exercise_settings,
+	db.settings
 ];
 
 async function write<T>(fn: () => Promise<T>): Promise<T> {
@@ -405,7 +418,7 @@ export async function addSet(kind: Kind, exerciseId: string) {
 		const last = sets.at(-1);
 		// The new set is the last one, so it gets no rest. The old last set had none by default;
 		// it now needs one, taken from the set before it (or the default).
-		if (last && (last.rest_seconds ?? DEFAULT_REST_SECONDS) === 0) {
+		if (last && last.rest_seconds === 0) {
 			const prev = sets.at(-2)?.rest_seconds ?? DEFAULT_REST_SECONDS;
 			await patch(t.sets, last.id, { rest_seconds: prev || DEFAULT_REST_SECONDS });
 		}
@@ -582,7 +595,7 @@ export async function previousSets(workoutId: string): Promise<Map<string, SetVi
 		for (const c of candidates) {
 			// Only what was actually performed; unchecked sets were plans that didn't happen.
 			const sets = live(await db.sets.where('workout_exercise_id').equals(c.id).toArray())
-				.filter((s) => s.done ?? true)
+				.filter((s) => s.done)
 				.sort(byPosition);
 			if (sets.length > 0) {
 				result.set(name, sets.map(toSetView));
@@ -595,44 +608,38 @@ export async function previousSets(workoutId: string): Promise<Map<string, SetVi
 
 // ---------- body weight ----------
 
-/** Weigh-ins, newest date first, one per date. */
+/** Weigh-ins, newest date first. */
 export async function listBodyWeights(): Promise<BodyWeight[]> {
-	const byDate = new Map<string, BodyWeight>();
-	for (const w of live(await db.body_weights.toArray())) {
-		const cur = byDate.get(w.date);
-		if (!cur || w.updated_at > cur.updated_at) byDate.set(w.date, w);
-	}
-	return [...byDate.values()].sort((a, b) => b.date.localeCompare(a.date));
+	return live(await db.body_weights.toArray()).sort((a, b) => b.date.localeCompare(a.date));
 }
 
 /** Record the body weight for a date, replacing that date's weigh-in. */
 export function logBodyWeight(date: string, weight_kg: number) {
-	return write(async () => {
-		const same = live(await db.body_weights.where('date').equals(date).toArray());
-		if (same.length === 0) {
-			await db.body_weights.add(fresh({ date, weight_kg }));
-			return;
-		}
-		for (const w of same) await patch(db.body_weights, w.id, { weight_kg });
-	});
+	return write(() => db.body_weights.put(keyed(date, { date, weight_kg })));
 }
 
 export function deleteBodyWeight(date: string) {
-	return write(async () => {
-		for (const w of live(await db.body_weights.where('date').equals(date).toArray()))
-			await patch(db.body_weights, w.id, { deleted: true });
-	});
+	return write(() => patch(db.body_weights, date, { deleted: true }));
 }
 
 /** Set the share of body weight each rep of an exercise moves, 0–100. */
 export function setBodyweightPct(name: string, pct: number) {
 	const key = exerciseKey(name);
-	return write(async () => {
-		const rows = live(await db.exercise_settings.toArray()).filter((x) => exerciseKey(x.name) === key);
-		if (rows.length === 0) {
-			await db.exercise_settings.add(fresh({ name: name.trim(), bodyweight_pct: pct }));
-			return;
-		}
-		for (const x of rows) await patch(db.exercise_settings, x.id, { bodyweight_pct: pct });
-	});
+	if (!key) return Promise.resolve();
+	return write(() => db.exercise_settings.put(keyed(key, { name: name.trim(), bodyweight_pct: pct })));
+}
+
+// ---------- settings ----------
+
+/** Mirrors maxWeeklyGoal in internal/store/schema.go. */
+export const MAX_WEEKLY_GOAL = 7;
+
+/** Workouts per week to aim for, 0 for no goal. */
+export async function getWeeklyGoal(): Promise<number> {
+	return (await getLive<Settings>(db.settings, SETTINGS_ID))?.weekly_goal ?? 0;
+}
+
+export function setWeeklyGoal(goal: number) {
+	const weekly_goal = Math.max(0, Math.min(MAX_WEEKLY_GOAL, Math.round(goal)));
+	return write(() => db.settings.put(keyed(SETTINGS_ID, { weekly_goal })));
 }

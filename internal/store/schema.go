@@ -1,53 +1,113 @@
 package store
 
 import (
+	"database/sql"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 )
 
 type colType int
 
 const (
-	colText colType = iota
-	colTextNull
-	colDate
-	colInt
-	colReal
-	colBool    // JSON boolean stored as 0/1; missing means false
-	colSeconds // rest duration, 0..maxRestSeconds; missing means defaultRestSeconds
-	colIntNull // non-negative integer or null (e.g. a ms timestamp not set yet)
-	colPercent // integer 0..100
+	colText     colType = iota // string of at most maxTextLen characters
+	colDate                    // YYYY-MM-DD
+	colRef                     // id of another row
+	colRefNull                 // id of another row, or null
+	colInt                     // integer from 0 to column.max
+	colTime                    // ms timestamp, or null when not set
+	colNum                     // number from 0 to column.max
+	colPosition                // any finite number; orders siblings
+	colBool
 )
 
 const (
-	defaultRestSeconds = 120
-	maxRestSeconds     = 3600
+	maxTextLen = 200
+	// exercise_settings uses the exercise key (a lowercased name of up to
+	// maxTextLen characters) as its id, so ids allow that many bytes.
+	maxIDLen       = maxTextLen * utf8.UTFMax
+	maxWeightKg    = 10000
+	maxReps        = 10000
+	maxRestSeconds = 3600
+	maxWeeklyGoal  = 7 // mirrors MAX_WEEKLY_GOAL in web/src/lib/repo.ts
+	// SettingsID is the id of the only settings row.
+	SettingsID = "user"
 )
 
 type column struct {
 	name string
 	typ  colType
+	max  float64 // upper bound for colInt and colNum
 }
 
 type table struct {
-	name string
-	cols []column
+	name    string
+	cols    []column
+	indexes []string // columns other rows are looked up by
+	// id, when set, returns the only id a row may have, from its column
+	// values. Tables keyed by a date, an exercise or a singleton use it so
+	// every device writes the same row instead of a duplicate.
+	id func(col func(name string) any) string
 }
 
-// tables lists every synced table. Each also has id, updated_at, deleted and seq.
-// The client (web/src/lib/db.ts) mirrors these definitions.
+// tables lists every synced table. Each also has id, updated_at, deleted and
+// seq. The client (web/src/lib/db.ts) mirrors these definitions.
 var tables = []table{
-	{"workouts", []column{{"name", colText}, {"date", colDate}, {"started_at", colIntNull}, {"finished_at", colIntNull}}},
-	{"workout_exercises", []column{{"workout_id", colText}, {"name", colText}, {"position", colReal}, {"superset_id", colTextNull}}},
-	{"sets", []column{{"workout_exercise_id", colText}, {"position", colReal}, {"reps", colInt}, {"weight_kg", colReal}, {"warmup", colBool}, {"rest_seconds", colSeconds}, {"done", colBool}}},
-	{"routines", []column{{"name", colText}}},
-	{"routine_exercises", []column{{"routine_id", colText}, {"name", colText}, {"position", colReal}, {"superset_id", colTextNull}}},
-	{"routine_sets", []column{{"routine_exercise_id", colText}, {"position", colReal}, {"reps", colInt}, {"weight_kg", colReal}, {"warmup", colBool}, {"rest_seconds", colSeconds}}},
-	// One weigh-in per date; workouts use the latest one on or before their date.
-	{"body_weights", []column{{"date", colDate}, {"weight_kg", colReal}}},
-	// Per-exercise settings, matched by exercise name (trimmed, case-insensitive).
-	// bodyweight_pct is the share of body weight each rep moves, e.g. 100 for pull-ups.
-	{"exercise_settings", []column{{"name", colText}, {"bodyweight_pct", colPercent}}},
+	{name: "workouts", cols: []column{
+		{name: "name", typ: colText},
+		{name: "date", typ: colDate},
+		{name: "started_at", typ: colTime},
+		{name: "finished_at", typ: colTime}, // null while in progress
+	}, indexes: []string{"date"}},
+	{name: "workout_exercises", cols: []column{
+		{name: "workout_id", typ: colRef},
+		{name: "name", typ: colText},
+		{name: "position", typ: colPosition},
+		{name: "superset_id", typ: colRefNull},
+	}, indexes: []string{"workout_id"}},
+	{name: "sets", cols: []column{
+		{name: "workout_exercise_id", typ: colRef},
+		{name: "position", typ: colPosition},
+		{name: "reps", typ: colInt, max: maxReps},
+		{name: "weight_kg", typ: colNum, max: maxWeightKg},
+		{name: "warmup", typ: colBool},
+		{name: "rest_seconds", typ: colInt, max: maxRestSeconds},
+		{name: "done", typ: colBool},
+	}, indexes: []string{"workout_exercise_id"}},
+	{name: "routines", cols: []column{
+		{name: "name", typ: colText},
+	}},
+	{name: "routine_exercises", cols: []column{
+		{name: "routine_id", typ: colRef},
+		{name: "name", typ: colText},
+		{name: "position", typ: colPosition},
+		{name: "superset_id", typ: colRefNull},
+	}, indexes: []string{"routine_id"}},
+	{name: "routine_sets", cols: []column{
+		{name: "routine_exercise_id", typ: colRef},
+		{name: "position", typ: colPosition},
+		{name: "reps", typ: colInt, max: maxReps},
+		{name: "weight_kg", typ: colNum, max: maxWeightKg},
+		{name: "warmup", typ: colBool},
+		{name: "rest_seconds", typ: colInt, max: maxRestSeconds},
+	}, indexes: []string{"routine_exercise_id"}},
+	// One weigh-in per date, with the date as id. Workouts use the latest one
+	// on or before their date.
+	{name: "body_weights", cols: []column{
+		{name: "date", typ: colDate},
+		{name: "weight_kg", typ: colNum, max: maxWeightKg},
+	}, id: func(col func(string) any) string { return col("date").(string) }},
+	// Per-exercise settings, with ExerciseKey(name) as id. bodyweight_pct is
+	// the share of body weight each rep moves, e.g. 100 for pull-ups.
+	{name: "exercise_settings", cols: []column{
+		{name: "name", typ: colText},
+		{name: "bodyweight_pct", typ: colInt, max: 100},
+	}, id: func(col func(string) any) string { return ExerciseKey(col("name").(string)) }},
+	// User settings: a single row with id SettingsID. weekly_goal is
+	// workouts per week, 0 for no goal.
+	{name: "settings", cols: []column{
+		{name: "weekly_goal", typ: colInt, max: maxWeeklyGoal},
+	}, id: func(func(string) any) string { return SettingsID }},
 }
 
 var tableByName = func() map[string]*table {
@@ -58,32 +118,64 @@ var tableByName = func() map[string]*table {
 	return m
 }()
 
+// migrations[i] brings a database from user_version i to i+1. Released
+// migrations are never edited; schema changes append a new one.
+var migrations = []func(*sql.Tx) error{
+	createSchema,
+}
+
+func createSchema(tx *sql.Tx) error {
+	stmts := []string{
+		"CREATE TABLE sync_state (id INTEGER PRIMARY KEY CHECK (id = 1), seq INTEGER NOT NULL)",
+		"INSERT INTO sync_state VALUES (1, 0)",
+		// One row per finished workout whose webhook has to be sent (again);
+		// due_at is NULL once the latest version has been delivered.
+		`CREATE TABLE webhook_outbox (
+  workout_id TEXT PRIMARY KEY,
+  due_at INTEGER,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  sent INTEGER NOT NULL DEFAULT 0
+)`,
+		"CREATE INDEX webhook_outbox_due_at ON webhook_outbox(due_at)",
+	}
+	for i := range tables {
+		stmts = append(stmts, tables[i].createSQL()...)
+	}
+	for _, q := range stmts {
+		if _, err := tx.Exec(q); err != nil {
+			return fmt.Errorf("%s: %w", q, err)
+		}
+	}
+	return nil
+}
+
 func sqlType(t colType) string {
 	switch t {
-	case colInt, colBool, colPercent:
-		return "INTEGER NOT NULL DEFAULT 0"
-	case colSeconds:
-		return fmt.Sprintf("INTEGER NOT NULL DEFAULT %d", defaultRestSeconds)
-	case colReal:
-		return "REAL NOT NULL DEFAULT 0"
-	case colTextNull:
+	case colRefNull:
 		return "TEXT"
-	case colIntNull:
+	case colTime:
 		return "INTEGER"
+	case colInt, colBool:
+		return "INTEGER NOT NULL"
+	case colNum, colPosition:
+		return "REAL NOT NULL"
 	default:
-		return "TEXT NOT NULL DEFAULT ''"
+		return "TEXT NOT NULL"
 	}
 }
 
-func (t *table) createSQL() string {
+func (t *table) createSQL() []string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "CREATE TABLE %s (\n  id TEXT PRIMARY KEY,\n  updated_at INTEGER NOT NULL,\n  deleted INTEGER NOT NULL DEFAULT 0,\n  seq INTEGER NOT NULL", t.name)
+	fmt.Fprintf(&b, "CREATE TABLE %s (\n  id TEXT PRIMARY KEY,\n  updated_at INTEGER NOT NULL,\n  deleted INTEGER NOT NULL,\n  seq INTEGER NOT NULL", t.name)
 	for _, c := range t.cols {
 		fmt.Fprintf(&b, ",\n  %s %s", c.name, sqlType(c.typ))
 	}
-	b.WriteString("\n);\n")
-	fmt.Fprintf(&b, "CREATE INDEX %s_seq ON %s(seq);\n", t.name, t.name)
-	return b.String()
+	b.WriteString("\n)")
+	out := []string{b.String(), fmt.Sprintf("CREATE INDEX %s_seq ON %s(seq)", t.name, t.name)}
+	for _, col := range t.indexes {
+		out = append(out, fmt.Sprintf("CREATE INDEX %s_%s ON %s(%s)", t.name, col, t.name, col))
+	}
+	return out
 }
 
 func (t *table) colNames() []string {
@@ -94,36 +186,28 @@ func (t *table) colNames() []string {
 	return names
 }
 
-// optional reports whether a column may be left out of a pushed row. Such a
-// column keeps its stored value on update and gets its SQL default on insert,
-// so an outdated client that does not know a newer column cannot erase it.
-// Columns added after the first release must use one of these types.
-func optional(t colType) bool {
-	switch t {
-	case colTextNull, colIntNull, colBool, colSeconds:
-		return true
+// colIndex returns the position of a column in colNames order.
+func (t *table) colIndex(name string) int {
+	for i, n := range t.colNames() {
+		if n == name {
+			return i
+		}
 	}
-	return false
+	panic("unknown column " + name)
 }
 
-// upsertSQL writes the columns where present is true (in colNames order; the
-// first four are always present). Columns left out keep their stored value.
-func (t *table) upsertSQL(present []bool) string {
+// upsertSQL writes a row (values in colNames order) unless the stored one has
+// the same or a newer updated_at.
+func (t *table) upsertSQL() string {
 	names := t.colNames()
-	var cols, sets []string
-	for i, n := range names {
-		if !present[i] {
-			continue
-		}
-		cols = append(cols, n)
-		if i > 0 {
-			sets = append(sets, fmt.Sprintf("%s = excluded.%s", n, n))
-		}
+	sets := make([]string, 0, len(names)-1)
+	for _, n := range names[1:] {
+		sets = append(sets, fmt.Sprintf("%s = excluded.%s", n, n))
 	}
-	placeholders := strings.TrimSuffix(strings.Repeat("?, ", len(cols)), ", ")
+	placeholders := strings.TrimSuffix(strings.Repeat("?, ", len(names)), ", ")
 	return fmt.Sprintf(
 		"INSERT INTO %s (%s) VALUES (%s) ON CONFLICT(id) DO UPDATE SET %s WHERE excluded.updated_at > %s.updated_at",
-		t.name, strings.Join(cols, ", "), placeholders, strings.Join(sets, ", "), t.name,
+		t.name, strings.Join(names, ", "), placeholders, strings.Join(sets, ", "), t.name,
 	)
 }
 

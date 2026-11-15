@@ -102,7 +102,7 @@ func TestOutboxSchedulesOnlyFinishedWorkouts(t *testing.T) {
 
 	// A set change maps back to its workout.
 	mustSync(t, s, map[string][]Row{
-		"sets": {{"id": "s1", "updated_at": int64(400), "deleted": false, "workout_exercise_id": "e1", "position": 1.0, "reps": int64(5), "weight_kg": 100.0}},
+		"sets": {func() Row { r := setRow("s1", "e1", 1, 5, 100); r["updated_at"] = int64(400); return r }()},
 	})
 	clock.advance(30 * time.Second)
 	if p := due(t, s); len(p) != 1 || p[0].WorkoutID != "w1" {
@@ -155,7 +155,7 @@ func TestWorkoutSnapshot(t *testing.T) {
 		return Row{"id": id, "updated_at": int64(1), "deleted": deleted, "workout_id": "w1", "name": name, "position": pos, "superset_id": nil}
 	}
 	set := func(id, ex string, pos float64, reps int64, kg float64, warmup, deleted bool) Row {
-		return Row{"id": id, "updated_at": int64(1), "deleted": deleted, "workout_exercise_id": ex, "position": pos, "reps": reps, "weight_kg": kg, "warmup": warmup, "done": true}
+		return Row{"id": id, "updated_at": int64(1), "deleted": deleted, "workout_exercise_id": ex, "position": pos, "reps": reps, "weight_kg": kg, "warmup": warmup, "rest_seconds": int64(120), "done": true}
 	}
 	unchecked := set("a4", "e1", 4, 5, 90, false, false)
 	unchecked["done"] = false
@@ -186,7 +186,7 @@ func TestWorkoutSnapshot(t *testing.T) {
 		t.Fatalf("exercises = %v", names)
 	}
 	bench := w.Exercises[0].Sets
-	if len(bench) != 2 || !bench[0].Warmup || bench[1].Reps != 8 || bench[1].RestSeconds != defaultRestSeconds {
+	if len(bench) != 2 || !bench[0].Warmup || bench[1].Reps != 8 || bench[1].RestSeconds != 120 {
 		t.Fatalf("bench sets = %+v", bench)
 	}
 	if len(w.Exercises[2].Sets) != 0 {

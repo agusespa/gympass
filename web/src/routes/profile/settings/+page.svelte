@@ -3,9 +3,23 @@
 	import { db, SYNCED_TABLES } from '#lib/db.ts';
 	import { live } from '#lib/live.svelte.ts';
 	import { kg, parseWeight, shortDate } from '#lib/format.ts';
-	import { deleteBodyWeight, listBodyWeights, logBodyWeight, today } from '#lib/repo.ts';
+	import {
+		deleteBodyWeight,
+		getWeeklyGoal,
+		listBodyWeights,
+		logBodyWeight,
+		MAX_WEEKLY_GOAL,
+		setWeeklyGoal,
+		today
+	} from '#lib/repo.ts';
 	import type { BodyWeight } from '#lib/db.ts';
 	import { LAST_SYNCED_KEY, sync, syncNow, type SyncStatus } from '#lib/sync.svelte.ts';
+
+	const goal = live(
+		() => null,
+		() => getWeeklyGoal(),
+		0
+	);
 
 	const lastSynced = live(
 		() => null,
@@ -119,9 +133,7 @@
 		const lines = [header.join(',')];
 		for (const { w, e, s } of rows) {
 			lines.push(
-				[w.date, w.name, e.name, s.position, s.weight_kg, s.reps, !!s.warmup, s.done ?? true]
-					.map(csvCell)
-					.join(',')
+				[w.date, w.name, e.name, s.position, s.weight_kg, s.reps, s.warmup, s.done].map(csvCell).join(',')
 			);
 		}
 		download(`gym-sets-${today()}.csv`, 'text/csv', lines.join('\n') + '\n');
@@ -129,6 +141,29 @@
 </script>
 
 <TopBar fallback="/profile" title="Settings" />
+
+<h2 class="group">Weekly goal</h2>
+<div class="card rows">
+	<div class="row">
+		<span>Workouts per week</span>
+		<span class="stepper">
+			<button
+				aria-label="Fewer workouts per week"
+				disabled={goal.current <= 0}
+				onclick={() => setWeeklyGoal(goal.current - 1)}>−</button
+			>
+			<span class="goal" data-testid="weekly-goal">{goal.current || 'Off'}</span>
+			<button
+				aria-label="More workouts per week"
+				disabled={goal.current >= MAX_WEEKLY_GOAL}
+				onclick={() => setWeeklyGoal(goal.current + 1)}>+</button
+			>
+		</span>
+	</div>
+</div>
+<p class="muted note">
+	Weeks that fall short show in red on your profile, and the streak counts weeks you hit it.
+</p>
 
 <h2 class="group">Body weight</h2>
 <div class="card rows" aria-label="Body weight">
@@ -237,6 +272,33 @@
 		width: 5.5rem;
 		text-align: right;
 		padding: 0.35rem 0.5rem;
+	}
+
+	.stepper {
+		display: flex;
+		align-items: center;
+		gap: 0.25rem;
+	}
+
+	.stepper button {
+		width: 36px;
+		min-height: 36px;
+		padding: 0;
+		border-radius: 999px;
+		background: var(--bar-active);
+		color: var(--accent);
+		font-size: 1.2rem;
+		line-height: 1;
+	}
+
+	.stepper button:disabled {
+		color: var(--muted);
+	}
+
+	.goal {
+		min-width: 2.5rem;
+		text-align: center;
+		font-weight: 600;
 	}
 
 	.remove {

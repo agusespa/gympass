@@ -15,8 +15,8 @@ export interface Workout extends Synced {
 	name: string;
 	/** YYYY-MM-DD */
 	date: string;
-	/** ms when the workout was started; missing or null on workouts from before it was recorded. */
-	started_at?: number | null;
+	/** ms when the workout was started. */
+	started_at: number | null;
 	/** ms when the workout was finished; null while it is in progress. */
 	finished_at: number | null;
 }
@@ -40,19 +40,19 @@ export interface SetRow extends Synced {
 	position: number;
 	reps: number;
 	weight_kg: number;
-	/** Warm-up set. Missing on rows written before warm-ups existed, meaning false. */
-	warmup?: boolean;
-	/** Rest after this set, seconds. Missing on older rows, meaning DEFAULT_REST_SECONDS. */
-	rest_seconds?: number;
+	/** Warm-up set; left out of totals. */
+	warmup: boolean;
+	/** Rest after this set, seconds. */
+	rest_seconds: number;
 }
 
-/** Mirrors defaultRestSeconds in internal/store/schema.go. */
+/** Rest given to new sets, seconds. */
 export const DEFAULT_REST_SECONDS = 120;
 
 export interface WorkoutSet extends SetRow {
 	workout_exercise_id: string;
-	/** Checked off as performed; only done sets count. Missing on rows from before checkmarks, meaning true. */
-	done?: boolean;
+	/** Checked off as performed; only done sets count. */
+	done: boolean;
 }
 
 export interface RoutineSet extends SetRow {
@@ -63,19 +63,28 @@ export interface Routine extends Synced {
 	name: string;
 }
 
-/** One weigh-in. Workouts use the latest one on or before their date. */
+/** One weigh-in per date, with the date as id. Workouts use the latest one on or before their date. */
 export interface BodyWeight extends Synced {
 	/** YYYY-MM-DD */
 	date: string;
 	weight_kg: number;
 }
 
-/** Settings for an exercise, matched by exerciseKey(name). */
+/** Settings for an exercise, with exerciseKey(name) as id. */
 export interface ExerciseSetting extends Synced {
 	name: string;
 	/** Share of body weight each rep moves, 0–100 (e.g. 100 for pull-ups). */
 	bodyweight_pct: number;
 }
+
+/** User settings: one row with id SETTINGS_ID, so every device edits the same row. */
+export interface Settings extends Synced {
+	/** Workouts per week to aim for, 0 for no goal. */
+	weekly_goal: number;
+}
+
+/** Mirrors SettingsID in internal/store/schema.go. */
+export const SETTINGS_ID = 'user';
 
 interface Meta {
 	key: string;
@@ -90,7 +99,8 @@ export const SYNCED_TABLES = [
 	'routine_exercises',
 	'routine_sets',
 	'body_weights',
-	'exercise_settings'
+	'exercise_settings',
+	'settings'
 ] as const;
 export type SyncedTable = (typeof SYNCED_TABLES)[number];
 
@@ -103,6 +113,7 @@ export class GymDB extends Dexie {
 	routine_sets!: EntityTable<RoutineSet, 'id'>;
 	body_weights!: EntityTable<BodyWeight, 'id'>;
 	exercise_settings!: EntityTable<ExerciseSetting, 'id'>;
+	settings!: EntityTable<Settings, 'id'>;
 	meta!: EntityTable<Meta, 'key'>;
 
 	constructor() {
@@ -114,31 +125,10 @@ export class GymDB extends Dexie {
 			routines: 'id, dirty',
 			routine_exercises: 'id, routine_id, name, dirty',
 			routine_sets: 'id, routine_exercise_id, dirty',
+			body_weights: 'id, dirty',
+			exercise_settings: 'id, dirty',
+			settings: 'id, dirty',
 			meta: 'key'
-		});
-		// Workouts from before finishing existed are history: finished at their last edit.
-		// The server backfills the same way, so these rows are not marked dirty.
-		this.version(2).upgrade((tx) =>
-			tx
-				.table('workouts')
-				.toCollection()
-				.modify((w: Partial<Workout>) => {
-					if (w.finished_at === undefined) w.finished_at = w.updated_at;
-				})
-		);
-		// Sets logged before checkmarks existed were performed. The server backfills
-		// the same way, so these rows are not marked dirty.
-		this.version(3).upgrade((tx) =>
-			tx
-				.table('sets')
-				.toCollection()
-				.modify((s: Partial<WorkoutSet>) => {
-					if (s.done === undefined) s.done = true;
-				})
-		);
-		this.version(4).stores({
-			body_weights: 'id, date, dirty',
-			exercise_settings: 'id, name, dirty'
 		});
 	}
 }
