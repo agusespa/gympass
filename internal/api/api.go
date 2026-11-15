@@ -28,22 +28,22 @@ type syncBody struct {
 }
 
 // New returns the HTTP handler. static is the built frontend (may be empty).
-// The automation API (workouts, routines and /mcp) is served only when token
-// is set, and only to requests that carry it as a bearer token.
-func New(s *store.Store, static fs.FS, token string) http.Handler {
+//
+// The app has no login of its own: it is meant to be reached only through
+// Cloudflare Access (see the README). Requests that change data are refused
+// when a browser marks them as coming from another site, so a page you visit
+// can't use your Access session to edit your data.
+func New(s *store.Store, static fs.FS) http.Handler {
 	mux := http.NewServeMux()
 	metrics := newSyncMetrics()
 	mux.Handle("POST /api/sync", metrics.instrument(syncHandler(s, metrics)))
-	if token != "" {
-		auth := func(h http.Handler) http.Handler { return requireToken(h, token) }
-		mux.Handle("GET /api/workouts", auth(listWorkoutsHandler(s)))
-		mux.Handle("GET /api/workouts/{id}", auth(getWorkoutHandler(s)))
-		mux.Handle("GET /api/routines", auth(listRoutinesHandler(s)))
-		mux.Handle("GET /api/routines/{id}", auth(getRoutineHandler(s)))
-		mux.Handle("POST /api/routines", auth(createRoutineHandler(s)))
-		mux.Handle("PUT /api/routines/{id}", auth(replaceRoutineHandler(s)))
-		mux.Handle("/mcp", auth(newMCPHandler(s)))
-	}
+	mux.Handle("GET /api/workouts", listWorkoutsHandler(s))
+	mux.Handle("GET /api/workouts/{id}", getWorkoutHandler(s))
+	mux.Handle("GET /api/routines", listRoutinesHandler(s))
+	mux.Handle("GET /api/routines/{id}", getRoutineHandler(s))
+	mux.Handle("POST /api/routines", createRoutineHandler(s))
+	mux.Handle("PUT /api/routines/{id}", replaceRoutineHandler(s))
+	mux.Handle("/mcp", newMCPHandler(s))
 	mux.Handle("GET /metrics", metrics.handler())
 	mux.HandleFunc("GET /api/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -62,7 +62,12 @@ func New(s *store.Store, static fs.FS, token string) http.Handler {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 	})
 	mux.Handle("/", staticHandler(static))
-	return mux
+
+	csrf := http.NewCrossOriginProtection()
+	csrf.SetDenyHandler(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "cross-origin request refused"})
+	}))
+	return csrf.Handler(mux)
 }
 
 func syncHandler(s *store.Store, metrics *syncMetrics) http.HandlerFunc {

@@ -12,30 +12,25 @@ import (
 	"github.com/agusespa/gym-tracker/internal/store"
 )
 
-const apiToken = "api-token"
-
-func newRoutineServer(t *testing.T, token string) *httptest.Server {
+func newRoutineServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	s, err := store.Open(filepath.Join(t.TempDir(), "routines.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = s.Close() })
-	srv := httptest.NewServer(New(s, fstest.MapFS{}, token))
+	srv := httptest.NewServer(New(s, fstest.MapFS{}))
 	t.Cleanup(srv.Close)
 	return srv
 }
 
-func send(t *testing.T, method, url, token, body string, out any) *http.Response {
+func send(t *testing.T, method, url, body string, out any) *http.Response {
 	t.Helper()
 	req, err := http.NewRequest(method, url, strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
-	}
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -53,32 +48,10 @@ const pushBody = `{"name":"Push","exercises":[
   {"name":"Bench","sets":[{"reps":8,"weight_kg":80},{"reps":8,"weight_kg":80,"rest_seconds":90}]},
   {"name":"Dips","sets":[{"reps":10,"weight_kg":0,"warmup":true}]}]}`
 
-func TestRoutineAPIToken(t *testing.T) {
-	srv := newRoutineServer(t, apiToken)
-	cases := []struct {
-		method, path, token string
-		want                int
-	}{
-		{"GET", "/api/routines", "", 401},
-		{"GET", "/api/routines", "wrong", 401},
-		{"GET", "/api/routines", apiToken, 200},
-		{"GET", "/api/workouts?from=2026-11-01&to=2026-11-07", apiToken, 200},
-		{"POST", "/api/routines", "", 401},
-		{"POST", "/api/routines", "wrong", 401},
-		{"POST", "/api/routines", apiToken, 201},
-		{"PUT", "/api/routines/x", "", 401},
-	}
-	for _, c := range cases {
-		if res := send(t, c.method, srv.URL+c.path, c.token, pushBody, nil); res.StatusCode != c.want {
-			t.Errorf("%s %s with %q: status %d, want %d", c.method, c.path, c.token, res.StatusCode, c.want)
-		}
-	}
-}
-
 func TestRoutineCreateAndIncrement(t *testing.T) {
-	srv := newRoutineServer(t, apiToken)
+	srv := newRoutineServer(t)
 	var created store.Routine
-	res := send(t, "POST", srv.URL+"/api/routines", apiToken, pushBody, &created)
+	res := send(t, "POST", srv.URL+"/api/routines", pushBody, &created)
 	if res.StatusCode != http.StatusCreated || res.Header.Get("Location") != "/api/routines/"+created.ID {
 		t.Fatalf("status %d, Location %q, id %q", res.StatusCode, res.Header.Get("Location"), created.ID)
 	}
@@ -89,13 +62,13 @@ func TestRoutineCreateAndIncrement(t *testing.T) {
 
 	// Read, add 2.5 kg to every bench set, write back.
 	var r store.Routine
-	send(t, "GET", srv.URL+"/api/routines/"+created.ID, apiToken, "", &r)
+	send(t, "GET", srv.URL+"/api/routines/"+created.ID, "", &r)
 	for i := range r.Exercises[0].Sets {
 		r.Exercises[0].Sets[i].WeightKg += 2.5
 	}
 	body, _ := json.Marshal(r)
 	var saved store.Routine
-	if res := send(t, "PUT", srv.URL+"/api/routines/"+r.ID, apiToken, string(body), &saved); res.StatusCode != http.StatusOK {
+	if res := send(t, "PUT", srv.URL+"/api/routines/"+r.ID, string(body), &saved); res.StatusCode != http.StatusOK {
 		t.Fatalf("PUT status %d", res.StatusCode)
 	}
 	if saved.Exercises[0].Sets[0].WeightKg != 82.5 || saved.Exercises[0].Sets[0].ID != bench.Sets[0].ID {
@@ -103,16 +76,16 @@ func TestRoutineCreateAndIncrement(t *testing.T) {
 	}
 
 	var list struct{ Routines []store.Routine }
-	send(t, "GET", srv.URL+"/api/routines", apiToken, "", &list)
+	send(t, "GET", srv.URL+"/api/routines", "", &list)
 	if len(list.Routines) != 1 || list.Routines[0].Exercises[0].Sets[1].WeightKg != 82.5 {
 		t.Fatalf("list = %+v", list)
 	}
 }
 
 func TestRoutineBadRequests(t *testing.T) {
-	srv := newRoutineServer(t, apiToken)
+	srv := newRoutineServer(t)
 	var created store.Routine
-	send(t, "POST", srv.URL+"/api/routines", apiToken, pushBody, &created)
+	send(t, "POST", srv.URL+"/api/routines", pushBody, &created)
 
 	cases := []struct {
 		method, path, body string
@@ -128,20 +101,20 @@ func TestRoutineBadRequests(t *testing.T) {
 	}
 	for _, c := range cases {
 		var out map[string]string
-		res := send(t, c.method, srv.URL+c.path, apiToken, c.body, &out)
+		res := send(t, c.method, srv.URL+c.path, c.body, &out)
 		if res.StatusCode != c.want || out["error"] == "" {
 			t.Errorf("%s %s %s: status %d (%v), want %d with an error", c.method, c.path, c.body, res.StatusCode, out, c.want)
 		}
 	}
-	if res := send(t, "GET", srv.URL+"/api/routines/missing", apiToken, "", nil); res.StatusCode != http.StatusNotFound {
+	if res := send(t, "GET", srv.URL+"/api/routines/missing", "", nil); res.StatusCode != http.StatusNotFound {
 		t.Errorf("GET missing: status %d, want 404", res.StatusCode)
 	}
 }
 
 func TestRoutineListPages(t *testing.T) {
-	srv := newRoutineServer(t, apiToken)
+	srv := newRoutineServer(t)
 	for _, name := range []string{"Pull", "Legs", "Push"} {
-		if res := send(t, http.MethodPost, srv.URL+"/api/routines", apiToken, `{"name":"`+name+`"}`, nil); res.StatusCode != http.StatusCreated {
+		if res := send(t, http.MethodPost, srv.URL+"/api/routines", `{"name":"`+name+`"}`, nil); res.StatusCode != http.StatusCreated {
 			t.Fatalf("create %s: %d", name, res.StatusCode)
 		}
 	}
@@ -152,7 +125,7 @@ func TestRoutineListPages(t *testing.T) {
 			Routines   []store.Routine
 			NextCursor string `json:"next_cursor"`
 		}
-		if res := send(t, http.MethodGet, srv.URL+"/api/routines?limit=2&cursor="+cursor, apiToken, "", &p); res.StatusCode != http.StatusOK {
+		if res := send(t, http.MethodGet, srv.URL+"/api/routines?limit=2&cursor="+cursor, "", &p); res.StatusCode != http.StatusOK {
 			t.Fatalf("page %d: %d", i, res.StatusCode)
 		}
 		for _, r := range p.Routines {
@@ -165,7 +138,7 @@ func TestRoutineListPages(t *testing.T) {
 	if strings.Join(names, ",") != "Legs,Pull,Push" {
 		t.Fatalf("paged names = %v", names)
 	}
-	if res := send(t, http.MethodGet, srv.URL+"/api/routines?cursor="+encodeCursor("x", ""), apiToken, "", nil); res.StatusCode != http.StatusBadRequest {
+	if res := send(t, http.MethodGet, srv.URL+"/api/routines?cursor="+encodeCursor("x", ""), "", nil); res.StatusCode != http.StatusBadRequest {
 		t.Fatalf("empty-id cursor: %d", res.StatusCode)
 	}
 }

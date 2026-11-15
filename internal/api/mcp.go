@@ -21,8 +21,7 @@ To change a routine, call get_routine, edit the result and pass the whole routin
 
 Changes reach the user's phone on its next sync.`
 
-// newMCPHandler serves the Model Context Protocol at /mcp. The caller has
-// already checked the bearer token.
+// newMCPHandler serves the Model Context Protocol at /mcp.
 func newMCPHandler(s *store.Store) http.Handler {
 	server := newMCPServer(s)
 	return mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
@@ -30,9 +29,9 @@ func newMCPHandler(s *store.Store) http.Handler {
 	}, &mcp.StreamableHTTPOptions{
 		Stateless:    true,
 		JSONResponse: true,
-		// Requests are authenticated with a bearer token, which a DNS-rebound
-		// page cannot supply. The check would otherwise reject a tunnel that
-		// connects to localhost with the public host name.
+		// The check rejects requests reaching a loopback address under another
+		// host name, which is exactly how a cloudflared on the same machine
+		// connects. The app is only exposed through the tunnel instead.
 		DisableLocalhostProtection: true,
 		MaxRequestBodyBytes:        maxBody,
 	})

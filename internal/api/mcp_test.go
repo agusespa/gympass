@@ -13,24 +13,22 @@ import (
 	"github.com/agusespa/gym-tracker/internal/store"
 )
 
-// authTransport adds the bearer token and, like a tunnel, a public Host.
-type authTransport struct{ token string }
+// tunnelTransport sends a public Host, as cloudflared does when it connects
+// to the app.
+type tunnelTransport struct{}
 
-func (a authTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+func (tunnelTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	r = r.Clone(r.Context())
 	r.Host = "gym.example.com"
-	if a.token != "" {
-		r.Header.Set("Authorization", "Bearer "+a.token)
-	}
 	return http.DefaultTransport.RoundTrip(r)
 }
 
-func mcpSession(t *testing.T, url, token string) *mcp.ClientSession {
+func mcpSession(t *testing.T, url string) *mcp.ClientSession {
 	t.Helper()
 	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil)
 	cs, err := client.Connect(context.Background(), &mcp.StreamableClientTransport{
 		Endpoint:   url + "/mcp",
-		HTTPClient: &http.Client{Transport: authTransport{token}},
+		HTTPClient: &http.Client{Transport: tunnelTransport{}},
 		MaxRetries: -1,
 	}, nil)
 	if err != nil {
@@ -80,34 +78,9 @@ func call(t *testing.T, cs *mcp.ClientSession, name string, args any, out any) s
 	return ""
 }
 
-func TestMCPRequiresToken(t *testing.T) {
-	srv := newRoutineServer(t, apiToken)
-	for _, token := range []string{"", "wrong"} {
-		req, _ := http.NewRequest("POST", srv.URL+"/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`))
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Accept", "application/json, text/event-stream")
-		if token != "" {
-			req.Header.Set("Authorization", "Bearer "+token)
-		}
-		res, err := http.DefaultClient.Do(req)
-		if err != nil {
-			t.Fatal(err)
-		}
-		_ = res.Body.Close()
-		if res.StatusCode != http.StatusUnauthorized {
-			t.Errorf("token %q: status %d, want 401", token, res.StatusCode)
-		}
-	}
-	off := newRoutineServer(t, "")
-	// With the API off, /mcp is just an app path that only serves GET.
-	if res, err := http.Post(off.URL+"/mcp", "application/json", strings.NewReader("{}")); err != nil || res.StatusCode != http.StatusMethodNotAllowed {
-		t.Errorf("API off: %v %v, want 405", res.StatusCode, err)
-	}
-}
-
 func TestMCPRoutineFlow(t *testing.T) {
-	srv := newRoutineServer(t, apiToken)
-	cs := mcpSession(t, srv.URL, apiToken)
+	srv := newRoutineServer(t)
+	cs := mcpSession(t, srv.URL)
 	if got := toolNames(t, cs); len(got) != 6 || !slices.Contains(got, "update_routine") {
 		t.Fatalf("tools = %v", got)
 	}

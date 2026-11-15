@@ -57,14 +57,13 @@ func main() {
 		log.Printf("webhook enabled (delay %s)", delay)
 	}
 
-	token := os.Getenv("API_TOKEN")
-	if token != "" {
-		log.Print("automation API enabled")
+	if os.Getenv("API_TOKEN") != "" {
+		log.Print("API_TOKEN is no longer used: the API relies on Cloudflare Access like the app; remove it")
 	}
 
 	srv := &http.Server{
 		Addr:              ":" + port,
-		Handler:           api.New(s, ui.FS(), token),
+		Handler:           api.New(s, ui.FS()),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 

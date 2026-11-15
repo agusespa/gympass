@@ -18,7 +18,7 @@ func TestHealthEndpoints(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = s.Close() })
 	// An empty frontend must not prevent the API probes from working.
-	handler := New(s, fstest.MapFS{}, "")
+	handler := New(s, fstest.MapFS{})
 	check := func(path string, code int, status string) {
 		t.Helper()
 		response := httptest.NewRecorder()

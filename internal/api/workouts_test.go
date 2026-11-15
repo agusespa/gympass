@@ -13,9 +13,7 @@ import (
 	"github.com/agusespa/gym-tracker/internal/store"
 )
 
-const testToken = "test-token"
-
-func newReadServer(t *testing.T, token string) *httptest.Server {
+func newReadServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	s, err := store.Open(filepath.Join(t.TempDir(), "read.db"))
 	if err != nil {
@@ -53,19 +51,16 @@ func newReadServer(t *testing.T, token string) *httptest.Server {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := httptest.NewServer(New(s, fstest.MapFS{}, token))
+	srv := httptest.NewServer(New(s, fstest.MapFS{}))
 	t.Cleanup(srv.Close)
 	return srv
 }
 
-func get(t *testing.T, url, auth string, out any) *http.Response {
+func get(t *testing.T, url string, out any) *http.Response {
 	t.Helper()
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if auth != "" {
-		req.Header.Set("Authorization", auth)
 	}
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -80,34 +75,8 @@ func get(t *testing.T, url, auth string, out any) *http.Response {
 	return res
 }
 
-func TestReadAPIRequiresToken(t *testing.T) {
-	srv := newReadServer(t, testToken)
-	for _, auth := range []string{"", "Bearer wrong", testToken, "Basic " + testToken} {
-		res := get(t, srv.URL+"/api/workouts?from=2026-11-10&to=2026-11-16", auth, nil)
-		if res.StatusCode != http.StatusUnauthorized {
-			t.Errorf("auth %q: status %d, want 401", auth, res.StatusCode)
-		}
-		if res.Header.Get("WWW-Authenticate") == "" {
-			t.Errorf("auth %q: missing WWW-Authenticate", auth)
-		}
-	}
-	if res := get(t, srv.URL+"/api/workouts/push", "", nil); res.StatusCode != http.StatusUnauthorized {
-		t.Errorf("get by id without token: status %d, want 401", res.StatusCode)
-	}
-}
-
-func TestReadAPIDisabledWithoutToken(t *testing.T) {
-	srv := newReadServer(t, "")
-	for _, auth := range []string{"", "Bearer "} {
-		res := get(t, srv.URL+"/api/workouts?from=2026-11-10&to=2026-11-16", auth, nil)
-		if res.StatusCode != http.StatusNotFound {
-			t.Errorf("auth %q: status %d, want 404", auth, res.StatusCode)
-		}
-	}
-}
-
 func TestListWorkouts(t *testing.T) {
-	srv := newReadServer(t, testToken)
+	srv := newReadServer(t)
 	var out struct {
 		From, To string
 		Totals   map[string]float64
@@ -116,7 +85,7 @@ func TestListWorkouts(t *testing.T) {
 			DurationSeconds int64 `json:"duration_seconds"`
 		}
 	}
-	res := get(t, srv.URL+"/api/workouts?from=2026-11-10&to=2026-11-16", "Bearer "+testToken, &out)
+	res := get(t, srv.URL+"/api/workouts?from=2026-11-10&to=2026-11-16", &out)
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("status %d", res.StatusCode)
 	}
@@ -141,50 +110,50 @@ func TestListWorkouts(t *testing.T) {
 }
 
 func TestListWorkoutsEmptyIsArray(t *testing.T) {
-	srv := newReadServer(t, testToken)
+	srv := newReadServer(t)
 	var out map[string]json.RawMessage
-	get(t, srv.URL+"/api/workouts?from=2027-01-01&to=2027-01-07", "Bearer "+testToken, &out)
+	get(t, srv.URL+"/api/workouts?from=2027-01-01&to=2027-01-07", &out)
 	if string(out["workouts"]) != "[]" {
 		t.Errorf("workouts = %s, want []", out["workouts"])
 	}
 }
 
 func TestListWorkoutsBadRange(t *testing.T) {
-	srv := newReadServer(t, testToken)
+	srv := newReadServer(t)
 	for _, q := range []string{
 		"", "from=2026-11-10", "from=2026-11-10&to=nope", "from=2026-11-16&to=2026-11-10",
 		"from=2025-01-01&to=2026-01-02",
 	} {
-		res := get(t, srv.URL+"/api/workouts?"+q, "Bearer "+testToken, nil)
+		res := get(t, srv.URL+"/api/workouts?"+q, nil)
 		if res.StatusCode != http.StatusBadRequest {
 			t.Errorf("%q: status %d, want 400", q, res.StatusCode)
 		}
 	}
 	// A full year (366 days, as in a leap year) is allowed.
-	if res := get(t, srv.URL+"/api/workouts?from=2028-01-01&to=2028-12-31", "Bearer "+testToken, nil); res.StatusCode != http.StatusOK {
+	if res := get(t, srv.URL+"/api/workouts?from=2028-01-01&to=2028-12-31", nil); res.StatusCode != http.StatusOK {
 		t.Errorf("leap year: status %d, want 200", res.StatusCode)
 	}
 }
 
 func TestGetWorkout(t *testing.T) {
-	srv := newReadServer(t, testToken)
+	srv := newReadServer(t)
 	var w struct {
 		ID        string
 		Exercises []struct{ Sets []any }
 	}
-	res := get(t, srv.URL+"/api/workouts/push", "Bearer "+testToken, &w)
+	res := get(t, srv.URL+"/api/workouts/push", &w)
 	if res.StatusCode != http.StatusOK || w.ID != "push" || len(w.Exercises) != 1 || len(w.Exercises[0].Sets) != 2 {
 		t.Fatalf("status %d, workout %+v", res.StatusCode, w)
 	}
 	for _, id := range []string{"running", "missing"} {
-		if res := get(t, srv.URL+"/api/workouts/"+id, "Bearer "+testToken, nil); res.StatusCode != http.StatusNotFound {
+		if res := get(t, srv.URL+"/api/workouts/"+id, nil); res.StatusCode != http.StatusNotFound {
 			t.Errorf("%s: status %d, want 404", id, res.StatusCode)
 		}
 	}
 }
 
 func TestListWorkoutsPages(t *testing.T) {
-	srv := newReadServer(t, testToken)
+	srv := newReadServer(t)
 	type page struct {
 		Totals     map[string]float64
 		Workouts   []struct{ ID string }
@@ -194,7 +163,7 @@ func TestListWorkoutsPages(t *testing.T) {
 	cursor := ""
 	for i := 0; i < 3; i++ {
 		var p page
-		res := get(t, srv.URL+"/api/workouts?from=2026-11-10&to=2026-11-16&limit=1&cursor="+cursor, "Bearer "+testToken, &p)
+		res := get(t, srv.URL+"/api/workouts?from=2026-11-10&to=2026-11-16&limit=1&cursor="+cursor, &p)
 		if res.StatusCode != http.StatusOK || len(p.Workouts) != 1 {
 			t.Fatalf("page %d: status %d, %+v", i, res.StatusCode, p)
 		}
@@ -212,7 +181,7 @@ func TestListWorkoutsPages(t *testing.T) {
 	}
 
 	for _, q := range []string{"limit=0", "limit=201", "limit=x", "cursor=nope", "cursor=" + encodeCursor("a")} {
-		res := get(t, srv.URL+"/api/workouts?from=2026-11-10&to=2026-11-16&"+q, "Bearer "+testToken, nil)
+		res := get(t, srv.URL+"/api/workouts?from=2026-11-10&to=2026-11-16&"+q, nil)
 		if res.StatusCode != http.StatusBadRequest {
 			t.Errorf("%s: status %d, want 400", q, res.StatusCode)
 		}

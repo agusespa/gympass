@@ -30,7 +30,7 @@ docker compose up -d
 > [!NOTE]
 > The image runs as the distroless `nonroot` user (UID 65532), so it needs to own the `data` directory.
 
-Open `http://localhost:8080` on your phone and choose **Share → Add to Home Screen**.
+Set up the tunnel in [Secure Hosting](#secure-hosting), then open its address on your phone and choose **Share → Add to Home Screen**.
 
 ### Configuration
 The application is configured using environment variables. All are **optional**:
@@ -39,7 +39,6 @@ The application is configured using environment variables. All are **optional**:
 - `WEBHOOK_URL`: Endpoint to POST finished workouts to. The webhook is off when unset.
 - `WEBHOOK_SECRET`: Sent as `Authorization: Bearer <secret>`.
 - `WEBHOOK_DELAY`: Wait after the last change before sending, so a burst of edits becomes one send (default: `30s`).
-- `API_TOKEN`: Enables the [automation API](#automation-api) and MCP; requests must send `Authorization: Bearer <token>`. The API is off while it is unset. Use a long random value, e.g. `openssl rand -hex 32`.
 
 Set them in the `environment` section of `docker-compose.yml`, or in a `.env` file next to it.
 
@@ -49,9 +48,12 @@ The app has no built-in authentication, so host it on a local server and expose 
 
 Point the tunnel at `http://localhost:8080`, then add an Access Application in the Cloudflare Dashboard with a Policy that only allows your own email address.
 
+The compose file publishes port 8080 on `127.0.0.1` only, so other devices on your network can't bypass the tunnel and Access to reach the app (the sync endpoint has no login of its own). Everything, your phone included, goes through the tunnel.
+
 If `cloudflared` runs in Docker on the same network as this service, use
-`http://gym-tracker:8080` instead. Inside the tunnel container, `localhost` refers
-to that container.
+`http://gym-tracker:8080` instead, and remove the `ports` section so the app
+isn't published on the host at all. Inside the tunnel container, `localhost`
+refers to that container.
 
 > [!TIP]
 > When the Access session expires, the app keeps your local changes and shows a banner asking you to reload. The reload goes through the Access login and the kept changes sync afterwards.
@@ -177,7 +179,7 @@ Set `WEBHOOK_URL` and the server POSTs each **finished** workout there. A runnin
 
 ## Automation API
 
-Lets automations and AI assistants read your workouts (e.g. an n8n schedule building a weekly summary) and manage your routines. Every request needs `Authorization: Bearer <API_TOKEN>`; without it the server answers `401`.
+Lets automations and AI assistants read your workouts (e.g. an n8n schedule building a weekly summary) and manage your routines. Like the app, it has no login of its own and relies on Cloudflare Access (see [Connecting](#connecting)). Requests that change data are refused (`403`) when a browser marks them as coming from another site, so a page you visit can't use your Access session; scripts, n8n and MCP clients aren't affected.
 
 ### Workouts
 
@@ -236,11 +238,17 @@ The list endpoints return at most `limit` items (1–200, default 50). While mor
 
 ### MCP
 
-AI assistants can use the same data through the Model Context Protocol at `/mcp` (Streamable HTTP), with the same bearer token. Its tools are `list_workouts`, `get_workout`, `list_routines`, `get_routine`, `create_routine` and `update_routine`; the last two follow the same rules as `POST` and `PUT` above. `list_workouts` and `list_routines` take the same `limit` and `cursor` arguments as the [paged](#paging) endpoints.
+AI assistants can use the same data through the Model Context Protocol at `/mcp` (Streamable HTTP). Its tools are `list_workouts`, `get_workout`, `list_routines`, `get_routine`, `create_routine` and `update_routine`; the last two follow the same rules as `POST` and `PUT` above. `list_workouts` and `list_routines` take the same `limit` and `cursor` arguments as the [paged](#paging) endpoints.
 
 ### Connecting
 
-If n8n or the assistant runs on the same Docker network, call `http://gym-tracker:8080` directly. If it goes through the Cloudflare Tunnel, Access blocks it before it reaches the app: create an Access **service token**, add a policy with the **Service Auth** action that allows it, and send its `CF-Access-Client-Id` and `CF-Access-Client-Secret` headers alongside the bearer token (with `claude mcp add`, pass each as another `--header`).
+If n8n or the assistant runs on the same Docker network, call `http://gym-tracker:8080` directly. Anything that can reach the container this way has full access, just like the sync endpoint, so only run trusted services on that network. If it goes through the Cloudflare Tunnel, Access blocks it before it reaches the app: create an Access **service token**, add a policy with the **Service Auth** action that allows it, and send its `CF-Access-Client-Id` and `CF-Access-Client-Secret` headers with every request.
+
+For Claude Code:
+
+```bash
+claude mcp add --transport http gym-tracker https://gym.example.com/mcp --header "CF-Access-Client-Id: <client id>" --header "CF-Access-Client-Secret: <client secret>"
+```
 
 ## Usage Notes
 

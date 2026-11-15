@@ -2,8 +2,11 @@ services:
   gym-tracker:
     image: ghcr.io/agusespa/gym-tracker:latest
     restart: unless-stopped
+    # Reachable only from this machine (for a cloudflared running on the
+    # host), never from the LAN: all other access goes through the tunnel.
+    # If cloudflared runs in Docker on the same network, remove "ports".
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     volumes:
       - ./data:/app/data
     environment:
@@ -12,6 +15,3 @@ services:
       # Optional: POST finished workouts to n8n (see README, "Webhook").
       # WEBHOOK_URL: https://n8n.example.com/webhook/gym-tracker
       # WEBHOOK_SECRET: change-me
-      # Optional: let automations and MCP clients read workouts and manage
-      # routines (see README, "Automation API").
-      # API_TOKEN: change-me

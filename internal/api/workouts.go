@@ -2,14 +2,12 @@ package api
 
 import (
 	"context"
-	"crypto/subtle"
 	"errors"
 	"log"
 	"math"
 	"net/http"
 	"net/url"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/agusespa/gym-tracker/internal/store"
@@ -36,19 +34,6 @@ type listTotals struct {
 	Reps            int64   `json:"reps"`
 	VolumeKg        float64 `json:"volume_kg"`
 	DurationSeconds int64   `json:"duration_seconds"`
-}
-
-// requireToken accepts only "Authorization: Bearer <token>".
-func requireToken(next http.Handler, token string) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		got, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-		if !ok || subtle.ConstantTimeCompare([]byte(got), []byte(token)) != 1 {
-			w.Header().Set("WWW-Authenticate", `Bearer realm="gym-tracker"`)
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
 }
 
 func listWorkoutsHandler(s *store.Store) http.HandlerFunc {
