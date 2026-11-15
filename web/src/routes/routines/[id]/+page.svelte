@@ -36,8 +36,8 @@
 	</div>
 
 	<p class="hint muted">
-		Type reps as a range like 8.12 to aim for 8–12. Workouts tell you when every set reached the top, so you
-		know to add weight.
+		Fill in a max next to the reps to aim for a range, like 8 to 12. Workouts tell you when every set reached
+		the top, so you know to add weight.
 	</p>
 
 	{#key id}

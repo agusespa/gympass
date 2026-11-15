@@ -6,9 +6,9 @@
 		kg,
 		parseDuration,
 		parseReps,
-		parseRepTarget,
 		parseWeight,
 		repRange,
+		repTarget,
 		REST_CHOICES,
 		restLabel
 	} from './format';
@@ -90,10 +90,11 @@
 		return reachedTopOfRange(previous.current.get(exerciseKey(ex.name)) ?? []);
 	}
 
-	/** A routine set's rep target as typed: "10", or "8–12" for a range. */
-	function repTarget(set: SetView): string {
-		if (set.rep_max > 0) return repRange(set);
-		return set.reps ? String(set.reps) : '';
+	/** Save a routine set's reps and max reps, and show what was kept (a max at or below the reps is dropped). */
+	function saveRepTarget(set: SetView, reps: number, max: number, maxInput: HTMLInputElement) {
+		const target = repTarget(reps, max);
+		maxInput.value = target.rep_max ? String(target.rep_max) : '';
+		updateSet(kind, set.id, target);
 	}
 
 	/** Picker options, keeping an off-list value (e.g. synced from elsewhere) selectable. */
@@ -310,18 +311,31 @@
 								{/if}
 							</span>
 						{:else}
-							<!-- A count, or a range like 8–12; the decimal keypad's separator works as the dash. -->
-							<input
-								inputmode="decimal"
-								aria-label="Reps set {si + 1}"
-								placeholder="0"
-								value={repTarget(set)}
-								onchange={(e) => {
-									const target = parseRepTarget(e.currentTarget.value);
-									e.currentTarget.value = repTarget({ ...set, ...target });
-									updateSet(kind, set.id, target);
-								}}
-							/>
+							<!-- Reps, and optionally a max that makes them a range (8 and 12 plan 8–12). -->
+							<span class="rep-range">
+								<input
+									inputmode="numeric"
+									pattern="[0-9]*"
+									aria-label="Reps set {si + 1}"
+									placeholder="0"
+									value={set.reps ? String(set.reps) : ''}
+									onchange={(e) => {
+										const max = e.currentTarget.parentElement!.querySelector<HTMLInputElement>('.max')!;
+										saveRepTarget(set, parseReps(e.currentTarget.value), set.rep_max, max);
+									}}
+								/>
+								<span class="dash" aria-hidden="true">–</span>
+								<input
+									class="max"
+									inputmode="numeric"
+									pattern="[0-9]*"
+									aria-label="Maximum reps for set {si + 1}"
+									placeholder="max"
+									value={set.rep_max ? String(set.rep_max) : ''}
+									onchange={(e) =>
+										saveRepTarget(set, set.reps, parseReps(e.currentTarget.value), e.currentTarget)}
+								/>
+							</span>
 						{/if}
 						{#if checkable}
 							<button
@@ -643,6 +657,27 @@
 	.reps-cell {
 		position: relative;
 		display: block;
+	}
+
+	/* Routine reps: two boxes, reps and an optional max, sharing the column. */
+	.rep-range {
+		display: flex;
+		align-items: center;
+		gap: 0.2rem;
+		min-width: 0;
+	}
+
+	.rep-range input {
+		flex: 1;
+		min-width: 0;
+	}
+
+	.rep-range .max::placeholder {
+		font-size: 0.85rem;
+	}
+
+	.dash {
+		color: var(--muted);
 	}
 
 	/* Room under the number for the range. */

@@ -17,20 +17,13 @@ export function parseReps(s: string): number {
 }
 
 /**
- * A typed rep target: "10" is a fixed count, "8-12" a range. The iPhone's
- * decimal keypad has no dash, so its separator ("8.12" or "8,12") works too.
+ * A routine set's rep target from its reps and max reps boxes. A max above the reps makes a
+ * range (8 and 12 plan 8–12); otherwise it is a fixed count, the max when only that is filled in.
  * A range always has reps = rep_min; rep_min = rep_max = 0 means no range.
  */
-export function parseRepTarget(s: string): { reps: number; rep_min: number; rep_max: number } {
-	const parts = s.trim().split(/\s*[-–—.,]\s*/);
-	if (parts.length === 2 && parts.every((p) => /^\d+$/.test(p))) {
-		const [a, b] = parts.map(parseReps);
-		const lo = Math.min(a, b);
-		const hi = Math.max(a, b);
-		if (lo !== hi) return { reps: lo, rep_min: lo, rep_max: hi };
-		return { reps: lo, rep_min: 0, rep_max: 0 };
-	}
-	return { reps: parseReps(s), rep_min: 0, rep_max: 0 };
+export function repTarget(reps: number, max: number): { reps: number; rep_min: number; rep_max: number } {
+	if (reps > 0 && max > reps) return { reps, rep_min: reps, rep_max: max };
+	return { reps: reps || max, rep_min: 0, rep_max: 0 };
 }
 
 /** A rep range, e.g. "8–12". */
