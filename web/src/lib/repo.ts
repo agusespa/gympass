@@ -13,10 +13,11 @@ import {
 	type Settings,
 	type Synced,
 	type BodyWeight,
+	type ExerciseSetting,
 	type Workout
 } from './db';
 import { exerciseKey, trimName } from './exercise-key';
-import { MAX_REPS, MAX_TEXT_LEN, MAX_WEIGHT_KG } from './limits';
+import { MAX_DURATION_SECONDS, MAX_REPS, MAX_TEXT_LEN, MAX_WEIGHT_KG } from './limits';
 
 export type Kind = 'workout' | 'routine';
 
@@ -27,6 +28,8 @@ export interface SetView {
 	weight_kg: number;
 	warmup: boolean;
 	rest_seconds: number;
+	/** Length of a timed set, seconds; 0 for sets counted in reps. */
+	duration_seconds: number;
 	/** Checked off as performed. Workout sets only; routine sets are always true. */
 	done: boolean;
 }
@@ -40,6 +43,7 @@ function toSetView(s: SetRow & { done?: boolean }): SetView {
 		weight_kg: s.weight_kg,
 		warmup: s.warmup,
 		rest_seconds: s.rest_seconds,
+		duration_seconds: s.duration_seconds ?? 0,
 		done: s.done ?? true
 	};
 }
@@ -49,6 +53,8 @@ export interface ExerciseView {
 	name: string;
 	position: number;
 	superset_id: string | null;
+	/** Logged by time instead of reps (an exercise setting, shared by every workout and routine). */
+	timed: boolean;
 	sets: SetView[];
 }
 
@@ -178,6 +184,7 @@ function newSet(
 		weight_kg: 0,
 		warmup: false,
 		rest_seconds: DEFAULT_REST_SECONDS,
+		duration_seconds: 0,
 		...rest,
 		// Only workout sets get checked off; routine sets are plans.
 		...(parentKey === 'workout_exercise_id' ? { done } : {}),
@@ -353,11 +360,13 @@ export async function loadExercises(kind: Kind, parentId: string): Promise<Exerc
 			.anyOf(exercises.map((e) => e.id))
 			.toArray()
 	);
+	const timed = await timedExercises();
 	return exercises.map((e) => ({
 		id: e.id,
 		name: e.name,
 		position: e.position,
 		superset_id: e.superset_id,
+		timed: timed.has(exerciseKey(e.name)),
 		sets: sets
 			.filter((s) => s[t.setParent] === e.id)
 			.sort(byPosition)
@@ -399,7 +408,12 @@ export async function addExercise(kind: Kind, parentId: string, name: string): P
 			await t.sets.add(
 				newSet(t.setParent, ex.id, {
 					position: i + 1,
-					...(s && { reps: s.reps, weight_kg: s.weight_kg, warmup: s.warmup }),
+					...(s && {
+						reps: s.reps,
+						weight_kg: s.weight_kg,
+						warmup: s.warmup,
+						duration_seconds: s.duration_seconds
+					}),
 					// The last set gets no rest; the others keep theirs (or the default).
 					rest_seconds: isLast ? 0 : s?.rest_seconds || DEFAULT_REST_SECONDS,
 					done
@@ -461,7 +475,14 @@ export async function addSet(kind: Kind, exerciseId: string) {
 				t.setParent,
 				exerciseId,
 				last
-					? { position: last.position + 1, reps: last.reps, weight_kg: last.weight_kg, rest_seconds: 0, done }
+					? {
+							position: last.position + 1,
+							reps: last.reps,
+							weight_kg: last.weight_kg,
+							duration_seconds: last.duration_seconds ?? 0,
+							rest_seconds: 0,
+							done
+						}
 					: { rest_seconds: 0, done }
 			)
 		);
@@ -471,10 +492,17 @@ export async function addSet(kind: Kind, exerciseId: string) {
 export async function updateSet(
 	kind: Kind,
 	id: string,
-	changes: Partial<Pick<SetRow, 'reps' | 'weight_kg' | 'warmup' | 'rest_seconds'> & { done: boolean }>
+	changes: Partial<
+		Pick<SetRow, 'reps' | 'weight_kg' | 'warmup' | 'rest_seconds'> & {
+			done: boolean;
+			duration_seconds: number;
+		}
+	>
 ) {
 	const bounded = { ...changes };
 	if (bounded.reps !== undefined) bounded.reps = Math.round(clamp(bounded.reps, MAX_REPS));
+	if (bounded.duration_seconds !== undefined)
+		bounded.duration_seconds = Math.round(clamp(bounded.duration_seconds, MAX_DURATION_SECONDS));
 	if (bounded.weight_kg !== undefined) bounded.weight_kg = clamp(bounded.weight_kg, MAX_WEIGHT_KG);
 	await write(() => patch(tables(kind).sets, id, bounded));
 }
@@ -691,14 +719,41 @@ export function deleteBodyWeight(date: string) {
 	return write(() => patch(db.body_weights, date, { deleted: true }));
 }
 
-/** Set the share of body weight each rep of an exercise moves, 0–100. */
-export function setBodyweightPct(name: string, pct: number) {
+/** Keys of the exercises logged by time instead of reps. */
+export async function timedExercises(): Promise<Set<string>> {
+	const rows = await db.exercise_settings.toArray();
+	return new Set(rows.filter((x) => !x.deleted && x.timed).map((x) => x.id));
+}
+
+/** Change one exercise's settings, keeping the others. */
+function updateExerciseSetting(
+	name: string,
+	changes: Partial<Pick<ExerciseSetting, 'bodyweight_pct' | 'timed'>>
+) {
 	// The server derives the id from the stored name, so both come from one cleaned value.
 	const clean = cleanName(name);
 	const key = exerciseKey(clean);
 	if (!key) return Promise.resolve();
-	const bodyweight_pct = Math.round(clamp(pct, 100));
-	return write(() => db.exercise_settings.put(keyed(key, { name: clean, bodyweight_pct })));
+	return write(async () => {
+		const old = await getLive<ExerciseSetting>(db.exercise_settings, key);
+		const row = {
+			name: clean,
+			bodyweight_pct: old?.bodyweight_pct ?? 0,
+			timed: old?.timed ?? false,
+			...changes
+		};
+		await db.exercise_settings.put(keyed(key, row));
+	});
+}
+
+/** Set the share of body weight each rep of an exercise moves, 0–100. */
+export function setBodyweightPct(name: string, pct: number) {
+	return updateExerciseSetting(name, { bodyweight_pct: Math.round(clamp(pct, 100)) });
+}
+
+/** Log an exercise by time (e.g. dead hangs) instead of reps, everywhere it is used. */
+export function setTimed(name: string, timed: boolean) {
+	return updateExerciseSetting(name, { timed });
 }
 
 // ---------- settings ----------

@@ -142,3 +142,23 @@ func TestRoutineListPages(t *testing.T) {
 		t.Fatalf("empty-id cursor: %d", res.StatusCode)
 	}
 }
+
+func TestRoutineTimedSets(t *testing.T) {
+	srv := newRoutineServer(t)
+	var created store.Routine
+	res := send(t, "POST", srv.URL+"/api/routines",
+		`{"name":"Grip","exercises":[{"name":"Dead hang","sets":[{"duration_seconds":45,"weight_kg":0}]}]}`, &created)
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("status %d", res.StatusCode)
+	}
+	if st := created.Exercises[0].Sets[0]; st.DurationSeconds != 45 || st.Reps != 0 {
+		t.Fatalf("set = %+v", st)
+	}
+
+	var e map[string]string
+	res = send(t, "POST", srv.URL+"/api/routines",
+		`{"name":"Grip","exercises":[{"name":"Dead hang","sets":[{"weight_kg":0}]}]}`, &e)
+	if res.StatusCode != http.StatusBadRequest || !strings.Contains(e["error"], "reps or duration_seconds") {
+		t.Fatalf("status %d, %v", res.StatusCode, e)
+	}
+}

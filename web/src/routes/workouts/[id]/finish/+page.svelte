@@ -18,6 +18,7 @@
 	} from '#lib/repo.ts';
 	import { bodyLoad, exerciseKey, loadBodyContext, volume, type BodyContext } from '#lib/stats.ts';
 	import { showToast } from '#lib/toast.svelte.ts';
+	import { durationLabel } from '#lib/format.ts';
 	import type { Workout } from '#lib/db.ts';
 
 	const id = $derived(page.params.id ?? '');
@@ -56,19 +57,27 @@
 		)
 	});
 
-	/** Heaviest working set, ties broken by reps. */
+	/** Heaviest working set, ties broken by reps (or time, for timed exercises). */
 	function best(e: ExerciseView): SetView | undefined {
-		return working(e).sort((a, b) => b.weight_kg - a.weight_kg || b.reps - a.reps)[0];
+		const effort = (s: SetView) => (e.timed ? s.duration_seconds : s.reps);
+		return working(e).sort((a, b) => b.weight_kg - a.weight_kg || effort(b) - effort(a))[0];
 	}
 
 	const kg = (n: number) => `${Math.round(n * 10) / 10}`;
 
-	/** e.g. "3 sets · best 100 kg × 5"; bodyweight sets show no best. */
+	/** e.g. "3 sets · best 100 kg × 5" or "3 sets · best 0:45"; bodyweight rep sets show no best. */
 	function summary(e: ExerciseView): string {
 		const n = working(e).length;
 		const top = best(e);
 		const sets = `${n} ${n === 1 ? 'set' : 'sets'}`;
-		return top && top.weight_kg > 0 ? `${sets} · best ${kg(top.weight_kg)} kg × ${top.reps}` : sets;
+		if (!top) return sets;
+		if (e.timed) {
+			const time = durationLabel(top.duration_seconds);
+			return top.weight_kg > 0
+				? `${sets} · best ${kg(top.weight_kg)} kg × ${time}`
+				: `${sets} · best ${time}`;
+		}
+		return top.weight_kg > 0 ? `${sets} · best ${kg(top.weight_kg)} kg × ${top.reps}` : sets;
 	}
 
 	/** Set while saving, so finishing doesn't trigger the redirect below. */

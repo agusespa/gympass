@@ -30,7 +30,9 @@ const (
 	maxWeightKg    = 10000
 	maxReps        = 10000
 	maxRestSeconds = 3600
-	maxWeeklyGoal  = 7 // mirrors MAX_WEEKLY_GOAL in web/src/lib/repo.ts
+	// maxDurationSeconds bounds a timed set (e.g. a dead hang), 10 hours.
+	maxDurationSeconds = 36000
+	maxWeeklyGoal      = 7 // mirrors MAX_WEEKLY_GOAL in web/src/lib/repo.ts
 	// SettingsID is the id of the only settings row.
 	SettingsID = "user"
 )
@@ -39,6 +41,9 @@ type column struct {
 	name string
 	typ  colType
 	max  float64 // upper bound for colInt and colNum
+	// def, when set, is used when a client leaves the column out, so app
+	// versions from before the column was added keep syncing.
+	def any
 }
 
 type table struct {
@@ -74,6 +79,8 @@ var tables = []table{
 		{name: "warmup", typ: colBool},
 		{name: "rest_seconds", typ: colInt, max: maxRestSeconds},
 		{name: "done", typ: colBool},
+		// Set length for timed exercises (see exercise_settings.timed); 0 otherwise.
+		{name: "duration_seconds", typ: colInt, max: maxDurationSeconds, def: int64(0)},
 	}, indexes: []string{"workout_exercise_id"}},
 	{name: "routines", cols: []column{
 		{name: "name", typ: colText},
@@ -91,6 +98,7 @@ var tables = []table{
 		{name: "weight_kg", typ: colNum, max: maxWeightKg},
 		{name: "warmup", typ: colBool},
 		{name: "rest_seconds", typ: colInt, max: maxRestSeconds},
+		{name: "duration_seconds", typ: colInt, max: maxDurationSeconds, def: int64(0)},
 	}, indexes: []string{"routine_exercise_id"}},
 	// One weigh-in per date, with the date as id. Workouts use the latest one
 	// on or before their date.
@@ -99,10 +107,12 @@ var tables = []table{
 		{name: "weight_kg", typ: colNum, max: maxWeightKg},
 	}, id: func(col func(string) any) string { return col("date").(string) }},
 	// Per-exercise settings, with ExerciseKey(name) as id. bodyweight_pct is
-	// the share of body weight each rep moves, e.g. 100 for pull-ups.
+	// the share of body weight each rep moves, e.g. 100 for pull-ups. timed
+	// exercises (e.g. dead hangs) log duration_seconds instead of reps.
 	{name: "exercise_settings", cols: []column{
 		{name: "name", typ: colText},
 		{name: "bodyweight_pct", typ: colInt, max: 100},
+		{name: "timed", typ: colBool, def: false},
 	}, id: func(col func(string) any) string { return ExerciseKey(col("name").(string)) }},
 	// User settings: a single row with id SettingsID. weekly_goal is
 	// workouts per week, 0 for no goal.
@@ -123,6 +133,7 @@ var tableByName = func() map[string]*table {
 // migrations are never edited; schema changes append a new one.
 var migrations = []func(*sql.Tx) error{
 	createSchema,
+	addDefaultedColumns,
 }
 
 func createSchema(tx *sql.Tx) error {
@@ -150,6 +161,55 @@ func createSchema(tx *sql.Tx) error {
 	return nil
 }
 
+// addDefaultedColumns adds the columns that have a default (sets and
+// routine_sets duration_seconds, exercise_settings timed) to databases
+// created before them. createSchema builds new databases from the current
+// tables, so a column may already be there.
+func addDefaultedColumns(tx *sql.Tx) error {
+	for i := range tables {
+		t := &tables[i]
+		have := map[string]bool{}
+		rs, err := tx.Query(fmt.Sprintf("SELECT name FROM pragma_table_info('%s')", t.name))
+		if err != nil {
+			return err
+		}
+		for rs.Next() {
+			var n string
+			if err := rs.Scan(&n); err != nil {
+				_ = rs.Close()
+				return err
+			}
+			have[n] = true
+		}
+		if err := rs.Close(); err != nil {
+			return err
+		}
+		for _, c := range t.cols {
+			if c.def == nil || have[c.name] {
+				continue
+			}
+			q := fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", t.name, c.name, columnSQL(c))
+			if _, err := tx.Exec(q); err != nil {
+				return fmt.Errorf("%s: %w", q, err)
+			}
+		}
+	}
+	return nil
+}
+
+// columnSQL is a column's type and constraints, with its default if it has one.
+func columnSQL(c column) string {
+	sqlT := sqlType(c.typ)
+	switch d := c.def.(type) {
+	case nil:
+	case bool:
+		sqlT += fmt.Sprintf(" DEFAULT %d", boolInt(d))
+	default:
+		sqlT += fmt.Sprintf(" DEFAULT %v", d)
+	}
+	return sqlT
+}
+
 func sqlType(t colType) string {
 	switch t {
 	case colRefNull:
@@ -169,7 +229,7 @@ func (t *table) createSQL() []string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "CREATE TABLE %s (\n  id TEXT PRIMARY KEY,\n  updated_at INTEGER NOT NULL,\n  deleted INTEGER NOT NULL,\n  seq INTEGER NOT NULL", t.name)
 	for _, c := range t.cols {
-		fmt.Fprintf(&b, ",\n  %s %s", c.name, sqlType(c.typ))
+		fmt.Fprintf(&b, ",\n  %s %s", c.name, columnSQL(c))
 	}
 	b.WriteString("\n)")
 	out := []string{b.String(), fmt.Sprintf("CREATE INDEX %s_seq ON %s(seq)", t.name, t.name)}

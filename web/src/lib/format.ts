@@ -1,4 +1,4 @@
-import { MAX_REPS, MAX_WEIGHT_KG } from './limits';
+import { MAX_DURATION_SECONDS, MAX_REPS, MAX_WEIGHT_KG } from './limits';
 
 /** 82.5 → "82.5", 80 → "80". */
 export function kg(n: number): string {
@@ -14,6 +14,28 @@ export function parseWeight(s: string): number {
 export function parseReps(s: string): number {
 	const n = parseInt(s, 10);
 	return Number.isFinite(n) && n >= 0 ? Math.min(MAX_REPS, n) : 0;
+}
+
+/** A typed set length in seconds: "45" → 45, "1:30" → 90, "1:02:05" → 3725. 0 when unreadable. */
+export function parseDuration(s: string): number {
+	const parts = s.trim().replace(/[.,]/g, ':').split(':');
+	if (parts.some((p) => !/^\d+$/.test(p)) || parts.length > 3) return 0;
+	const n = parts.reduce((total, p) => total * 60 + parseInt(p, 10), 0);
+	return Math.min(MAX_DURATION_SECONDS, n);
+}
+
+/** A set length, e.g. 45 → "0:45", 90 → "1:30", 3725 → "1:02:05". */
+export function durationLabel(seconds: number): string {
+	return elapsed(seconds * 1000);
+}
+
+/** A set's effort: "0:45" for timed sets, "8" for reps; with the weight when there is one. */
+export function setLabel(
+	s: { reps: number; weight_kg: number; duration_seconds: number },
+	timed: boolean
+): string {
+	const effort = timed ? durationLabel(s.duration_seconds) : String(s.reps);
+	return s.weight_kg ? `${kg(s.weight_kg)} kg × ${effort}` : timed ? effort : `${s.reps} reps`;
 }
 
 /** "2026-11-14" → "Sat 14 Nov 2026" in the device locale. */

@@ -2,7 +2,7 @@
 	import { page } from '$app/state';
 	import ProgressChart from '#lib/ProgressChart.svelte';
 	import TopBar from '#lib/TopBar.svelte';
-	import { kg, longDate } from '#lib/format.ts';
+	import { durationLabel, kg, longDate, setLabel } from '#lib/format.ts';
 	import { live } from '#lib/live.svelte.ts';
 	import { setBodyweightPct } from '#lib/repo.ts';
 	import {
@@ -23,16 +23,23 @@
 
 	const stats = $derived(exerciseStats(history.current).find((x) => x.key === key));
 	const sessions = $derived(exerciseSessions(history.current, key));
-	// Bodyweight exercises have no weight to estimate a max from: chart reps instead.
+	const timed = $derived(stats?.timed ?? false);
+	// Bodyweight exercises have no weight to estimate a max from: chart reps (or time) instead.
 	const weighted = $derived(sessions.some((s) => s.bestE1rm > 0));
 	const points = $derived(
 		[...sessions]
 			.reverse()
 			.map((s) => ({
 				date: s.date,
-				value: weighted ? s.bestE1rm : Math.max(0, ...s.sets.map((x) => x.reps))
+				value: weighted
+					? s.bestE1rm
+					: Math.max(0, ...s.sets.map((x) => (timed ? x.duration_seconds : x.reps)))
 			}))
 			.filter((p) => p.value > 0)
+	);
+	const chartLabel = $derived(weighted ? 'Est. 1RM' : timed ? 'Longest' : 'Most reps');
+	const chartFormat = $derived(
+		weighted ? (v: number) => `${oneDecimal(v)} kg` : timed ? durationLabel : (v: number) => `${v} reps`
 	);
 
 	const body = live(
@@ -63,7 +70,11 @@
 			<div>
 				<dt>Heaviest</dt>
 				<dd data-testid="best-weight">
-					{kg(stats.heaviest?.set.weight_kg ?? 0)} kg<small>× {stats.heaviest?.set.reps}</small>
+					{kg(stats.heaviest?.set.weight_kg ?? 0)} kg<small
+						>× {timed
+							? durationLabel(stats.heaviest?.set.duration_seconds ?? 0)
+							: stats.heaviest?.set.reps}</small
+					>
 				</dd>
 			</div>
 			<div>
@@ -71,10 +82,17 @@
 				<dd data-testid="best-e1rm">{oneDecimal(stats.bestE1rm?.value ?? 0)} kg</dd>
 			</div>
 		{/if}
-		<div>
-			<dt>Most reps</dt>
-			<dd>{stats.mostReps?.set.reps ?? 0}</dd>
-		</div>
+		{#if timed}
+			<div>
+				<dt>Longest</dt>
+				<dd data-testid="best-time">{durationLabel(stats.longest?.set.duration_seconds ?? 0)}</dd>
+			</div>
+		{:else}
+			<div>
+				<dt>Most reps</dt>
+				<dd>{stats.mostReps?.set.reps ?? 0}</dd>
+			</div>
+		{/if}
 		<div>
 			<dt>Sessions</dt>
 			<dd>{stats.sessions}</dd>
@@ -82,11 +100,7 @@
 	</dl>
 
 	{#if points.length > 1}
-		<ProgressChart
-			{points}
-			label={weighted ? 'Est. 1RM' : 'Most reps'}
-			format={weighted ? (v) => `${oneDecimal(v)} kg` : (v) => `${v} reps`}
-		/>
+		<ProgressChart {points} label={chartLabel} format={chartFormat} />
 		{#if weighted}
 			<p class="muted note">Estimated from your best set each session (weight × reps, up to 12 reps).</p>
 		{/if}
@@ -117,7 +131,7 @@
 			</span>
 			<span class="sets">
 				{#each s.sets as set, i (i)}
-					<span>{set.weight_kg ? `${kg(set.weight_kg)} kg × ${set.reps}` : `${set.reps} reps`}</span>
+					<span>{setLabel(set, timed)}</span>
 				{/each}
 			</span>
 		</a>

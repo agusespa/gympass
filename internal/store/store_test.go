@@ -274,3 +274,80 @@ func TestNewerSchemaRefused(t *testing.T) {
 		t.Fatal("opened a database from a newer build")
 	}
 }
+
+func TestTimedSetsSync(t *testing.T) {
+	s := openTest(t)
+	ctx := context.Background()
+	hang := setRow("s1", "e1", 1, 0, 0)
+	hang["duration_seconds"] = int64(45)
+	_, out, rejected, err := s.Sync(ctx, 0, map[string][]Row{
+		"workouts":          {workout("w1", 1, "Grip")},
+		"workout_exercises": {exerciseRow("e1", "w1", "Dead hang", 1)},
+		// An app from before timed sets sends no duration_seconds.
+		"sets": {hang, setRow("s2", "e1", 2, 8, 20)},
+		"exercise_settings": {{"id": "dead hang", "updated_at": int64(1), "deleted": false,
+			"name": "Dead hang", "bodyweight_pct": int64(0), "timed": true}},
+	})
+	if err != nil || len(rejected) > 0 {
+		t.Fatal(err, rejected)
+	}
+	got := map[any]any{}
+	for _, r := range out["sets"] {
+		got[r["id"]] = r["duration_seconds"]
+	}
+	if got["s1"] != int64(45) || got["s2"] != int64(0) {
+		t.Fatalf("duration_seconds = %v", got)
+	}
+	if out["exercise_settings"][0]["timed"] != true {
+		t.Fatalf("timed = %v", out["exercise_settings"][0]["timed"])
+	}
+
+	bad := setRow("s3", "e1", 3, 0, 0)
+	bad["duration_seconds"] = int64(maxDurationSeconds + 1)
+	_, _, rejected, err = s.Sync(ctx, 0, map[string][]Row{"sets": {bad}})
+	if err != nil || len(rejected) != 1 {
+		t.Fatalf("over-long set: err %v, rejected %v", err, rejected)
+	}
+}
+
+func TestMigrationAddsDefaultedColumns(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "old.db")
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if _, _, _, err := s.Sync(ctx, 0, map[string][]Row{
+		"workouts":          {workout("w1", 1, "Grip")},
+		"workout_exercises": {exerciseRow("e1", "w1", "Dead hang", 1)},
+		"sets":              {setRow("s1", "e1", 1, 8, 0)},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// Turn it back into a version 1 database, from before the columns.
+	for _, q := range []string{
+		"ALTER TABLE sets DROP COLUMN duration_seconds",
+		"ALTER TABLE routine_sets DROP COLUMN duration_seconds",
+		"ALTER TABLE exercise_settings DROP COLUMN timed",
+		"PRAGMA user_version = 1",
+	} {
+		if _, err := s.db.Exec(q); err != nil {
+			t.Fatal(q, err)
+		}
+	}
+	_ = s.Close()
+
+	s, err = Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+	var d int64
+	if err := s.db.QueryRow("SELECT duration_seconds FROM sets WHERE id = 's1'").Scan(&d); err != nil || d != 0 {
+		t.Fatalf("duration_seconds = %d, %v", d, err)
+	}
+	var timed int64
+	if err := s.db.QueryRow("SELECT COUNT(timed) FROM exercise_settings").Scan(&timed); err != nil {
+		t.Fatal(err)
+	}
+}

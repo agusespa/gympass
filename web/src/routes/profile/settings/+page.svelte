@@ -129,11 +129,23 @@
 					a.e.position - b.e.position ||
 					a.s.position - b.s.position
 			);
-		const header = ['date', 'workout', 'exercise', 'set', 'weight_kg', 'reps', 'warmup', 'done'];
+		const header = [
+			'date',
+			'workout',
+			'exercise',
+			'set',
+			'weight_kg',
+			'reps',
+			'warmup',
+			'done',
+			'duration_seconds'
+		];
 		const lines = [header.join(',')];
 		for (const { w, e, s } of rows) {
 			lines.push(
-				[w.date, w.name, e.name, s.position, s.weight_kg, s.reps, s.warmup, s.done].map(csvCell).join(',')
+				[w.date, w.name, e.name, s.position, s.weight_kg, s.reps, s.warmup, s.done, s.duration_seconds ?? 0]
+					.map(csvCell)
+					.join(',')
 			);
 		}
 		download(`gym-sets-${today()}.csv`, 'text/csv', lines.join('\n') + '\n');

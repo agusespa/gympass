@@ -36,6 +36,9 @@ type RoutineSet struct {
 	WeightKg    float64 `json:"weight_kg"`
 	Warmup      bool    `json:"warmup"`
 	RestSeconds int64   `json:"rest_seconds"`
+	// DurationSeconds is the planned length of a timed set (e.g. a dead
+	// hang); 0 for sets counted in reps.
+	DurationSeconds int64 `json:"duration_seconds"`
 }
 
 // ErrNotFound means the routine does not exist or was deleted.
@@ -221,6 +224,8 @@ func validateRoutine(r *Routine) error {
 				return invalid("%s.weight_kg must be 0 to %d", where, maxWeightKg)
 			case st.RestSeconds < 0 || st.RestSeconds > maxRestSeconds:
 				return invalid("%s.rest_seconds must be 0 to %d", where, maxRestSeconds)
+			case st.DurationSeconds < 0 || st.DurationSeconds > maxDurationSeconds:
+				return invalid("%s.duration_seconds must be 0 to %d", where, maxDurationSeconds)
 			}
 		}
 	}
@@ -249,6 +254,7 @@ type storedSet struct {
 	weightKg    float64
 	warmup      bool
 	restSeconds int64
+	duration    int64
 	updatedAt   int64
 }
 
@@ -257,7 +263,10 @@ func (c *storedRoutine) routine() Routine {
 	for _, e := range c.exercises {
 		ex := RoutineExercise{ID: e.id, Name: e.name, SupersetID: e.supersetID, Sets: make([]RoutineSet, 0, len(e.sets))}
 		for _, st := range e.sets {
-			ex.Sets = append(ex.Sets, RoutineSet{ID: st.id, Reps: st.reps, WeightKg: st.weightKg, Warmup: st.warmup, RestSeconds: st.restSeconds})
+			ex.Sets = append(ex.Sets, RoutineSet{
+				ID: st.id, Reps: st.reps, WeightKg: st.weightKg, Warmup: st.warmup, RestSeconds: st.restSeconds,
+				DurationSeconds: st.duration,
+			})
 		}
 		r.Exercises = append(r.Exercises, ex)
 	}
@@ -276,7 +285,7 @@ func loadRoutine(ctx context.Context, tx *sql.Tx, id string) (*storedRoutine, er
 		return nil, err
 	}
 	rs, err := tx.QueryContext(ctx, `SELECT e.id, e.name, e.superset_id, e.position, e.updated_at,
-  s.id, s.position, s.reps, s.weight_kg, s.warmup, s.rest_seconds, s.updated_at
+  s.id, s.position, s.reps, s.weight_kg, s.warmup, s.rest_seconds, s.duration_seconds, s.updated_at
 FROM routine_exercises e
 LEFT JOIN routine_sets s ON s.routine_exercise_id = e.id AND s.deleted = 0
 WHERE e.routine_id = ? AND e.deleted = 0
@@ -289,9 +298,9 @@ ORDER BY e.position, e.id, s.position, s.id`, id)
 		var e storedExercise
 		var superset, setID sql.NullString
 		var setPos, weight sql.NullFloat64
-		var reps, warmup, rest, setUpdated sql.NullInt64
+		var reps, warmup, rest, duration, setUpdated sql.NullInt64
 		if err := rs.Scan(&e.id, &e.name, &superset, &e.position, &e.updatedAt,
-			&setID, &setPos, &reps, &weight, &warmup, &rest, &setUpdated); err != nil {
+			&setID, &setPos, &reps, &weight, &warmup, &rest, &duration, &setUpdated); err != nil {
 			return nil, err
 		}
 		if n := len(c.exercises); n == 0 || c.exercises[n-1].id != e.id {
@@ -304,7 +313,7 @@ ORDER BY e.position, e.id, s.position, s.id`, id)
 			ex := &c.exercises[len(c.exercises)-1]
 			ex.sets = append(ex.sets, storedSet{
 				id: setID.String, position: setPos.Float64, reps: reps.Int64, weightKg: weight.Float64,
-				warmup: warmup.Int64 == 1, restSeconds: rest.Int64, updatedAt: setUpdated.Int64,
+				warmup: warmup.Int64 == 1, restSeconds: rest.Int64, duration: duration.Int64, updatedAt: setUpdated.Int64,
 			})
 		}
 	}
@@ -392,11 +401,11 @@ func (w *rowWriter) plan(cur *storedRoutine, r Routine) error {
 			}
 			pos := setPositions[j]
 			if os.updatedAt == 0 || os.position != pos || os.reps != st.Reps || os.weightKg != st.WeightKg ||
-				os.warmup != st.Warmup || os.restSeconds != st.RestSeconds {
+				os.warmup != st.Warmup || os.restSeconds != st.RestSeconds || os.duration != st.DurationSeconds {
 				w.add("routine_sets", Row{
 					"id": st.ID, "updated_at": w.stamp(os.updatedAt), "deleted": false,
 					"routine_exercise_id": e.ID, "position": pos, "reps": st.Reps, "weight_kg": st.WeightKg,
-					"warmup": st.Warmup, "rest_seconds": st.RestSeconds,
+					"warmup": st.Warmup, "rest_seconds": st.RestSeconds, "duration_seconds": st.DurationSeconds,
 				})
 			}
 		}
@@ -425,7 +434,7 @@ func (w *rowWriter) deleteSet(exerciseID string, s storedSet) {
 	w.add("routine_sets", Row{
 		"id": s.id, "updated_at": w.stamp(s.updatedAt), "deleted": true,
 		"routine_exercise_id": exerciseID, "position": s.position, "reps": s.reps, "weight_kg": s.weightKg,
-		"warmup": s.warmup, "rest_seconds": s.restSeconds,
+		"warmup": s.warmup, "rest_seconds": s.restSeconds, "duration_seconds": s.duration,
 	})
 }
 

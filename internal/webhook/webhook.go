@@ -73,6 +73,9 @@ type Set struct {
 	WeightKg    float64 `json:"weight_kg"`
 	Warmup      bool    `json:"warmup"`
 	RestSeconds int64   `json:"rest_seconds"`
+	// DurationSeconds is how long a timed set (e.g. a dead hang) lasted;
+	// omitted for sets counted in reps.
+	DurationSeconds int64 `json:"duration_seconds,omitempty"`
 }
 
 // Totals count working sets only; warm-ups are listed but not added up.

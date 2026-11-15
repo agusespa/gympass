@@ -32,10 +32,12 @@ type exerciseInput struct {
 
 type setInput struct {
 	ID          string   `json:"id,omitempty" jsonschema:"id of an existing set of this exercise to keep it; leave out to add a new set"`
-	Reps        *int64   `json:"reps" jsonschema:"planned repetitions, 0 to 10000"`
+	Reps        *int64   `json:"reps,omitempty" jsonschema:"planned repetitions, 0 to 10000; required unless duration_seconds is set"`
 	WeightKg    *float64 `json:"weight_kg" jsonschema:"planned weight in kilograms, 0 for bodyweight"`
 	Warmup      bool     `json:"warmup,omitempty" jsonschema:"true for a warm-up set; warm-ups are left out of totals"`
 	RestSeconds *int64   `json:"rest_seconds,omitempty" jsonschema:"rest after the set in seconds, 0 to 3600; defaults to 120"`
+	// DurationSeconds plans a timed set instead of reps.
+	DurationSeconds *int64 `json:"duration_seconds,omitempty" jsonschema:"planned length in seconds for a timed exercise such as a dead hang or plank, 0 to 36000; use instead of reps"`
 }
 
 func (in routineInput) routine() (store.Routine, error) {
@@ -43,15 +45,26 @@ func (in routineInput) routine() (store.Routine, error) {
 	for i, e := range in.Exercises {
 		ex := store.RoutineExercise{ID: e.ID, Name: e.Name, SupersetID: e.SupersetID, Sets: make([]store.RoutineSet, 0, len(e.Sets))}
 		for j, st := range e.Sets {
-			if st.Reps == nil || st.WeightKg == nil {
-				return r, fmt.Errorf("exercises[%d].sets[%d]: reps and weight_kg are required", i, j)
+			if st.WeightKg == nil {
+				return r, fmt.Errorf("exercises[%d].sets[%d]: weight_kg is required", i, j)
+			}
+			if st.Reps == nil && st.DurationSeconds == nil {
+				return r, fmt.Errorf("exercises[%d].sets[%d]: reps or duration_seconds is required", i, j)
+			}
+			var reps, duration int64
+			if st.Reps != nil {
+				reps = *st.Reps
+			}
+			if st.DurationSeconds != nil {
+				duration = *st.DurationSeconds
 			}
 			rest := int64(defaultRestSeconds)
 			if st.RestSeconds != nil {
 				rest = *st.RestSeconds
 			}
 			ex.Sets = append(ex.Sets, store.RoutineSet{
-				ID: st.ID, Reps: *st.Reps, WeightKg: *st.WeightKg, Warmup: st.Warmup, RestSeconds: rest,
+				ID: st.ID, Reps: reps, WeightKg: *st.WeightKg, Warmup: st.Warmup, RestSeconds: rest,
+				DurationSeconds: duration,
 			})
 		}
 		r.Exercises = append(r.Exercises, ex)

@@ -56,6 +56,8 @@ type SetSnapshot struct {
 	WeightKg    float64
 	Warmup      bool
 	RestSeconds int64
+	// DurationSeconds is how long a timed set lasted; 0 for sets counted in reps.
+	DurationSeconds int64
 }
 
 func (s *Store) nowMs() int64 {
@@ -180,7 +182,7 @@ func (s *Store) Workout(ctx context.Context, id string) (w WorkoutSnapshot, ok b
 		return w, false, err
 	}
 
-	rs, err := s.db.QueryContext(ctx, `SELECT e.id, e.name, e.superset_id, s.reps, s.weight_kg, s.warmup, s.rest_seconds
+	rs, err := s.db.QueryContext(ctx, `SELECT e.id, e.name, e.superset_id, s.reps, s.weight_kg, s.warmup, s.rest_seconds, s.duration_seconds
 FROM workout_exercises e
 LEFT JOIN sets s ON s.workout_exercise_id = e.id AND s.deleted = 0 AND s.done = 1
 WHERE e.workout_id = ? AND e.deleted = 0
@@ -193,9 +195,9 @@ ORDER BY e.position, e.id, s.position, s.id`, id)
 	for rs.Next() {
 		var exID, name string
 		var superset sql.NullString
-		var reps, warmup, rest sql.NullInt64
+		var reps, warmup, rest, duration sql.NullInt64
 		var weight sql.NullFloat64
-		if err := rs.Scan(&exID, &name, &superset, &reps, &weight, &warmup, &rest); err != nil {
+		if err := rs.Scan(&exID, &name, &superset, &reps, &weight, &warmup, &rest, &duration); err != nil {
 			return w, false, err
 		}
 		if exID != lastID {
@@ -210,6 +212,7 @@ ORDER BY e.position, e.id, s.position, s.id`, id)
 			ex := &w.Exercises[len(w.Exercises)-1]
 			ex.Sets = append(ex.Sets, SetSnapshot{
 				Reps: reps.Int64, WeightKg: weight.Float64, Warmup: warmup.Int64 == 1, RestSeconds: rest.Int64,
+				DurationSeconds: duration.Int64,
 			})
 		}
 	}

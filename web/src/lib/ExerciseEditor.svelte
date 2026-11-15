@@ -1,7 +1,15 @@
 <script lang="ts">
 	import ConfirmButton from './ConfirmButton.svelte';
 	import { exerciseKey } from './exercise-key';
-	import { kg, parseReps, parseWeight, REST_CHOICES, restLabel } from './format';
+	import {
+		durationLabel,
+		kg,
+		parseDuration,
+		parseReps,
+		parseWeight,
+		REST_CHOICES,
+		restLabel
+	} from './format';
 	import { live } from './live.svelte';
 	import {
 		addExercise,
@@ -15,6 +23,7 @@
 		moveWithinSuperset,
 		previousSets,
 		renameExercise,
+		setTimed,
 		toBlocks,
 		unlink,
 		updateSet,
@@ -67,7 +76,9 @@
 		const warm = ex.sets[i].warmup;
 		const prev = previous.current.get(exerciseKey(ex.name))?.filter((s) => s.warmup === warm);
 		const s = prev?.[nthOfType(ex, i)];
-		return s ? `${kg(s.weight_kg)}kg × ${s.reps}` : '–';
+		if (!s) return '–';
+		const effort = ex.timed ? durationLabel(s.duration_seconds) : String(s.reps);
+		return ex.timed && !s.weight_kg ? effort : `${kg(s.weight_kg)}kg × ${effort}`;
 	}
 
 	/** Picker options, keeping an off-list value (e.g. synced from elsewhere) selectable. */
@@ -128,6 +139,10 @@
 							{#if checkable}
 								<button class="chip" onclick={() => addSet(kind, ex.id)}>+ Add set</button>
 							{/if}
+							<!-- A per-exercise setting: it applies to this exercise in every workout and routine. -->
+							<button class="chip" onclick={() => setTimed(ex.name, !ex.timed)}>
+								{ex.timed ? 'Log reps' : 'Log time'}
+							</button>
 							{#if block.superset}
 								<button
 									class="chip"
@@ -191,7 +206,7 @@
 						</svg>
 						kg
 					</span>
-					<span class="th">Reps</span>
+					<span class="th">{ex.timed ? 'Time' : 'Reps'}</span>
 					<span class="th"></span>
 
 					{#each ex.sets as set, si (set.id)}
@@ -240,15 +255,31 @@
 							value={set.weight_kg ? kg(set.weight_kg) : ''}
 							onchange={(e) => updateSet(kind, set.id, { weight_kg: parseWeight(e.currentTarget.value) })}
 						/>
-						<input
-							class:done
-							inputmode="numeric"
-							pattern="[0-9]*"
-							aria-label="Reps set {si + 1}"
-							placeholder="0"
-							value={set.reps ? String(set.reps) : ''}
-							onchange={(e) => updateSet(kind, set.id, { reps: parseReps(e.currentTarget.value) })}
-						/>
+						{#if ex.timed}
+							<!-- Seconds or m:ss; the decimal keypad's separator works as the colon. -->
+							<input
+								class:done
+								inputmode="decimal"
+								aria-label="Time set {si + 1}"
+								placeholder="0:00"
+								value={set.duration_seconds ? durationLabel(set.duration_seconds) : ''}
+								onchange={(e) => {
+									const duration_seconds = parseDuration(e.currentTarget.value);
+									e.currentTarget.value = duration_seconds ? durationLabel(duration_seconds) : '';
+									updateSet(kind, set.id, { duration_seconds });
+								}}
+							/>
+						{:else}
+							<input
+								class:done
+								inputmode="numeric"
+								pattern="[0-9]*"
+								aria-label="Reps set {si + 1}"
+								placeholder="0"
+								value={set.reps ? String(set.reps) : ''}
+								onchange={(e) => updateSet(kind, set.id, { reps: parseReps(e.currentTarget.value) })}
+							/>
+						{/if}
 						{#if checkable}
 							<button
 								class="check-set"

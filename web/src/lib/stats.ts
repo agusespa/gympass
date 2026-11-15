@@ -13,6 +13,8 @@ import { exerciseKey } from './exercise-key';
 export interface HistorySet {
 	reps: number;
 	weight_kg: number;
+	/** Length of a timed set, seconds; 0 for sets counted in reps. */
+	duration_seconds: number;
 }
 
 /** One exercise as performed in one finished workout. */
@@ -27,6 +29,8 @@ export interface Performance {
 	key: string;
 	/** Body weight each rep moves on top of weight_kg, kg (0 for most exercises). */
 	body: number;
+	/** Logged by time instead of reps (the exercise's current setting). */
+	timed: boolean;
 	sets: HistorySet[];
 }
 
@@ -90,13 +94,17 @@ export async function loadHistory(): Promise<History> {
 	);
 	const setsByExercise = new Map<string, HistorySet[]>();
 	for (const s of await db.sets.toArray()) {
-		// A set with no reps was not performed, checked or not.
-		if (s.deleted || s.warmup || !s.done || s.reps <= 0) continue;
+		// A set with no reps or time was not performed, checked or not.
+		const duration_seconds = s.duration_seconds ?? 0;
+		if (s.deleted || s.warmup || !s.done || (s.reps <= 0 && duration_seconds <= 0)) continue;
 		const list = setsByExercise.get(s.workout_exercise_id) ?? [];
-		list.push({ reps: s.reps, weight_kg: s.weight_kg });
+		list.push({ reps: s.reps, weight_kg: s.weight_kg, duration_seconds });
 		setsByExercise.set(s.workout_exercise_id, list);
 	}
 	const body = await loadBodyContext();
+	const timed = new Set(
+		(await db.exercise_settings.toArray()).filter((x) => !x.deleted && x.timed).map((x) => x.id)
+	);
 	const performances: Performance[] = [];
 	for (const e of exercises) {
 		const sets = setsByExercise.get(e.id);
@@ -110,6 +118,7 @@ export async function loadHistory(): Promise<History> {
 			name: e.name.trim(),
 			key,
 			body: bodyLoad(body, key, w.date),
+			timed: timed.has(key),
 			sets
 		});
 	}
@@ -262,9 +271,13 @@ export interface ExerciseStats {
 	name: string;
 	sessions: number;
 	lastDate: string;
+	/** Logged by time instead of reps. */
+	timed: boolean;
 	heaviest: Best | null;
 	bestE1rm: Best | null;
 	mostReps: Best | null;
+	/** Longest timed set. */
+	longest: Best | null;
 }
 
 function better(
@@ -290,9 +303,11 @@ export function exerciseStats(h: History): ExerciseStats[] {
 				name: p.name,
 				sessions: 0,
 				lastDate: p.date,
+				timed: p.timed,
 				heaviest: null,
 				bestE1rm: null,
-				mostReps: null
+				mostReps: null,
+				longest: null
 			};
 			map.set(p.key, x);
 		}
@@ -303,15 +318,18 @@ export function exerciseStats(h: History): ExerciseStats[] {
 		let heaviest: Best | null = null;
 		let bestE1rm: Best | null = null;
 		let mostReps: Best | null = null;
+		let longest: Best | null = null;
 		for (const s of p.sets) {
-			// Heavier weight wins; at the same weight, more reps.
-			heaviest = better(heaviest, s.weight_kg + s.reps / 1000, p, s, seen);
+			// Heavier weight wins; at the same weight, more reps (or a longer timed set).
+			heaviest = better(heaviest, s.weight_kg + s.reps / 1000 + s.duration_seconds / 1e6, p, s, seen);
 			bestE1rm = better(bestE1rm, e1rm(s), p, s, seen);
 			mostReps = better(mostReps, s.reps, p, s, seen);
+			longest = better(longest, s.duration_seconds, p, s, seen);
 		}
 		if (heaviest && (!x.heaviest || heaviest.value > x.heaviest.value)) x.heaviest = heaviest;
 		if (bestE1rm && (!x.bestE1rm || bestE1rm.value > x.bestE1rm.value)) x.bestE1rm = bestE1rm;
 		if (mostReps && (!x.mostReps || mostReps.value > x.mostReps.value)) x.mostReps = mostReps;
+		if (longest && (!x.longest || longest.value > x.longest.value)) x.longest = longest;
 	}
 	return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -319,7 +337,7 @@ export function exerciseStats(h: History): ExerciseStats[] {
 export interface RecentRecord {
 	key: string;
 	name: string;
-	kind: 'heaviest' | 'e1rm' | 'reps';
+	kind: 'heaviest' | 'e1rm' | 'reps' | 'time';
 	record: Best;
 }
 
@@ -335,7 +353,10 @@ export function recentRecords(stats: ExerciseStats[], today: string, days = 30):
 		const candidates: RecentRecord[] = [];
 		if (x.heaviest) candidates.push({ key: x.key, name: x.name, kind: 'heaviest', record: x.heaviest });
 		if (x.bestE1rm) candidates.push({ key: x.key, name: x.name, kind: 'e1rm', record: x.bestE1rm });
-		if (x.mostReps && !x.heaviest?.set.weight_kg)
+		if (x.timed) {
+			if (x.longest && !x.heaviest?.set.weight_kg)
+				candidates.push({ key: x.key, name: x.name, kind: 'time', record: x.longest });
+		} else if (x.mostReps && !x.heaviest?.set.weight_kg)
 			candidates.push({ key: x.key, name: x.name, kind: 'reps', record: x.mostReps });
 		const shown = new Set<string>();
 		for (const c of candidates) {

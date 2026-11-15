@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { duration, kg, longDate, shortDate, tonnage } from '#lib/format.ts';
+	import { duration, durationLabel, kg, longDate, setLabel, shortDate, tonnage } from '#lib/format.ts';
 	import { live } from '#lib/live.svelte.ts';
 	import {
 		dismissBodyWeightCard,
@@ -62,6 +62,7 @@
 	function recordText(r: RecentRecord): string {
 		const s = r.record.set;
 		if (r.kind === 'reps') return `${s.reps} reps`;
+		if (r.kind === 'time') return durationLabel(s.duration_seconds);
 		if (r.kind === 'e1rm') return `${kg(Math.round(r.record.value * 10) / 10)} kg est. 1RM`;
 		return `${kg(s.weight_kg)} kg × ${s.reps}`;
 	}
@@ -69,7 +70,9 @@
 	function exerciseLine(x: ExerciseStats): string {
 		const sessions = `${x.sessions} ${x.sessions === 1 ? 'session' : 'sessions'}`;
 		const h = x.heaviest?.set;
-		if (h?.weight_kg) return `${sessions} · best ${kg(h.weight_kg)} kg × ${h.reps}`;
+		if (h?.weight_kg) return `${sessions} · best ${setLabel(h, x.timed)}`;
+		if (x.timed)
+			return x.longest ? `${sessions} · best ${durationLabel(x.longest.set.duration_seconds)}` : sessions;
 		if (x.mostReps) return `${sessions} · best ${x.mostReps.set.reps} reps`;
 		return sessions;
 	}
