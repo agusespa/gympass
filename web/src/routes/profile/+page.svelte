@@ -331,6 +331,7 @@
 	}
 
 	.stats .of {
+		margin-left: 0.15em;
 		font-size: 0.9rem;
 		font-weight: 500;
 		opacity: 0.7;
