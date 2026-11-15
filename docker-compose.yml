@@ -15,3 +15,7 @@ services:
       # Optional: POST finished workouts to n8n (see README, "Webhook").
       # WEBHOOK_URL: https://n8n.example.com/webhook/gym-tracker
       # WEBHOOK_SECRET: change-me
+      # Optional: let AI assistants log in to /mcp through Cloudflare Access
+      # (see README, "AI assistants").
+      # CF_ACCESS_TEAM_DOMAIN: myteam.cloudflareaccess.com
+      # CF_ACCESS_AUD: <Application Audience (AUD) Tag>

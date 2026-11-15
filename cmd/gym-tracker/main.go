@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/agusespa/gym-tracker/internal/accessjwt"
 	"github.com/agusespa/gym-tracker/internal/api"
 	"github.com/agusespa/gym-tracker/internal/store"
 	"github.com/agusespa/gym-tracker/internal/ui"
@@ -61,9 +62,22 @@ func main() {
 		log.Print("API_TOKEN is no longer used: the API relies on Cloudflare Access like the app; remove it")
 	}
 
+	// With both set, /mcp only accepts requests that Cloudflare Access let
+	// through, which Access's Managed OAuth (MCP clients such as Claude's
+	// apps logging in with your Access account) requires.
+	var opts api.Options
+	team, aud := os.Getenv("CF_ACCESS_TEAM_DOMAIN"), os.Getenv("CF_ACCESS_AUD")
+	switch {
+	case team != "" && aud != "":
+		opts.MCPGuard = accessjwt.New(team, aud).Require
+		log.Printf("/mcp requires a Cloudflare Access token (team %s)", team)
+	case team != "" || aud != "":
+		log.Fatal("set both CF_ACCESS_TEAM_DOMAIN and CF_ACCESS_AUD, or neither")
+	}
+
 	srv := &http.Server{
 		Addr:              ":" + port,
-		Handler:           api.New(s, ui.FS()),
+		Handler:           api.New(s, ui.FS(), opts),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 

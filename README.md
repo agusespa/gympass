@@ -39,6 +39,7 @@ The application is configured using environment variables. All are **optional**:
 - `WEBHOOK_URL`: Endpoint to POST finished workouts to. The webhook is off when unset.
 - `WEBHOOK_SECRET`: Sent as `Authorization: Bearer <secret>`.
 - `WEBHOOK_DELAY`: Wait after the last change before sending, so a burst of edits becomes one send (default: `30s`).
+- `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD`: Your Zero Trust team domain (e.g. `myteam.cloudflareaccess.com`) and the Access application's **Application Audience (AUD) Tag**. With both set, `/mcp` only accepts requests carrying a valid Cloudflare Access token, which Access's [Managed OAuth](#ai-assistants) needs.
 
 Set them in the `environment` section of `docker-compose.yml`, or in a `.env` file next to it.
 
@@ -249,6 +250,14 @@ For Claude Code:
 ```bash
 claude mcp add --transport http gym-tracker https://gym.example.com/mcp --header "CF-Access-Client-Id: <client id>" --header "CF-Access-Client-Secret: <client secret>"
 ```
+
+### AI assistants
+
+Assistants like Claude (web, desktop and phone) and ChatGPT connect to MCP servers from their own cloud and log in with OAuth, so they can't send a service token. Let Cloudflare Access be the OAuth server instead:
+
+1. Set `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD` so the app checks the token Access attaches to each request (Cloudflare requires this before enabling the next step).
+2. In Zero Trust, edit the Access application, and under **Advanced settings** turn on **Managed OAuth**.
+3. Add `https://gym.example.com/mcp` as a custom connector in your assistant (in Claude: **Settings → Connectors → Add custom connector**, OAuth fields left empty). The assistant registers itself, and you log in through your normal Access policy. In Claude, the connector then also shows up in the phone app.
 
 ## Usage Notes
 

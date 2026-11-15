@@ -2,8 +2,13 @@ package api
 
 import (
 	"net/http"
+	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
+	"testing/fstest"
+
+	"github.com/agusespa/gym-tracker/internal/store"
 )
 
 // Browsers mark where a request comes from; writes from another site must be
@@ -58,5 +63,28 @@ func TestCrossOriginWritesRefused(t *testing.T) {
 
 	if got := do("GET", "/api/routines", "", map[string]string{"Sec-Fetch-Site": "cross-site"}); got != http.StatusOK {
 		t.Errorf("cross-site GET: status %d, want 200 (reads are not refused)", got)
+	}
+}
+
+func TestMCPGuardWrapsOnlyMCP(t *testing.T) {
+	s, err := store.Open(filepath.Join(t.TempDir(), "guard.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	deny := func(http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusTeapot) })
+	}
+	srv := httptest.NewServer(New(s, fstest.MapFS{}, Options{MCPGuard: deny}))
+	t.Cleanup(srv.Close)
+	for path, want := range map[string]int{"/mcp": http.StatusTeapot, "/api/routines": http.StatusOK} {
+		res, err := http.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = res.Body.Close()
+		if res.StatusCode != want {
+			t.Errorf("GET %s: status %d, want %d", path, res.StatusCode, want)
+		}
 	}
 }
