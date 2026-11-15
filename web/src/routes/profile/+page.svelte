@@ -252,11 +252,18 @@
 		stroke-linejoin: round;
 	}
 
+	/* 2×2 on phones, so a big total like "12,480 kg" still fits. */
 	.stats {
 		display: grid;
-		grid-template-columns: repeat(4, 1fr);
+		grid-template-columns: repeat(2, 1fr);
 		gap: 0.5rem;
 		margin: 0 0 0.75rem;
+	}
+
+	@media (min-width: 480px) {
+		.stats {
+			grid-template-columns: repeat(4, 1fr);
+		}
 	}
 
 	.stats div {
@@ -274,7 +281,7 @@
 
 	.stats dd {
 		margin: 0.2rem 0 0;
-		font-size: 1.1rem;
+		font-size: 1.25rem;
 		font-weight: 600;
 		white-space: nowrap;
 		font-variant-numeric: tabular-nums;

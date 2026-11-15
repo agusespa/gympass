@@ -46,7 +46,8 @@ body {
 	background: var(--bg);
 	color: var(--text);
 	font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-	font-size: 16px;
+	/* Everything sized in rem scales from here; 17px reads comfortably on an iPhone. */
+	font-size: 17px;
 	-webkit-text-size-adjust: 100%;
 	-webkit-tap-highlight-color: transparent;
 }
@@ -75,7 +76,7 @@ select {
 
 /* 16px+ inputs stop iOS from zooming on focus. */
 input {
-	font-size: 16px;
+	font-size: 1rem;
 	background: var(--bg);
 	border: 1px solid var(--border);
 	border-radius: 8px;
@@ -95,7 +96,7 @@ button {
 	padding: 0.55rem 0.9rem;
 	background: var(--border);
 	cursor: pointer;
-	min-height: 40px;
+	min-height: 44px;
 }
 
 button:disabled {
@@ -135,7 +136,7 @@ button.danger {
 
 /* Large title at the top of a tab. */
 .large-title {
-	font-size: 1.85rem;
+	font-size: 2rem;
 	font-weight: 800;
 	letter-spacing: -0.02em;
 	margin: 0 0 1rem;
@@ -157,4 +158,57 @@ button.danger {
 
 .page-actions {
 	margin-top: 1.25rem;
+}
+
+/* Tab switch (see +layout.svelte): the page slides toward the tapped tab. */
+::view-transition-old(tabbar) {
+	display: none;
+}
+
+::view-transition-new(tabbar) {
+	animation: none;
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+	animation-duration: 0.32s;
+	animation-timing-function: cubic-bezier(0.25, 0.8, 0.3, 1);
+}
+
+:root[data-tab-dir='forward']::view-transition-old(root) {
+	animation-name: tab-out-left;
+}
+:root[data-tab-dir='forward']::view-transition-new(root) {
+	animation-name: tab-in-right;
+}
+:root[data-tab-dir='back']::view-transition-old(root) {
+	animation-name: tab-out-right;
+}
+:root[data-tab-dir='back']::view-transition-new(root) {
+	animation-name: tab-in-left;
+}
+
+@keyframes tab-out-left {
+	to {
+		opacity: 0;
+		transform: translateX(-12%);
+	}
+}
+@keyframes tab-in-right {
+	from {
+		opacity: 0;
+		transform: translateX(12%);
+	}
+}
+@keyframes tab-out-right {
+	to {
+		opacity: 0;
+		transform: translateX(12%);
+	}
+}
+@keyframes tab-in-left {
+	from {
+		opacity: 0;
+		transform: translateX(-12%);
+	}
 }

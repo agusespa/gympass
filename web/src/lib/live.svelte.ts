@@ -1,4 +1,5 @@
 import { liveQuery } from 'dexie';
+import { reportError } from './errors.ts';
 
 /**
  * Reactive wrapper around a Dexie live query. `key` is read reactively; the
@@ -14,7 +15,7 @@ export function live<K, T>(key: () => K, query: (k: K) => Promise<T>, initial: T
 				value = v;
 				loaded = true;
 			},
-			error: (e) => console.error(e)
+			error: reportError
 		});
 		return () => sub.unsubscribe();
 	});

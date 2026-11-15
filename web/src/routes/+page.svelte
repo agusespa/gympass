@@ -44,26 +44,31 @@
 		return ((words[0]?.[0] ?? '') + (words[1]?.[0] ?? '')).toUpperCase() || '?';
 	}
 
+	/** True while a button here is creating something and navigating to it. */
+	let busy = $state(false);
+
 	// A running workout can only be finished or discarded, so opening the app goes straight back to it.
+	// Skipped while starting one here, which navigates by itself.
 	$effect(() => {
 		const w = running.current[0];
-		if (w) goto(`/workouts/${w.id}`, { replaceState: true });
+		if (w && !busy) goto(`/workouts/${w.id}`, { replaceState: true });
 	});
 
-	async function startEmpty() {
-		const id = await createWorkout();
-		await goto(`/workouts/${id}`);
+	/** Create something and open it, ignoring repeat taps. Failures reach the error toast. */
+	async function open(create: () => Promise<string>, path: string) {
+		if (busy) return;
+		busy = true;
+		try {
+			const id = await create();
+			await goto(`${path}/${id}`);
+		} finally {
+			busy = false;
+		}
 	}
 
-	async function newRoutine() {
-		const id = await createRoutine();
-		await goto(`/routines/${id}`);
-	}
-
-	async function start(id: string) {
-		const workoutId = await startWorkoutFromRoutine(id);
-		await goto(`/workouts/${workoutId}`);
-	}
+	const startEmpty = () => open(() => createWorkout(), '/workouts');
+	const newRoutine = () => open(() => createRoutine(), '/routines');
+	const start = (id: string) => open(() => startWorkoutFromRoutine(id), '/workouts');
 </script>
 
 <p class="eyebrow">{todayLabel}</p>
@@ -102,7 +107,12 @@
 						</span>
 					</span>
 				</a>
-				<button class="play" aria-label="Start {r.name}" onclick={() => start(r.id)}>
+				<button class="edit" aria-label="Edit {r.name}" onclick={() => goto(`/routines/${r.id}`)}>
+					<svg viewBox="0 0 24 24" aria-hidden="true"
+						><path d="M4 20h4L19 9a2.83 2.83 0 0 0-4-4L4 16v4z" /><path d="M13.5 6.5l4 4" /></svg
+					>
+				</button>
+				<button class="play" aria-label="Start {r.name}" disabled={busy} onclick={() => start(r.id)}>
 					<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z" /></svg>
 				</button>
 			</li>
@@ -110,7 +120,7 @@
 	</ul>
 {/if}
 
-<button class="empty-workout" onclick={startEmpty}>
+<button class="empty-workout" disabled={busy} onclick={startEmpty}>
 	<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6v12M6 12h12" /></svg>
 	Start empty workout
 </button>
@@ -161,8 +171,8 @@
 		display: flex;
 		align-items: center;
 		gap: 0.2rem;
-		min-height: 30px;
-		padding: 0 0.7rem 0 0.5rem;
+		min-height: 34px;
+		padding: 0 0.8rem 0 0.6rem;
 		border-radius: 999px;
 		background: color-mix(in srgb, var(--accent) 15%, transparent);
 		color: var(--accent);
@@ -171,8 +181,8 @@
 	}
 
 	.new svg {
-		width: 16px;
-		height: 16px;
+		width: 18px;
+		height: 18px;
 	}
 
 	.empty {
@@ -205,7 +215,7 @@
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
-		padding: 0.6rem 0.6rem 0.6rem 0.7rem;
+		padding: 0.7rem 0.7rem 0.7rem 0.8rem;
 		border-radius: 16px;
 		background: var(--surface);
 	}
@@ -223,9 +233,9 @@
 		flex-shrink: 0;
 		display: grid;
 		place-items: center;
-		width: 40px;
-		height: 40px;
-		border-radius: 12px;
+		width: 46px;
+		height: 46px;
+		border-radius: 13px;
 		background: hsl(var(--h) 70% 55% / 0.18);
 		color: hsl(var(--h) 75% 60%);
 		font-size: 0.85rem;
@@ -260,12 +270,13 @@
 		font-weight: 600;
 	}
 
+	.edit,
 	.play {
 		flex-shrink: 0;
 		display: grid;
 		place-items: center;
-		width: 38px;
-		height: 38px;
+		width: 44px;
+		height: 44px;
 		min-height: 0;
 		padding: 0;
 		border-radius: 50%;
@@ -274,34 +285,52 @@
 		transition: transform 0.12s;
 	}
 
+	.edit:active,
 	.play:active {
 		transform: scale(0.92);
 	}
 
+	/* Secondary to Start: tinted, not filled. */
+	.edit {
+		background: color-mix(in srgb, var(--accent) 15%, transparent);
+		color: var(--accent);
+	}
+
+	.edit svg {
+		width: 20px;
+		height: 20px;
+		stroke-width: 2;
+	}
+
 	.play svg {
-		width: 18px;
-		height: 18px;
+		width: 20px;
+		height: 20px;
 		fill: currentColor;
 		stroke-width: 1.5;
 		margin-left: 2px;
 	}
 
+	/* Full-width, so it reads as a real action rather than a footnote. */
 	.empty-workout {
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		gap: 0.3rem;
-		margin: 1rem auto 0;
-		min-height: 36px;
-		padding: 0 0.9rem;
+		gap: 0.4rem;
+		width: 100%;
+		margin: 1rem 0 0;
+		min-height: 52px;
+		padding: 0 1rem;
+		border: 1.5px dashed var(--border);
+		border-radius: 16px;
 		background: transparent;
-		color: var(--muted);
-		font-size: 0.85rem;
-		font-weight: 500;
+		color: var(--text);
+		font-size: 1rem;
+		font-weight: 600;
 	}
 
 	.empty-workout svg {
-		width: 15px;
-		height: 15px;
+		width: 18px;
+		height: 18px;
+		color: var(--accent);
 	}
 </style>

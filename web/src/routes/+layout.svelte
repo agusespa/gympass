@@ -1,19 +1,49 @@
 <script lang="ts">
 	import '../app.css';
 	import favicon from '#lib/assets/favicon.svg';
+	import { onNavigate } from '$app/navigation';
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
+	import { installErrorToasts } from '#lib/errors.ts';
 	import { startSync, sync } from '#lib/sync.svelte.ts';
 	import { runToastAction, toast } from '#lib/toast.svelte.ts';
 	import type { LayoutProps } from './$types';
 
 	let { children }: LayoutProps = $props();
 
-	onMount(startSync);
+	onMount(() => {
+		installErrorToasts();
+		startSync();
+	});
+
+	/**
+	 * Offline support and record ids need a secure context, so plain http:// (e.g. a LAN IP)
+	 * is not supported; say so instead of failing on the first tap.
+	 */
+	const insecure = typeof window !== 'undefined' && !window.isSecureContext;
 
 	const onProfile = $derived(page.url.pathname.startsWith('/profile'));
 	/** Tabs show only on the two tab screens; workout and routine screens use their back button. */
 	const showTabs = $derived(page.url.pathname === '/' || page.url.pathname === '/profile');
+
+	const TABS = ['/', '/profile'];
+
+	// Switching tabs slides the page toward the tab that was tapped (Safari 18+, Chrome);
+	// browsers without view transitions just switch.
+	onNavigate((nav) => {
+		const from = TABS.indexOf(nav.from?.url.pathname ?? '');
+		const to = TABS.indexOf(nav.to?.url.pathname ?? '');
+		if (from < 0 || to < 0 || from === to || !document.startViewTransition) return;
+		if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+		document.documentElement.dataset.tabDir = to > from ? 'forward' : 'back';
+		return new Promise((resolve) => {
+			const t = document.startViewTransition(async () => {
+				resolve();
+				await nav.complete;
+			});
+			t.finished.finally(() => delete document.documentElement.dataset.tabDir);
+		});
+	});
 </script>
 
 <svelte:head>
@@ -22,6 +52,11 @@
 </svelte:head>
 
 <main class:with-tabs={showTabs}>
+	{#if insecure}
+		<div class="banner" role="alert">
+			<span>This app needs a secure connection. Open it through its https:// address.</span>
+		</div>
+	{/if}
 	{#if sync.status === 'auth-expired'}
 		<div class="banner" role="alert">
 			<span>Your login has expired. Your data is saved on this phone.</span>
@@ -42,7 +77,8 @@
 {/if}
 
 {#if showTabs}
-	<nav class="tabbar">
+	<nav class="tabbar" style="--tab: {onProfile ? 1 : 0}">
+		<span class="indicator" aria-hidden="true"></span>
 		<a href="/" class:active={!onProfile} aria-current={!onProfile ? 'page' : undefined}>
 			<!-- The app icon's dumbbell (scripts/icons.mjs) scaled down, filled like the icon. -->
 			<svg class="solid" viewBox="1 3.5 26 21.5" aria-hidden="true">
@@ -127,8 +163,10 @@
 		transform: translateX(-50%);
 		z-index: 10;
 		display: flex;
-		width: min(calc(100% - 48px), 280px);
-		padding: 5px;
+		width: min(calc(100% - 48px), 300px);
+		padding: 6px;
+		/* Kept out of the page slide; only its live state is shown so the pill can glide. */
+		view-transition-name: tabbar;
 		border-radius: 999px;
 		background: var(--bar);
 		-webkit-backdrop-filter: saturate(180%) blur(20px);
@@ -141,24 +179,30 @@
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: 3px;
-		padding: 5px 0 6px;
+		position: relative;
+		z-index: 1;
+		gap: 4px;
+		padding: 7px 0 8px;
 		border-radius: 999px;
 		color: var(--text);
-		font-size: 12px;
+		font-size: 13px;
 		font-weight: 500;
 		line-height: 1;
 		transition:
-			background-color 0.2s,
-			color 0.2s;
+			color 0.3s,
+			transform 0.15s;
 		-webkit-user-select: none;
 		user-select: none;
 	}
 
 	/* viewBox is cropped to the drawing so padding alone sets the spacing. */
+	.tabbar a:active {
+		transform: scale(0.94);
+	}
+
 	.tabbar svg {
-		width: 26px;
-		height: 21.5px;
+		width: 29px;
+		height: 24px;
 		fill: none;
 		stroke: currentColor;
 		stroke-width: 1.7;
@@ -173,6 +217,24 @@
 
 	.tabbar a.active {
 		color: var(--accent);
+	}
+
+	/* The active tab's background, sliding under whichever tab is selected. */
+	.indicator {
+		position: absolute;
+		top: 6px;
+		bottom: 6px;
+		left: 6px;
+		width: calc(50% - 6px);
+		border-radius: 999px;
 		background: var(--bar-active);
+		transform: translateX(calc(var(--tab) * 100%));
+		transition: transform 0.38s cubic-bezier(0.3, 1.3, 0.5, 1);
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.indicator {
+			transition: none;
+		}
 	}
 </style>
