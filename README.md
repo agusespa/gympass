@@ -227,7 +227,8 @@ There is no delete; remove routines in the app.
   "id": "…", "name": "Push",
   "exercises": [
     { "id": "…", "name": "Bench", "superset_id": null,
-      "sets": [{ "id": "…", "reps": 8, "weight_kg": 82.5, "warmup": false, "rest_seconds": 120 }] }
+      "sets": [{ "id": "…", "reps": 8, "weight_kg": 82.5, "warmup": false, "rest_seconds": 120,
+                 "duration_seconds": 0, "rep_min": 8, "rep_max": 12 }] }
   ]
 }
 ```
@@ -236,7 +237,8 @@ To change a routine, `GET` it, edit the JSON and `PUT` it back:
 
 - Exercises and sets that keep their `id` are updated, ones without an `id` are added, and ones you leave out are deleted. An `id` must belong to that routine (a set's to that exercise), otherwise the request fails with `400`.
 - Order in the array is the order in the app.
-- `reps` and `weight_kg` are required; `warmup` defaults to `false` and `rest_seconds` to `120` (0–3600). Unknown fields are rejected, so a typo like `weight` fails instead of being dropped.
+- `weight_kg` is required, plus either `reps` or, for a timed exercise such as a dead hang, `duration_seconds` (0–36000). `warmup` defaults to `false` and `rest_seconds` to `120` (0–3600). Unknown fields are rejected, so a typo like `weight` fails instead of being dropped.
+- `rep_max` makes `reps` the bottom of a rep range: `"reps": 8, "rep_max": 12` plans 8–12 reps. Leave it out for a fixed count. Reads return the range as `rep_min` and `rep_max`; `rep_min` is ignored on write, since the range always starts at `reps`.
 - Adjacent exercises with the same `superset_id` form a superset. Any string works as a label for a new one; a lone exercise's label is cleared.
 - Only rows that actually changed are written, and they reach your phone on its next sync like an edit made in the app. If the same set is edited in the app around the same time, the newest edit wins.
 
