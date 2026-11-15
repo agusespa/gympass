@@ -18,7 +18,7 @@ func phoneRoutine(t *testing.T, s *Store, at int64) {
 	}
 	set := func(id, ex string, pos float64, kg float64) Row {
 		return Row{"id": id, "updated_at": at, "deleted": false, "routine_exercise_id": ex,
-			"position": pos, "reps": int64(8), "weight_kg": kg, "warmup": false, "rest_seconds": int64(90)}
+			"position": pos, "reps": int64(8), "weight_kg": kg, "warmup": false, "rest_seconds": int64(90), "duration_seconds": int64(0), "rep_min": int64(0), "rep_max": int64(0)}
 	}
 	mustSync(t, s, map[string][]Row{
 		"routines":          {{"id": "r1", "updated_at": at, "deleted": false, "name": "Push"}},

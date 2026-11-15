@@ -28,6 +28,9 @@ test("a row the server refuses does not block the rest of sync", async ({
             warmup: false,
             rest_seconds: 120,
             done: true,
+            duration_seconds: 0,
+            rep_min: 0,
+            rep_max: 0,
           });
           tx.oncomplete = () => resolve();
           tx.onerror = () => reject(tx.error);

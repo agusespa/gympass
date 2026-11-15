@@ -44,11 +44,15 @@ export interface SetRow extends Synced {
 	warmup: boolean;
 	/** Rest after this set, seconds. */
 	rest_seconds: number;
+	/** Length of a timed set (e.g. a dead hang), seconds; 0 for sets counted in reps. */
+	duration_seconds: number;
 	/**
-	 * Length of a timed set (e.g. a dead hang), seconds; 0 for sets counted in
-	 * reps. Rows from before timed sets may lack it, so read it with `?? 0`.
+	 * Target rep range, e.g. 8 to 12; both 0 when there is none. A routine set
+	 * plans reps = rep_min; a workout set copies the range from its routine
+	 * and records the reps actually done.
 	 */
-	duration_seconds?: number;
+	rep_min: number;
+	rep_max: number;
 }
 
 /** Rest given to new sets, seconds. */
@@ -80,8 +84,8 @@ export interface ExerciseSetting extends Synced {
 	name: string;
 	/** Share of body weight each rep moves, 0–100 (e.g. 100 for pull-ups). */
 	bodyweight_pct: number;
-	/** Logged by time (duration_seconds) instead of reps. Missing on rows from before it existed. */
-	timed?: boolean;
+	/** Logged by time (duration_seconds) instead of reps. */
+	timed: boolean;
 }
 
 /** User settings: one row with id SETTINGS_ID, so every device edits the same row. */

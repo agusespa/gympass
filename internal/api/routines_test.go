@@ -162,3 +162,27 @@ func TestRoutineTimedSets(t *testing.T) {
 		t.Fatalf("status %d, %v", res.StatusCode, e)
 	}
 }
+
+func TestRoutineRepRange(t *testing.T) {
+	srv := newRoutineServer(t)
+	var created store.Routine
+	res := send(t, "POST", srv.URL+"/api/routines",
+		`{"name":"Push","exercises":[{"name":"Bench press","sets":[{"reps":8,"rep_max":12,"weight_kg":60},{"reps":5,"weight_kg":80}]}]}`, &created)
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("status %d", res.StatusCode)
+	}
+	sets := created.Exercises[0].Sets
+	if st := sets[0]; st.Reps != 8 || st.RepMin != 8 || st.RepMax != 12 {
+		t.Fatalf("ranged set = %+v", st)
+	}
+	if st := sets[1]; st.Reps != 5 || st.RepMin != 0 || st.RepMax != 0 {
+		t.Fatalf("fixed set = %+v", st)
+	}
+
+	var e map[string]string
+	res = send(t, "POST", srv.URL+"/api/routines",
+		`{"name":"Push","exercises":[{"name":"Bench press","sets":[{"reps":12,"rep_max":8,"weight_kg":60}]}]}`, &e)
+	if res.StatusCode != http.StatusBadRequest || !strings.Contains(e["error"], "rep_max") {
+		t.Fatalf("status %d, %v", res.StatusCode, e)
+	}
+}

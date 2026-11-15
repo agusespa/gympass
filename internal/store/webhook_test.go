@@ -156,7 +156,7 @@ func TestWorkoutSnapshot(t *testing.T) {
 		return Row{"id": id, "updated_at": int64(1), "deleted": deleted, "workout_id": "w1", "name": name, "position": pos, "superset_id": nil}
 	}
 	set := func(id, ex string, pos float64, reps int64, kg float64, warmup, deleted bool) Row {
-		return Row{"id": id, "updated_at": int64(1), "deleted": deleted, "workout_exercise_id": ex, "position": pos, "reps": reps, "weight_kg": kg, "warmup": warmup, "rest_seconds": int64(120), "done": true}
+		return Row{"id": id, "updated_at": int64(1), "deleted": deleted, "workout_exercise_id": ex, "position": pos, "reps": reps, "weight_kg": kg, "warmup": warmup, "rest_seconds": int64(120), "duration_seconds": int64(0), "rep_min": int64(0), "rep_max": int64(0), "done": true}
 	}
 	unchecked := set("a4", "e1", 4, 5, 90, false, false)
 	unchecked["done"] = false

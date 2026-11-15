@@ -6,7 +6,9 @@
 		kg,
 		parseDuration,
 		parseReps,
+		parseRepTarget,
 		parseWeight,
+		repRange,
 		REST_CHOICES,
 		restLabel
 	} from './format';
@@ -22,6 +24,7 @@
 		moveBlock,
 		moveWithinSuperset,
 		previousSets,
+		reachedTopOfRange,
 		renameExercise,
 		setTimed,
 		toBlocks,
@@ -79,6 +82,18 @@
 		if (!s) return '–';
 		const effort = ex.timed ? durationLabel(s.duration_seconds) : String(s.reps);
 		return ex.timed && !s.weight_kg ? effort : `${kg(s.weight_kg)}kg × ${effort}`;
+	}
+
+	/** Workouts only: the last session reached the top of the rep range on every working set. */
+	function addWeightDue(ex: ExerciseView): boolean {
+		if (ex.timed || !ex.sets.some((s) => !s.warmup && s.rep_max > 0)) return false;
+		return reachedTopOfRange(previous.current.get(exerciseKey(ex.name)) ?? []);
+	}
+
+	/** A routine set's rep target as typed: "10", or "8–12" for a range. */
+	function repTarget(set: SetView): string {
+		if (set.rep_max > 0) return repRange(set);
+		return set.reps ? String(set.reps) : '';
 	}
 
 	/** Picker options, keeping an off-list value (e.g. synced from elsewhere) selectable. */
@@ -197,6 +212,13 @@
 					</div>
 				{/if}
 
+				{#if checkable && addWeightDue(ex)}
+					<p class="progress" data-testid="add-weight">
+						<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6" /></svg>
+						Top of the range last time. Add weight.
+					</p>
+				{/if}
+
 				<div class="sets" class:with-prev={kind === 'workout'}>
 					<span class="th">Set</span>
 					{#if kind === 'workout'}<span class="th">Previous</span>{/if}
@@ -269,15 +291,36 @@
 									updateSet(kind, set.id, { duration_seconds });
 								}}
 							/>
+						{:else if checkable}
+							<!-- The rep range, when the routine set one, sits under the reps done. -->
+							<span class="reps-cell" class:ranged={set.rep_max > 0}>
+								<input
+									class:done
+									inputmode="numeric"
+									pattern="[0-9]*"
+									aria-label="Reps set {si + 1}"
+									placeholder={set.rep_max > 0 ? repRange(set) : '0'}
+									value={set.reps ? String(set.reps) : ''}
+									onchange={(e) => updateSet(kind, set.id, { reps: parseReps(e.currentTarget.value) })}
+								/>
+								{#if set.rep_max > 0 && set.reps}
+									<span class="target" class:top={set.reps >= set.rep_max} data-testid="rep-range"
+										>{repRange(set)}</span
+									>
+								{/if}
+							</span>
 						{:else}
+							<!-- A count, or a range like 8–12; the decimal keypad's separator works as the dash. -->
 							<input
-								class:done
-								inputmode="numeric"
-								pattern="[0-9]*"
+								inputmode="decimal"
 								aria-label="Reps set {si + 1}"
 								placeholder="0"
-								value={set.reps ? String(set.reps) : ''}
-								onchange={(e) => updateSet(kind, set.id, { reps: parseReps(e.currentTarget.value) })}
+								value={repTarget(set)}
+								onchange={(e) => {
+									const target = parseRepTarget(e.currentTarget.value);
+									e.currentTarget.value = repTarget({ ...set, ...target });
+									updateSet(kind, set.id, target);
+								}}
 							/>
 						{/if}
 						{#if checkable}
@@ -579,6 +622,49 @@
 
 	.prev.done {
 		color: var(--text);
+	}
+
+	.progress {
+		display: flex;
+		align-items: center;
+		gap: 0.35rem;
+		margin: -0.25rem 0 0.75rem;
+		color: var(--accent);
+		font-size: 0.9rem;
+		font-weight: 600;
+	}
+
+	.progress svg {
+		width: 16px;
+		height: 16px;
+		stroke-width: 2.5;
+	}
+
+	.reps-cell {
+		position: relative;
+		display: block;
+	}
+
+	/* Room under the number for the range. */
+	.reps-cell.ranged input {
+		padding-bottom: 0.7rem;
+	}
+
+	.target {
+		position: absolute;
+		left: 0;
+		right: 0;
+		bottom: 3px;
+		text-align: center;
+		font-size: 0.68rem;
+		font-weight: 600;
+		color: var(--muted);
+		pointer-events: none;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.target.top {
+		color: var(--accent);
 	}
 
 	.danger-item {

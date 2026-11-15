@@ -95,7 +95,7 @@ export async function loadHistory(): Promise<History> {
 	const setsByExercise = new Map<string, HistorySet[]>();
 	for (const s of await db.sets.toArray()) {
 		// A set with no reps or time was not performed, checked or not.
-		const duration_seconds = s.duration_seconds ?? 0;
+		const duration_seconds = s.duration_seconds;
 		if (s.deleted || s.warmup || !s.done || (s.reps <= 0 && duration_seconds <= 0)) continue;
 		const list = setsByExercise.get(s.workout_exercise_id) ?? [];
 		list.push({ reps: s.reps, weight_kg: s.weight_kg, duration_seconds });

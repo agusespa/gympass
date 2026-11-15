@@ -143,7 +143,7 @@
 		const lines = [header.join(',')];
 		for (const { w, e, s } of rows) {
 			lines.push(
-				[w.date, w.name, e.name, s.position, s.weight_kg, s.reps, s.warmup, s.done, s.duration_seconds ?? 0]
+				[w.date, w.name, e.name, s.position, s.weight_kg, s.reps, s.warmup, s.done, s.duration_seconds]
 					.map(csvCell)
 					.join(',')
 			);

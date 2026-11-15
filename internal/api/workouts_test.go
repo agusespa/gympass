@@ -32,7 +32,7 @@ func newReadServer(t *testing.T) *httptest.Server {
 	}
 	set := func(id, exercise string, reps int64, kg float64, warmup bool) store.Row {
 		return store.Row{"id": id, "updated_at": int64(100), "deleted": false, "workout_exercise_id": exercise,
-			"position": 1.0, "reps": reps, "weight_kg": kg, "warmup": warmup, "rest_seconds": int64(120), "done": true}
+			"position": 1.0, "reps": reps, "weight_kg": kg, "warmup": warmup, "rest_seconds": int64(120), "duration_seconds": int64(0), "rep_min": int64(0), "rep_max": int64(0), "done": true}
 	}
 	_, _, _, err = s.Sync(context.Background(), 0, map[string][]store.Row{
 		"workouts": {

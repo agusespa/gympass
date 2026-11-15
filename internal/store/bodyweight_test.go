@@ -12,7 +12,7 @@ func weighIn(id, date string, kg float64, updatedAt int64, deleted bool) Row {
 }
 
 func setting(name string, pct, updatedAt int64, deleted bool, id string) Row {
-	return Row{"id": id, "updated_at": updatedAt, "deleted": deleted, "name": name, "bodyweight_pct": pct}
+	return Row{"id": id, "updated_at": updatedAt, "deleted": deleted, "name": name, "bodyweight_pct": pct, "timed": false}
 }
 
 func TestBodyWeightOn(t *testing.T) {

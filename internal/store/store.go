@@ -269,10 +269,7 @@ func (t *table) args(r Row, now int64) ([]any, error) {
 	for _, c := range t.cols {
 		v, has := r[c.name]
 		if !has {
-			if c.def == nil {
-				return nil, fmt.Errorf("%s is missing", c.name)
-			}
-			v = c.def
+			return nil, fmt.Errorf("%s is missing", c.name)
 		}
 		v, err := convert(c, v)
 		if err != nil {

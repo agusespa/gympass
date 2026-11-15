@@ -35,6 +35,11 @@
 		/>
 	</div>
 
+	<p class="hint muted">
+		Type reps as a range like 8.12 to aim for 8–12. Workouts tell you when every set reached the top, so you
+		know to add weight.
+	</p>
+
 	{#key id}
 		<ExerciseEditor kind="routine" parentId={id} />
 	{/key}
@@ -48,3 +53,10 @@
 {:else if routine.loaded}
 	<p class="muted">Routine not found. <a href="/">Back to routines</a></p>
 {/if}
+
+<style>
+	.hint {
+		margin: 0.25rem 0 0;
+		font-size: 0.85rem;
+	}
+</style>

@@ -80,11 +80,11 @@ func TestSendsFinishedWorkout(t *testing.T) {
 			// Planned but never checked off: left out of the payload and the totals.
 			{"id": "e2", "updated_at": int64(1), "deleted": false, "workout_id": "w1", "name": "Dips", "position": 2.0, "superset_id": nil}},
 		"sets": {
-			{"id": "s4", "updated_at": int64(1), "deleted": false, "workout_exercise_id": "e1", "position": 4.0, "reps": int64(6), "warmup": false, "weight_kg": 85.0, "done": false, "rest_seconds": int64(120)},
-			{"id": "s5", "updated_at": int64(1), "deleted": false, "workout_exercise_id": "e2", "position": 1.0, "reps": int64(10), "warmup": false, "weight_kg": 0.0, "done": false, "rest_seconds": int64(120)},
-			{"id": "s1", "updated_at": int64(1), "deleted": false, "workout_exercise_id": "e1", "position": 1.0, "reps": int64(10), "weight_kg": 40.0, "warmup": true, "done": true, "rest_seconds": int64(120)},
-			{"id": "s2", "updated_at": int64(1), "deleted": false, "workout_exercise_id": "e1", "position": 2.0, "reps": int64(8), "warmup": false, "weight_kg": 82.5, "done": true, "rest_seconds": int64(120)},
-			{"id": "s3", "updated_at": int64(1), "deleted": false, "workout_exercise_id": "e1", "position": 3.0, "reps": int64(6), "warmup": false, "weight_kg": 85.0, "done": true, "rest_seconds": int64(120)},
+			{"id": "s4", "updated_at": int64(1), "deleted": false, "workout_exercise_id": "e1", "position": 4.0, "reps": int64(6), "warmup": false, "weight_kg": 85.0, "done": false, "rest_seconds": int64(120), "duration_seconds": int64(0), "rep_min": int64(0), "rep_max": int64(0)},
+			{"id": "s5", "updated_at": int64(1), "deleted": false, "workout_exercise_id": "e2", "position": 1.0, "reps": int64(10), "warmup": false, "weight_kg": 0.0, "done": false, "rest_seconds": int64(120), "duration_seconds": int64(0), "rep_min": int64(0), "rep_max": int64(0)},
+			{"id": "s1", "updated_at": int64(1), "deleted": false, "workout_exercise_id": "e1", "position": 1.0, "reps": int64(10), "weight_kg": 40.0, "warmup": true, "done": true, "rest_seconds": int64(120), "duration_seconds": int64(0), "rep_min": int64(0), "rep_max": int64(0)},
+			{"id": "s2", "updated_at": int64(1), "deleted": false, "workout_exercise_id": "e1", "position": 2.0, "reps": int64(8), "warmup": false, "weight_kg": 82.5, "done": true, "rest_seconds": int64(120), "duration_seconds": int64(0), "rep_min": int64(0), "rep_max": int64(0)},
+			{"id": "s3", "updated_at": int64(1), "deleted": false, "workout_exercise_id": "e1", "position": 3.0, "reps": int64(6), "warmup": false, "weight_kg": 85.0, "done": true, "rest_seconds": int64(120), "duration_seconds": int64(0), "rep_min": int64(0), "rep_max": int64(0)},
 		},
 	})
 	flush(t, sender)

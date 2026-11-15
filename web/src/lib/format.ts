@@ -16,6 +16,28 @@ export function parseReps(s: string): number {
 	return Number.isFinite(n) && n >= 0 ? Math.min(MAX_REPS, n) : 0;
 }
 
+/**
+ * A typed rep target: "10" is a fixed count, "8-12" a range. The iPhone's
+ * decimal keypad has no dash, so its separator ("8.12" or "8,12") works too.
+ * A range always has reps = rep_min; rep_min = rep_max = 0 means no range.
+ */
+export function parseRepTarget(s: string): { reps: number; rep_min: number; rep_max: number } {
+	const parts = s.trim().split(/\s*[-–—.,]\s*/);
+	if (parts.length === 2 && parts.every((p) => /^\d+$/.test(p))) {
+		const [a, b] = parts.map(parseReps);
+		const lo = Math.min(a, b);
+		const hi = Math.max(a, b);
+		if (lo !== hi) return { reps: lo, rep_min: lo, rep_max: hi };
+		return { reps: lo, rep_min: 0, rep_max: 0 };
+	}
+	return { reps: parseReps(s), rep_min: 0, rep_max: 0 };
+}
+
+/** A rep range, e.g. "8–12". */
+export function repRange(s: { rep_min: number; rep_max: number }): string {
+	return `${s.rep_min}–${s.rep_max}`;
+}
+
 /** A typed set length in seconds: "45" → 45, "1:30" → 90, "1:02:05" → 3725. 0 when unreadable. */
 export function parseDuration(s: string): number {
 	const parts = s.trim().replace(/[.,]/g, ':').split(':');

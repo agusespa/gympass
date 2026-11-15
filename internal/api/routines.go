@@ -38,6 +38,11 @@ type setInput struct {
 	RestSeconds *int64   `json:"rest_seconds,omitempty" jsonschema:"rest after the set in seconds, 0 to 3600; defaults to 120"`
 	// DurationSeconds plans a timed set instead of reps.
 	DurationSeconds *int64 `json:"duration_seconds,omitempty" jsonschema:"planned length in seconds for a timed exercise such as a dead hang or plank, 0 to 36000; use instead of reps"`
+	// RepMax makes reps the bottom of a rep range.
+	// RepMin is returned when reading a routine, so it is accepted back but
+	// ignored: a range starts at reps.
+	RepMin *int64 `json:"rep_min,omitempty" jsonschema:"ignored; returned when reading a routine, the range starts at reps"`
+	RepMax *int64 `json:"rep_max,omitempty" jsonschema:"top of a target rep range, with reps as the bottom (reps 8 and rep_max 12 plan 8 to 12 reps); leave out for a fixed rep count. For double progression: add weight once every working set reaches rep_max"`
 }
 
 func (in routineInput) routine() (store.Routine, error) {
@@ -51,12 +56,18 @@ func (in routineInput) routine() (store.Routine, error) {
 			if st.Reps == nil && st.DurationSeconds == nil {
 				return r, fmt.Errorf("exercises[%d].sets[%d]: reps or duration_seconds is required", i, j)
 			}
-			var reps, duration int64
+			var reps, duration, repMin, repMax int64
 			if st.Reps != nil {
 				reps = *st.Reps
 			}
 			if st.DurationSeconds != nil {
 				duration = *st.DurationSeconds
+			}
+			if st.RepMax != nil && *st.RepMax > 0 {
+				if *st.RepMax < reps {
+					return r, fmt.Errorf("exercises[%d].sets[%d]: rep_max must be at least reps", i, j)
+				}
+				repMin, repMax = reps, *st.RepMax
 			}
 			rest := int64(defaultRestSeconds)
 			if st.RestSeconds != nil {
@@ -64,7 +75,7 @@ func (in routineInput) routine() (store.Routine, error) {
 			}
 			ex.Sets = append(ex.Sets, store.RoutineSet{
 				ID: st.ID, Reps: reps, WeightKg: *st.WeightKg, Warmup: st.Warmup, RestSeconds: rest,
-				DurationSeconds: duration,
+				DurationSeconds: duration, RepMin: repMin, RepMax: repMax,
 			})
 		}
 		r.Exercises = append(r.Exercises, ex)

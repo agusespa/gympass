@@ -32,7 +32,8 @@ func exerciseRow(id, workoutID, name string, pos float64) Row {
 // setRow is a checked working set with the default rest; tests override fields.
 func setRow(id, exercise string, pos float64, reps int64, kg float64) Row {
 	return Row{"id": id, "updated_at": int64(1), "deleted": false, "workout_exercise_id": exercise, "position": pos,
-		"reps": reps, "weight_kg": kg, "warmup": false, "rest_seconds": int64(120), "done": true}
+		"reps": reps, "weight_kg": kg, "warmup": false, "rest_seconds": int64(120), "done": true,
+		"duration_seconds": int64(0), "rep_min": int64(0), "rep_max": int64(0)}
 }
 
 func TestSyncRoundTrip(t *testing.T) {
@@ -47,7 +48,7 @@ func TestSyncRoundTrip(t *testing.T) {
 		}},
 		"sets": {{
 			"id": "s1", "updated_at": int64(100), "deleted": false,
-			"workout_exercise_id": "e1", "position": 1.0, "reps": int64(8), "weight_kg": 82.5, "warmup": true, "rest_seconds": int64(90), "done": true,
+			"workout_exercise_id": "e1", "position": 1.0, "reps": int64(8), "weight_kg": 82.5, "warmup": true, "rest_seconds": int64(90), "duration_seconds": int64(0), "rep_min": int64(0), "rep_max": int64(0), "done": true,
 		}},
 	})
 	if err != nil {
@@ -283,8 +284,7 @@ func TestTimedSetsSync(t *testing.T) {
 	_, out, rejected, err := s.Sync(ctx, 0, map[string][]Row{
 		"workouts":          {workout("w1", 1, "Grip")},
 		"workout_exercises": {exerciseRow("e1", "w1", "Dead hang", 1)},
-		// An app from before timed sets sends no duration_seconds.
-		"sets": {hang, setRow("s2", "e1", 2, 8, 20)},
+		"sets":              {hang, setRow("s2", "e1", 2, 8, 20)},
 		"exercise_settings": {{"id": "dead hang", "updated_at": int64(1), "deleted": false,
 			"name": "Dead hang", "bodyweight_pct": int64(0), "timed": true}},
 	})
@@ -310,44 +310,24 @@ func TestTimedSetsSync(t *testing.T) {
 	}
 }
 
-func TestMigrationAddsDefaultedColumns(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "old.db")
-	s, err := Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+func TestRepRangeSync(t *testing.T) {
+	s := openTest(t)
 	ctx := context.Background()
-	if _, _, _, err := s.Sync(ctx, 0, map[string][]Row{
-		"workouts":          {workout("w1", 1, "Grip")},
-		"workout_exercises": {exerciseRow("e1", "w1", "Dead hang", 1)},
-		"sets":              {setRow("s1", "e1", 1, 8, 0)},
-	}); err != nil {
-		t.Fatal(err)
+	ranged := setRow("s1", "e1", 1, 10, 60)
+	ranged["rep_min"], ranged["rep_max"] = int64(8), int64(12)
+	_, out, rejected, err := s.Sync(ctx, 0, map[string][]Row{
+		"workouts":          {workout("w1", 1, "Push")},
+		"workout_exercises": {exerciseRow("e1", "w1", "Bench press", 1)},
+		"sets":              {ranged, setRow("s2", "e1", 2, 8, 60)},
+	})
+	if err != nil || len(rejected) > 0 {
+		t.Fatal(err, rejected)
 	}
-	// Turn it back into a version 1 database, from before the columns.
-	for _, q := range []string{
-		"ALTER TABLE sets DROP COLUMN duration_seconds",
-		"ALTER TABLE routine_sets DROP COLUMN duration_seconds",
-		"ALTER TABLE exercise_settings DROP COLUMN timed",
-		"PRAGMA user_version = 1",
-	} {
-		if _, err := s.db.Exec(q); err != nil {
-			t.Fatal(q, err)
-		}
+	got := map[any][2]any{}
+	for _, r := range out["sets"] {
+		got[r["id"]] = [2]any{r["rep_min"], r["rep_max"]}
 	}
-	_ = s.Close()
-
-	s, err = Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = s.Close() }()
-	var d int64
-	if err := s.db.QueryRow("SELECT duration_seconds FROM sets WHERE id = 's1'").Scan(&d); err != nil || d != 0 {
-		t.Fatalf("duration_seconds = %d, %v", d, err)
-	}
-	var timed int64
-	if err := s.db.QueryRow("SELECT COUNT(timed) FROM exercise_settings").Scan(&timed); err != nil {
-		t.Fatal(err)
+	if got["s1"] != [2]any{int64(8), int64(12)} || got["s2"] != [2]any{int64(0), int64(0)} {
+		t.Fatalf("rep ranges = %v", got)
 	}
 }

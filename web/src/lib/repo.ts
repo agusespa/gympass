@@ -30,6 +30,9 @@ export interface SetView {
 	rest_seconds: number;
 	/** Length of a timed set, seconds; 0 for sets counted in reps. */
 	duration_seconds: number;
+	/** Target rep range; both 0 when the set has none. */
+	rep_min: number;
+	rep_max: number;
 	/** Checked off as performed. Workout sets only; routine sets are always true. */
 	done: boolean;
 }
@@ -43,7 +46,9 @@ function toSetView(s: SetRow & { done?: boolean }): SetView {
 		weight_kg: s.weight_kg,
 		warmup: s.warmup,
 		rest_seconds: s.rest_seconds,
-		duration_seconds: s.duration_seconds ?? 0,
+		duration_seconds: s.duration_seconds,
+		rep_min: s.rep_min,
+		rep_max: s.rep_max,
 		done: s.done ?? true
 	};
 }
@@ -185,6 +190,8 @@ function newSet(
 		warmup: false,
 		rest_seconds: DEFAULT_REST_SECONDS,
 		duration_seconds: 0,
+		rep_min: 0,
+		rep_max: 0,
 		...rest,
 		// Only workout sets get checked off; routine sets are plans.
 		...(parentKey === 'workout_exercise_id' ? { done } : {}),
@@ -306,9 +313,36 @@ export async function deleteRoutine(id: string) {
 	});
 }
 
+/**
+ * Whether these sets (the last session of an exercise) earned more weight:
+ * every working set had a rep range and reached its top. Double progression:
+ * stay at a weight until then, add weight, and start again at the bottom.
+ */
+export function reachedTopOfRange(sets: SetView[]): boolean {
+	const working = sets.filter((s) => !s.warmup);
+	return working.length > 0 && working.every((s) => s.rep_max > 0 && s.reps >= s.rep_max);
+}
+
+/**
+ * A routine set as a workout target. A set with a rep range continues from
+ * the last session's matching set (same type and order): its weight, and its
+ * reps unless that session reached the top of the range, when reps start
+ * again at the bottom so a heavier weight can be worked up. Fixed sets are the
+ * routine's numbers as they are.
+ */
+function targetFrom(set: SetView, nth: number, last: SetView[], due: boolean): SetView {
+	if (set.rep_max <= 0) return set;
+	const prev = last.filter((s) => s.warmup === set.warmup)[nth];
+	if (!prev) return set;
+	const reps = due ? set.rep_min : Math.min(set.rep_max, Math.max(set.rep_min, prev.reps));
+	return { ...set, weight_kg: prev.weight_kg, reps };
+}
+
 /** Copy one workout's or routine's exercises and sets into another parent. */
 async function copyExercises(from: Kind, fromId: string, to: Kind, toId: string) {
 	const src = await loadExercises(from, fromId);
+	// Starting a workout: ranged sets pick up where the last session left off.
+	const startDate = to === 'workout' ? (await getWorkout(toId))?.date : undefined;
 	const dst = tables(to);
 	const supersets = new Map<string, string>();
 	for (const e of src) {
@@ -319,8 +353,15 @@ async function copyExercises(from: Kind, fromId: string, to: Kind, toId: string)
 		}
 		const ex = fresh({ name: e.name, position: e.position, superset_id: superset, [dst.exParent]: toId });
 		await dst.ex.add(ex);
+		let sets = e.sets;
+		if (from === 'routine' && to === 'workout' && sets.some((s) => s.rep_max > 0)) {
+			const last = await lastSetsFor(e.name, { exclude: toId, before: startDate, workoutsOnly: true });
+			const due = reachedTopOfRange(last);
+			const seen = { warm: 0, work: 0 };
+			sets = sets.map((s) => targetFrom(s, s.warmup ? seen.warm++ : seen.work++, last, due));
+		}
 		// Copied sets are targets to work through, so a new workout starts with none checked off.
-		for (const { id: _id, done: _done, ...set } of e.sets) {
+		for (const { id: _id, done: _done, ...set } of sets) {
 			await dst.sets.add(newSet(dst.setParent, ex.id, set));
 		}
 	}
@@ -412,7 +453,9 @@ export async function addExercise(kind: Kind, parentId: string, name: string): P
 						reps: s.reps,
 						weight_kg: s.weight_kg,
 						warmup: s.warmup,
-						duration_seconds: s.duration_seconds
+						duration_seconds: s.duration_seconds,
+						rep_min: s.rep_min,
+						rep_max: s.rep_max
 					}),
 					// The last set gets no rest; the others keep theirs (or the default).
 					rest_seconds: isLast ? 0 : s?.rest_seconds || DEFAULT_REST_SECONDS,
@@ -479,7 +522,9 @@ export async function addSet(kind: Kind, exerciseId: string) {
 							position: last.position + 1,
 							reps: last.reps,
 							weight_kg: last.weight_kg,
-							duration_seconds: last.duration_seconds ?? 0,
+							duration_seconds: last.duration_seconds,
+							rep_min: last.rep_min,
+							rep_max: last.rep_max,
 							rest_seconds: 0,
 							done
 						}
@@ -496,6 +541,8 @@ export async function updateSet(
 		Pick<SetRow, 'reps' | 'weight_kg' | 'warmup' | 'rest_seconds'> & {
 			done: boolean;
 			duration_seconds: number;
+			rep_min: number;
+			rep_max: number;
 		}
 	>
 ) {
@@ -504,6 +551,12 @@ export async function updateSet(
 	if (bounded.duration_seconds !== undefined)
 		bounded.duration_seconds = Math.round(clamp(bounded.duration_seconds, MAX_DURATION_SECONDS));
 	if (bounded.weight_kg !== undefined) bounded.weight_kg = clamp(bounded.weight_kg, MAX_WEIGHT_KG);
+	if (bounded.rep_max !== undefined) {
+		bounded.rep_max = Math.round(clamp(bounded.rep_max, MAX_REPS));
+		bounded.rep_min = bounded.rep_max
+			? Math.min(bounded.rep_max, Math.round(clamp(bounded.rep_min ?? 0, MAX_REPS)))
+			: 0;
+	}
 	await write(() => patch(tables(kind).sets, id, bounded));
 }
 
