@@ -39,7 +39,11 @@
 				onclick={() => (picked = i)}
 				onpointerenter={(e) => e.pointerType === 'mouse' && (picked = i)}
 			>
-				<span class="bar" class:empty={w.workouts === 0} style:height="{max ? (w.workouts / max) * 100 : 0}%"
+				<span
+					class="bar"
+					class:empty={w.workouts === 0}
+					style:height="{max ? (w.workouts / max) * 100 : 0}%"
+					style:--i={i}
 				></span>
 			</button>
 		{/each}
@@ -103,7 +107,25 @@
 		max-width: 22px;
 		border-radius: 4px 4px 0 0;
 		background: color-mix(in srgb, var(--accent) 40%, transparent);
-		transition: background-color 0.15s;
+		transition:
+			background-color 0.15s,
+			height 0.3s ease;
+		/* The bars grow up from the axis one after another as the chart opens. */
+		transform-origin: bottom;
+		animation: bar-grow 0.45s cubic-bezier(0.2, 0.8, 0.3, 1) calc(var(--i) * 18ms) both;
+	}
+
+	@keyframes bar-grow {
+		from {
+			transform: scaleY(0);
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.bar {
+			transition: none;
+			animation: none;
+		}
 	}
 
 	/* A sliver marks weeks with nothing logged, so the gap reads as zero rather than missing. */

@@ -52,7 +52,7 @@
 			>
 				<line class="base" x1={PAD.left} x2={width - PAD.right} y1={H - PAD.bottom} y2={H - PAD.bottom} />
 				{#if points.length > 1}
-					<path class="line" d={geometry.path} />
+					<path class="line" d={geometry.path} pathLength="1" />
 				{/if}
 				{#each geometry.xy as p, i (i)}
 					<circle class="dot" class:selected={i === index} cx={p.x} cy={p.y} r={i === index ? 5 : 3.5} />
@@ -139,7 +139,10 @@
 		stroke-dasharray: 3 3;
 	}
 
+	/* The line draws itself from left to right as the chart opens, then the dots appear. */
 	.line {
+		stroke-dasharray: 1;
+		animation: line-draw 0.6s ease-out both;
 		fill: none;
 		stroke: var(--accent);
 		stroke-width: 2;
@@ -174,5 +177,28 @@
 		justify-content: space-between;
 		padding-top: 0.35rem;
 		font-size: 0.72rem;
+	}
+
+	.dot {
+		animation: dot-in 0.25s ease-out 0.45s both;
+	}
+
+	@keyframes line-draw {
+		from {
+			stroke-dashoffset: 1;
+		}
+	}
+
+	@keyframes dot-in {
+		from {
+			opacity: 0;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.line,
+		.dot {
+			animation: none;
+		}
 	}
 </style>

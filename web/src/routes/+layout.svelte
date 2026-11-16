@@ -4,6 +4,8 @@
 	import { onNavigate } from '$app/navigation';
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
+	import { fly } from 'svelte/transition';
+	import { motion } from '#lib/motion.ts';
 	import { installErrorToasts } from '#lib/errors.ts';
 	import PullToRefresh from '#lib/PullToRefresh.svelte';
 	import { startSync, sync } from '#lib/sync.svelte.ts';
@@ -77,7 +79,13 @@
 
 {#if toast.current}
 	{@const t = toast.current}
-	<div class="toast" class:above-tabs={showTabs} role="status">
+	<div
+		class="toast"
+		class:above-tabs={showTabs}
+		role="status"
+		in:fly={{ y: 24, duration: motion(220) }}
+		out:fly={{ y: 12, duration: motion(160) }}
+	>
 		<span>{t.message}</span>
 		{#if t.action}
 			<button onclick={runToastAction}>{t.action.label}</button>
