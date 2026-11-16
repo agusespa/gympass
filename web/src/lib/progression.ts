@@ -6,6 +6,7 @@ export const WEIGHT_STEP_KG: Record<Equipment, number> = {
 	barbell: 2.5,
 	dumbbell: 2,
 	machine: 2.5,
+	plate: 5,
 	cable: 2.5,
 	kettlebell: 2,
 	bodyweight: 0

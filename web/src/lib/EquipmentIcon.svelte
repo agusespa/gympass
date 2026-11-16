@@ -14,6 +14,10 @@
 	{:else if equipment === 'machine'}
 		<rect x="6" y="3" width="12" height="18" rx="1.5" />
 		<path d="M6 9.5h12M6 13.5h12M6 17.5h12M12 3v6.5" />
+	{:else if equipment === 'plate'}
+		<circle cx="12" cy="12" r="9" />
+		<circle cx="12" cy="12" r="5.5" />
+		<circle cx="12" cy="12" r="1.5" />
 	{:else if equipment === 'cable'}
 		<circle cx="7.5" cy="6.5" r="3.5" />
 		<path d="M11 6.5h5v8M12.5 19.5l3.5-5 3.5 5z" />

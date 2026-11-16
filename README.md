@@ -209,7 +209,7 @@ To change a routine, `GET` it, edit the JSON and `PUT` it back:
 { "id": "bench-press", "name": "Bench Press", "measure": "reps", "equipment": "barbell" }
 ```
 
-`measure` is `reps` or `time`. `equipment` is `barbell`, `dumbbell`, `machine`, `cable`, `kettlebell` or `bodyweight`.
+`measure` is `reps` or `time`. `equipment` is `barbell`, `dumbbell`, `machine`, `plate`, `cable`, `kettlebell` or `bodyweight`.
 
 ### Paging
 

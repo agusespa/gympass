@@ -2,7 +2,7 @@ import entries from '../../../internal/store/catalog.json';
 
 /** What a set records: reps, or duration_seconds (e.g. a dead hang). */
 export type Measure = 'reps' | 'time';
-export type Equipment = 'barbell' | 'dumbbell' | 'machine' | 'cable' | 'kettlebell' | 'bodyweight';
+export type Equipment = 'barbell' | 'dumbbell' | 'machine' | 'plate' | 'cable' | 'kettlebell' | 'bodyweight';
 
 export interface CatalogExercise {
 	/** What workout and routine rows refer to. */

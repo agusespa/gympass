@@ -26,7 +26,7 @@ type Exercise struct {
 // Mirror Measure and Equipment in web/src/lib/catalog.ts.
 var (
 	measures   = []string{"reps", "time"}
-	equipments = []string{"barbell", "dumbbell", "machine", "cable", "kettlebell", "bodyweight"}
+	equipments = []string{"barbell", "dumbbell", "machine", "plate", "cable", "kettlebell", "bodyweight"}
 )
 
 var (
