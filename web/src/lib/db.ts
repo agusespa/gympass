@@ -21,18 +21,20 @@ export interface Workout extends Synced {
 	finished_at: number | null;
 }
 
-export interface Exercise extends Synced {
-	name: string;
+/** An exercise's place in a workout or routine. */
+export interface ExerciseEntry extends Synced {
+	/** Id of a catalogue entry (catalog.ts). */
+	exercise_id: string;
 	position: number;
-	/** Exercises next to each other with the same superset_id form a superset. */
+	/** Entries next to each other with the same superset_id form a superset. */
 	superset_id: string | null;
 }
 
-export interface WorkoutExercise extends Exercise {
+export interface WorkoutExercise extends ExerciseEntry {
 	workout_id: string;
 }
 
-export interface RoutineExercise extends Exercise {
+export interface RoutineExercise extends ExerciseEntry {
 	routine_id: string;
 }
 
@@ -72,13 +74,6 @@ export interface Routine extends Synced {
 	name: string;
 }
 
-/** Settings for an exercise, with exerciseKey(name) as id. */
-export interface ExerciseSetting extends Synced {
-	name: string;
-	/** Logged by time (duration_seconds) instead of reps. */
-	timed: boolean;
-}
-
 /** User settings: one row with id SETTINGS_ID, so every device edits the same row. */
 export interface Settings extends Synced {
 	/** Workouts per week to aim for, 0 for no goal. */
@@ -100,7 +95,6 @@ export const SYNCED_TABLES = [
 	'routines',
 	'routine_exercises',
 	'routine_sets',
-	'exercise_settings',
 	'settings'
 ] as const;
 export type SyncedTable = (typeof SYNCED_TABLES)[number];
@@ -112,7 +106,6 @@ export class GymDB extends Dexie {
 	routines!: EntityTable<Routine, 'id'>;
 	routine_exercises!: EntityTable<RoutineExercise, 'id'>;
 	routine_sets!: EntityTable<RoutineSet, 'id'>;
-	exercise_settings!: EntityTable<ExerciseSetting, 'id'>;
 	settings!: EntityTable<Settings, 'id'>;
 	meta!: EntityTable<Meta, 'key'>;
 
@@ -120,12 +113,11 @@ export class GymDB extends Dexie {
 		super('gym-tracker');
 		this.version(1).stores({
 			workouts: 'id, date, dirty',
-			workout_exercises: 'id, workout_id, name, dirty',
+			workout_exercises: 'id, workout_id, exercise_id, dirty',
 			sets: 'id, workout_exercise_id, dirty',
 			routines: 'id, dirty',
-			routine_exercises: 'id, routine_id, name, dirty',
+			routine_exercises: 'id, routine_id, exercise_id, dirty',
 			routine_sets: 'id, routine_exercise_id, dirty',
-			exercise_settings: 'id, dirty',
 			settings: 'id, dirty',
 			meta: 'key'
 		});

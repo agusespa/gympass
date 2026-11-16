@@ -24,9 +24,7 @@ const (
 
 // The client clamps input to these bounds (web/src/lib/limits.ts).
 const (
-	maxTextLen = 200
-	// exercise_settings uses the exercise key (a lowercased name of up to
-	// maxTextLen characters) as its id, so ids allow that many bytes.
+	maxTextLen     = 200
 	maxIDLen       = maxTextLen * utf8.UTFMax
 	maxWeightKg    = 10000
 	maxReps        = 10000
@@ -49,8 +47,8 @@ type table struct {
 	cols    []column
 	indexes []string // columns other rows are looked up by
 	// id, when set, returns the only id a row may have, from its column
-	// values. Tables keyed by a date, an exercise or a singleton use it so
-	// every device writes the same row instead of a duplicate.
+	// values. A singleton table uses it so every device writes the same row
+	// instead of a duplicate.
 	id func(col func(name string) any) string
 }
 
@@ -65,7 +63,7 @@ var tables = []table{
 	}, indexes: []string{"date"}},
 	{name: "workout_exercises", cols: []column{
 		{name: "workout_id", typ: colRef},
-		{name: "name", typ: colText},
+		{name: "exercise_id", typ: colRef}, // id of a catalogue entry (catalog.json)
 		{name: "position", typ: colPosition},
 		{name: "superset_id", typ: colRefNull},
 	}, indexes: []string{"workout_id"}},
@@ -77,7 +75,7 @@ var tables = []table{
 		{name: "warmup", typ: colBool},
 		{name: "rest_seconds", typ: colInt, max: maxRestSeconds},
 		{name: "done", typ: colBool},
-		// Set length for timed exercises (see exercise_settings.timed); 0 otherwise.
+		// Set length for timed exercises (a catalogue entry with measure time); 0 otherwise.
 		{name: "duration_seconds", typ: colInt, max: maxDurationSeconds},
 		// Target rep range, e.g. 8 to 12, copied from the routine; both 0 when
 		// the set has no range. reps is what was actually done.
@@ -89,7 +87,7 @@ var tables = []table{
 	}},
 	{name: "routine_exercises", cols: []column{
 		{name: "routine_id", typ: colRef},
-		{name: "name", typ: colText},
+		{name: "exercise_id", typ: colRef}, // id of a catalogue entry (catalog.json)
 		{name: "position", typ: colPosition},
 		{name: "superset_id", typ: colRefNull},
 	}, indexes: []string{"routine_id"}},
@@ -106,12 +104,6 @@ var tables = []table{
 		{name: "rep_min", typ: colInt, max: maxReps},
 		{name: "rep_max", typ: colInt, max: maxReps},
 	}, indexes: []string{"routine_exercise_id"}},
-	// Per-exercise settings, with ExerciseKey(name) as id. timed exercises
-	// (e.g. dead hangs) log duration_seconds instead of reps.
-	{name: "exercise_settings", cols: []column{
-		{name: "name", typ: colText},
-		{name: "timed", typ: colBool},
-	}, id: func(col func(string) any) string { return ExerciseKey(col("name").(string)) }},
 	// User settings: a single row with id SettingsID. weekly_goal is
 	// workouts per week, 0 for no goal.
 	{name: "settings", cols: []column{

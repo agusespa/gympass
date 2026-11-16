@@ -26,8 +26,8 @@ test("works offline and syncs when back online", async ({
 
   await page.getByRole("button", { name: "Start empty workout" }).click();
   await setText(page.getByLabel("Workout name"), `Offline ${id}`);
-  await addExercise(page, `Press ${id}`);
-  await fillSet(page, `Press ${id}`, 1, "40", "10");
+  await addExercise(page, "Overhead Press");
+  await fillSet(page, "Overhead Press", 1, "40", "10");
 
   // Finishing and navigating between screens still work offline.
   await finishWorkout(page);

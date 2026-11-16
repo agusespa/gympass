@@ -3,25 +3,32 @@ import { test as base, expect, type APIRequestContext, type Page } from '@playwr
 export { expect };
 
 /**
- * Tests share one server database, and a running workout takes over the start screen
- * of every client that syncs it. So after each test, discard any workout left running.
+ * Tests share one server database, and every exercise comes from the same
+ * catalogue. So each test starts by deleting what the earlier ones left:
+ * otherwise their history would set this test's starting numbers, and a
+ * workout left running would take over the start screen.
  */
-export const test = base.extend<{ discardRunning: void }>({
-	discardRunning: [
+export const test = base.extend<{ cleanSlate: void }>({
+	cleanSlate: [
 		async ({ request }, use) => {
-			await use();
-			const running = ((await serverData(request)).workouts ?? []).filter(
-				(w) => !w.deleted && w.finished_at == null
-			);
-			if (running.length === 0) return;
+			const data = await serverData(request);
 			const now = Date.now();
-			const res = await request.post('/api/sync', {
-				data: {
-					cursor: 0,
-					changes: { workouts: running.map((w) => ({ ...w, deleted: true, updated_at: now })) }
+			const changes: Record<string, Row[]> = {};
+			for (const table of ['workouts', 'workout_exercises', 'routines', 'routine_exercises']) {
+				const rows = (data[table] ?? []).filter((r) => !r.deleted);
+				if (rows.length > 0) {
+					changes[table] = rows.map((r) => ({
+						...r,
+						deleted: true,
+						updated_at: Math.max(now, Number(r.updated_at) + 1)
+					}));
 				}
-			});
-			expect(res.ok()).toBe(true);
+			}
+			if (Object.keys(changes).length > 0) {
+				const res = await request.post('/api/sync', { data: { cursor: 0, changes } });
+				expect(res.ok()).toBe(true);
+			}
+			await use();
 		},
 		{ auto: true }
 	]
@@ -64,10 +71,21 @@ export async function setText(input: ReturnType<Page['getByLabel']>, value: stri
 	await input.blur();
 }
 
+/** Add a catalogue exercise by its name. */
 export async function addExercise(page: Page, name: string) {
-	await page.getByLabel('New exercise name').fill(name);
-	await page.getByRole('button', { name: 'Add', exact: true }).click();
+	await page.getByLabel('Find exercise').fill(name);
+	await page.getByRole('list', { name: 'Matching exercises' }).getByRole('button', { name, exact: true }).click();
 	await expect(exercise(page, name)).toBeVisible();
+}
+
+/** The catalogue id of the exercise with this name. */
+export function exerciseId(name: string): string {
+	return name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+}
+
+/** The live entry for an exercise in a workout or routine; each test starts with none. */
+export function entryOf(data: Record<string, Row[]>, table: 'workout_exercises' | 'routine_exercises', name: string) {
+	return data[table]?.find((e) => !e.deleted && e.exercise_id === exerciseId(name));
 }
 
 export function exercise(page: Page, name: string) {

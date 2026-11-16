@@ -6,6 +6,8 @@ WORKDIR /src/web
 COPY web/package.json web/package-lock.json web/.npmrc ./
 RUN npm ci
 COPY web/ ./
+# The built-in exercises, shared with the server.
+COPY internal/store/catalog.json /src/internal/store/catalog.json
 # The release shown in Settings; .git isn't in the build context, so CI passes the tag.
 ARG APP_VERSION=dev
 RUN APP_VERSION=$APP_VERSION npm run build

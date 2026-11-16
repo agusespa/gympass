@@ -81,18 +81,24 @@ func call(t *testing.T, cs *mcp.ClientSession, name string, args any, out any) s
 func TestMCPRoutineFlow(t *testing.T) {
 	srv := newRoutineServer(t)
 	cs := mcpSession(t, srv.URL)
-	if got := toolNames(t, cs); len(got) != 6 || !slices.Contains(got, "update_routine") {
+	if got := toolNames(t, cs); len(got) != 7 || !slices.Contains(got, "update_routine") {
 		t.Fatalf("tools = %v", got)
+	}
+
+	var listed exerciseList
+	if msg := call(t, cs, "list_exercises", map[string]any{}, &listed); msg != "" || len(listed.Exercises) == 0 ||
+		!slices.Contains(listed.Exercises, store.Exercise{ID: "bench-press", Name: "Bench Press", Measure: "reps", Equipment: "barbell"}) {
+		t.Fatalf("list_exercises: %q %+v", msg, listed)
 	}
 
 	var created store.Routine
 	msg := call(t, cs, "create_routine", map[string]any{
 		"name": "Push",
 		"exercises": []any{map[string]any{
-			"name": "Bench", "sets": []any{map[string]any{"reps": 8, "weight_kg": 80}},
+			"name": "Bench Press", "sets": []any{map[string]any{"reps": 8, "weight_kg": 80}},
 		}},
 	}, &created)
-	if msg != "" || created.ID == "" || created.Exercises[0].Sets[0].RestSeconds != 120 {
+	if msg != "" || created.ID == "" || created.Exercises[0].ExerciseID != "bench-press" || created.Exercises[0].Sets[0].RestSeconds != 120 {
 		t.Fatalf("create_routine: %q %+v", msg, created)
 	}
 
@@ -114,11 +120,11 @@ func TestMCPRoutineFlow(t *testing.T) {
 		want string
 	}{
 		"misspelt field": {"create_routine", map[string]any{"name": "x", "exercises": []any{map[string]any{
-			"name": "Bench", "sets": []any{map[string]any{"reps": 8, "weight": 80}}}}}, "weight"},
-		"bad reps":        {"update_routine", map[string]any{"id": created.ID, "name": "x", "exercises": []any{map[string]any{"name": "Bench", "sets": []any{map[string]any{"reps": -1, "weight_kg": 1}}}}}, "reps"},
+			"name": "Bench Press", "sets": []any{map[string]any{"reps": 8, "weight": 80}}}}}, "weight"},
+		"bad reps":        {"update_routine", map[string]any{"id": created.ID, "name": "x", "exercises": []any{map[string]any{"name": "Bench Press", "sets": []any{map[string]any{"reps": -1, "weight_kg": 1}}}}}, "reps"},
 		"unknown routine": {"update_routine", map[string]any{"id": "missing", "name": "x"}, "no routine"},
 		"unknown set id": {"update_routine", map[string]any{"id": created.ID, "name": "x", "exercises": []any{map[string]any{
-			"id": saved.Exercises[0].ID, "name": "Bench", "sets": []any{map[string]any{"id": "made-up", "reps": 1, "weight_kg": 1}}}}}, "not a set"},
+			"id": saved.Exercises[0].ID, "name": "Bench Press", "sets": []any{map[string]any{"id": "made-up", "reps": 1, "weight_kg": 1}}}}}, "not a set"},
 		"bad range":       {"list_workouts", map[string]any{"from": "2026-11-10", "to": "2026-11-01"}, "before"},
 		"missing workout": {"get_workout", map[string]any{"id": "nope"}, "no finished workout"},
 		"bad limit":       {"list_routines", map[string]any{"limit": 500}, "limit"},

@@ -87,7 +87,7 @@ func TestOutboxSchedulesOnlyFinishedWorkouts(t *testing.T) {
 
 	// An edit to a set after DueWebhooks returned it keeps the newer send pending.
 	mustSync(t, s, map[string][]Row{
-		"workout_exercises": {{"id": "e1", "updated_at": int64(300), "deleted": false, "workout_id": "w1", "name": "Bench", "position": 1.0, "superset_id": nil}},
+		"workout_exercises": {{"id": "e1", "updated_at": int64(300), "deleted": false, "workout_id": "w1", "exercise_id": "bench-press", "position": 1.0, "superset_id": nil}},
 	})
 	if err := s.MarkWebhookSent(ctx, p[0]); err != nil {
 		t.Fatal(err)
@@ -152,8 +152,8 @@ func TestOutboxDisabledByDefault(t *testing.T) {
 func TestWorkoutSnapshot(t *testing.T) {
 	s := openTest(t)
 	ctx := context.Background()
-	ex := func(id string, pos float64, name string, deleted bool) Row {
-		return Row{"id": id, "updated_at": int64(1), "deleted": deleted, "workout_id": "w1", "name": name, "position": pos, "superset_id": nil}
+	ex := func(id string, pos float64, exerciseID string, deleted bool) Row {
+		return Row{"id": id, "updated_at": int64(1), "deleted": deleted, "workout_id": "w1", "exercise_id": exerciseID, "position": pos, "superset_id": nil}
 	}
 	set := func(id, ex string, pos float64, reps int64, kg float64, warmup, deleted bool) Row {
 		return Row{"id": id, "updated_at": int64(1), "deleted": deleted, "workout_exercise_id": ex, "position": pos, "reps": reps, "weight_kg": kg, "warmup": warmup, "rest_seconds": int64(120), "duration_seconds": int64(0), "rep_min": int64(0), "rep_max": int64(0), "done": true}
@@ -162,7 +162,7 @@ func TestWorkoutSnapshot(t *testing.T) {
 	unchecked["done"] = false
 	mustSync(t, s, map[string][]Row{
 		"workouts":          {finishedWorkout("w1", 5000)},
-		"workout_exercises": {ex("e2", 2, "Row", false), ex("e1", 1, "Bench", false), ex("e3", 3, "Gone", true), ex("e4", 4, "Empty", false)},
+		"workout_exercises": {ex("e2", 2, "barbell-row", false), ex("e1", 1, "bench-press", false), ex("e3", 3, "squat", true), ex("e4", 4, "deadlift", false)},
 		"sets": {
 			set("a2", "e1", 2, 8, 80, false, false),
 			set("a1", "e1", 1, 10, 40, true, false),
@@ -183,7 +183,7 @@ func TestWorkoutSnapshot(t *testing.T) {
 	for _, e := range w.Exercises {
 		names = append(names, e.Name)
 	}
-	if len(names) != 3 || names[0] != "Bench" || names[1] != "Row" || names[2] != "Empty" {
+	if len(names) != 3 || names[0] != "Bench Press" || names[1] != "Barbell Row" || names[2] != "Deadlift" {
 		t.Fatalf("exercises = %v", names)
 	}
 	bench := w.Exercises[0].Sets

@@ -3,19 +3,21 @@
  * row dirty and notifies listeners (the sync loop).
  */
 import type { Table } from 'dexie';
+import { catalogExercise, type Equipment } from './catalog';
 import {
 	db,
 	DEFAULT_REST_SECONDS,
 	SETTINGS_ID,
-	type Exercise,
+	type ExerciseEntry,
 	type Routine,
 	type SetRow,
 	type Settings,
 	type Synced,
 	type Workout
 } from './db';
-import { exerciseKey, trimName } from './exercise-key';
+import { trimName } from './exercise-key';
 import { MAX_DURATION_SECONDS, MAX_REPS, MAX_TEXT_LEN, MAX_WEIGHT_KG } from './limits';
+import { progression, type Progression } from './progression';
 
 export type Kind = 'workout' | 'routine';
 
@@ -51,13 +53,17 @@ function toSetView(s: SetRow & { done?: boolean }): SetView {
 	};
 }
 
+/** An exercise's entry in a workout or routine, with what the catalogue says about it. */
 export interface ExerciseView {
 	id: string;
+	exercise_id: string;
 	name: string;
 	position: number;
 	superset_id: string | null;
-	/** Logged by time instead of reps (an exercise setting, shared by every workout and routine). */
+	/** Logged by time instead of reps (the exercise's measure). */
 	timed: boolean;
+	/** Undefined for an id this version's catalogue does not have. */
+	equipment: Equipment | undefined;
 	sets: SetView[];
 }
 
@@ -113,8 +119,8 @@ function fresh<T extends object>(row: T): T & Synced {
 }
 
 /**
- * A row whose id comes from what it describes (a date, an exercise, the
- * settings singleton), so every device writes the same row. Putting it
+ * A row whose id comes from what it describes (the settings singleton), so
+ * every device writes the same row. Putting it
  * replaces any earlier version, deleted or not.
  */
 function keyed<T extends object>(id: string, row: T): T & Synced {
@@ -128,7 +134,6 @@ const allTables = () => [
 	db.routines,
 	db.routine_exercises,
 	db.routine_sets,
-	db.exercise_settings,
 	db.settings
 ];
 
@@ -159,20 +164,6 @@ async function getLive<T extends Synced>(
 	return row && !row.deleted ? row : undefined;
 }
 
-/** Exercise names per parent id, in exercise order. */
-function namesByParent<E extends Exercise>(
-	exercises: E[],
-	parentOf: (e: E) => string
-): Map<string, string[]> {
-	const names = new Map<string, string[]>();
-	for (const e of exercises.sort(byPosition)) {
-		const list = names.get(parentOf(e)) ?? [];
-		list.push(e.name);
-		names.set(parentOf(e), list);
-	}
-	return names;
-}
-
 /** A new set row with defaults; values from `like` (e.g. the set it copies) override them. */
 function newSet(
 	parentKey: KindTables['setParent'],
@@ -198,7 +189,7 @@ function newSet(
 
 // Tables differ per kind only in names; this keeps the rest of the code shared.
 interface KindTables {
-	ex: Table<Exercise & Record<string, unknown>, string>;
+	ex: Table<ExerciseEntry & Record<string, unknown>, string>;
 	sets: Table<SetRow & Record<string, unknown>, string>;
 	exParent: 'workout_id' | 'routine_id';
 	setParent: 'workout_exercise_id' | 'routine_exercise_id';
@@ -222,18 +213,12 @@ function tables(kind: Kind): KindTables {
 
 // ---------- workouts ----------
 
-export interface WorkoutSummary extends Workout {
-	exercises: string[];
-}
-
-export async function listWorkouts(): Promise<WorkoutSummary[]> {
-	const workouts = live(await db.workouts.orderBy('date').reverse().toArray());
-	const names = namesByParent(live(await db.workout_exercises.toArray()), (e) => e.workout_id);
-	return workouts.map((w) => ({ ...w, exercises: names.get(w.id) ?? [] }));
+export async function listWorkouts(): Promise<Workout[]> {
+	return live(await db.workouts.orderBy('date').reverse().toArray());
 }
 
 /** Workouts started but not finished yet, newest first. */
-export async function listRunningWorkouts(): Promise<WorkoutSummary[]> {
+export async function listRunningWorkouts(): Promise<Workout[]> {
 	return (await listWorkouts()).filter((w) => w.finished_at == null);
 }
 
@@ -277,13 +262,16 @@ export async function deleteWorkout(id: string) {
 // ---------- routines ----------
 
 export interface RoutineSummary extends Routine {
-	exercises: string[];
+	exercise_count: number;
 }
 
 export async function listRoutines(): Promise<RoutineSummary[]> {
 	const routines = live(await db.routines.toArray()).sort((a, b) => a.name.localeCompare(b.name));
-	const names = namesByParent(live(await db.routine_exercises.toArray()), (e) => e.routine_id);
-	return routines.map((r) => ({ ...r, exercises: names.get(r.id) ?? [] }));
+	const counts = new Map<string, number>();
+	for (const e of live(await db.routine_exercises.toArray())) {
+		counts.set(e.routine_id, (counts.get(e.routine_id) ?? 0) + 1);
+	}
+	return routines.map((r) => ({ ...r, exercise_count: counts.get(r.id) ?? 0 }));
 }
 
 export function getRoutine(id: string): Promise<Routine | undefined> {
@@ -335,11 +323,16 @@ async function copyExercises(from: Kind, fromId: string, to: Kind, toId: string)
 			superset = supersets.get(e.superset_id) ?? uuid();
 			supersets.set(e.superset_id, superset);
 		}
-		const ex = fresh({ name: e.name, position: e.position, superset_id: superset, [dst.exParent]: toId });
+		const ex = fresh({
+			exercise_id: e.exercise_id,
+			position: e.position,
+			superset_id: superset,
+			[dst.exParent]: toId
+		});
 		await dst.ex.add(ex);
 		let sets = e.sets;
 		if (from === 'routine' && to === 'workout') {
-			const last = await lastSetsFor(e.name, { exclude: toId, before: startDate, workoutsOnly: true });
+			const last = await lastSetsFor(e.exercise_id, { exclude: toId, before: startDate, workoutsOnly: true });
 			const seen = { warm: 0, work: 0 };
 			sets = sets.map((s) => targetFrom(s, s.warmup ? seen.warm++ : seen.work++, last));
 		}
@@ -384,13 +377,14 @@ export async function loadExercises(kind: Kind, parentId: string): Promise<Exerc
 			.anyOf(exercises.map((e) => e.id))
 			.toArray()
 	);
-	const timed = await timedExercises();
 	return exercises.map((e) => ({
 		id: e.id,
-		name: e.name,
+		exercise_id: e.exercise_id,
+		name: catalogExercise(e.exercise_id)?.name ?? '',
 		position: e.position,
 		superset_id: e.superset_id,
-		timed: timed.has(exerciseKey(e.name)),
+		timed: catalogExercise(e.exercise_id)?.measure === 'time',
+		equipment: catalogExercise(e.exercise_id)?.equipment,
 		sets: sets
 			.filter((s) => s[t.setParent] === e.id)
 			.sort(byPosition)
@@ -414,18 +408,19 @@ export function toBlocks(exercises: ExerciseView[]): Block[] {
 	return blocks;
 }
 
-export async function addExercise(kind: Kind, parentId: string, name: string): Promise<string> {
+/** Add a catalogue exercise (by its id) to a workout or routine. */
+export async function addExercise(kind: Kind, parentId: string, exerciseId: string): Promise<string> {
 	const t = tables(kind);
 	return write(async () => {
 		const existing = await loadExercises(kind, parentId);
 		const position = (existing.at(-1)?.position ?? 0) + 1;
-		const ex = fresh({ name: cleanName(name), position, superset_id: null, [t.exParent]: parentId });
+		const ex = fresh({ exercise_id: exerciseId, position, superset_id: null, [t.exParent]: parentId });
 		await t.ex.add(ex);
 		// A set added to a running workout is still to do; one added to history already happened.
 		const done = kind === 'workout' && (await isFinished(parentId));
 		// Start from what was done last time, so only the numbers need changing.
 		const before = kind === 'workout' ? (await getWorkout(parentId))?.date : undefined;
-		const last = await lastSetsFor(ex.name, { exclude: parentId, before });
+		const last = await lastSetsFor(exerciseId, { exclude: parentId, before });
 		const sets = last.length > 0 ? last : [undefined];
 		for (const [i, s] of sets.entries()) {
 			const isLast = i === sets.length - 1;
@@ -448,10 +443,6 @@ export async function addExercise(kind: Kind, parentId: string, name: string): P
 		}
 		return ex.id;
 	});
-}
-
-export async function renameExercise(kind: Kind, id: string, name: string) {
-	await write(() => patch(tables(kind).ex, id, { name: cleanName(name) }));
 }
 
 async function deleteSetsOf(kind: Kind, exerciseIds: string[]) {
@@ -648,17 +639,7 @@ async function normalizeSupersets(kind: Kind, parentId: string) {
 	}
 }
 
-// ---------- suggestions & previous values ----------
-
-export async function exerciseNames(): Promise<string[]> {
-	const seen = new Map<string, string>();
-	const rows = [...live(await db.workout_exercises.toArray()), ...live(await db.routine_exercises.toArray())];
-	for (const r of rows) {
-		const key = exerciseKey(r.name);
-		if (key && !seen.has(key)) seen.set(key, trimName(r.name));
-	}
-	return [...seen.values()].sort((a, b) => a.localeCompare(b));
-}
+// ---------- previous values ----------
 
 /**
  * The sets of the last time an exercise was done: the most recent workout
@@ -668,18 +649,16 @@ export async function exerciseNames(): Promise<string[]> {
  * included; from workouts, only performed sets.
  */
 async function lastSetsFor(
-	name: string,
+	exerciseId: string,
 	opts: { exclude?: string; before?: string; workoutsOnly?: boolean } = {}
 ): Promise<SetView[]> {
-	const key = exerciseKey(name);
-	if (!key) return [];
 	const workouts = new Map(live(await db.workouts.toArray()).map((w) => [w.id, w]));
-	const candidates = live(await db.workout_exercises.where('name').equalsIgnoreCase(key).toArray()).filter(
-		(e) => {
-			const w = workouts.get(e.workout_id);
-			return w && w.id !== opts.exclude && (opts.before === undefined || w.date <= opts.before);
-		}
-	);
+	const candidates = live(
+		await db.workout_exercises.where('exercise_id').equals(exerciseId).toArray()
+	).filter((e) => {
+		const w = workouts.get(e.workout_id);
+		return w && w.id !== opts.exclude && (opts.before === undefined || w.date <= opts.before);
+	});
 	candidates.sort((a, b) => {
 		const wa = workouts.get(a.workout_id)!;
 		const wb = workouts.get(b.workout_id)!;
@@ -695,7 +674,7 @@ async function lastSetsFor(
 	if (opts.workoutsOnly) return [];
 
 	const routines = new Map(live(await db.routines.toArray()).map((r) => [r.id, r]));
-	const planned = live(await db.routine_exercises.where('name').equalsIgnoreCase(key).toArray())
+	const planned = live(await db.routine_exercises.where('exercise_id').equals(exerciseId).toArray())
 		.filter((e) => routines.has(e.routine_id) && e.routine_id !== opts.exclude)
 		.sort((a, b) => b.updated_at - a.updated_at);
 	for (const p of planned) {
@@ -707,21 +686,32 @@ async function lastSetsFor(
 	return [];
 }
 
-// ---------- exercise settings ----------
+// ---------- progression ----------
 
-/** Keys of the exercises logged by time instead of reps. */
-export async function timedExercises(): Promise<Set<string>> {
-	const rows = await db.exercise_settings.toArray();
-	return new Set(rows.filter((x) => !x.deleted && x.timed).map((x) => x.id));
+/** What adding a step of weight would do in a running workout, by exercise entry id. */
+export async function loadProgressions(workoutId: string): Promise<Record<string, Progression>> {
+	const out: Record<string, Progression> = {};
+	const workout = await getWorkout(workoutId);
+	if (!workout || workout.finished_at != null) return out;
+	for (const e of await loadExercises('workout', workoutId)) {
+		if (!e.equipment || e.timed || e.sets.every((s) => s.done || s.warmup)) continue;
+		const last = await lastSetsFor(e.exercise_id, {
+			exclude: workoutId,
+			before: workout.date,
+			workoutsOnly: true
+		});
+		const step = progression(e.equipment, last, e.sets);
+		if (step) out[e.id] = step;
+	}
+	return out;
 }
 
-/** Log an exercise by time (e.g. dead hangs) instead of reps, everywhere it is used. */
-export function setTimed(name: string, timed: boolean) {
-	// The server derives the id from the stored name, so both come from one cleaned value.
-	const clean = cleanName(name);
-	const key = exerciseKey(clean);
-	if (!key) return Promise.resolve();
-	return write(() => db.exercise_settings.put(keyed(key, { name: clean, timed })));
+export function applyProgression(p: Progression) {
+	return write(async () => {
+		for (const s of p.sets) {
+			await patch(db.sets, s.id, { weight_kg: Math.min(MAX_WEIGHT_KG, s.weight_kg), reps: s.reps });
+		}
+	});
 }
 
 // ---------- settings ----------

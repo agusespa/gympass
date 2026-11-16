@@ -45,8 +45,8 @@ func send(t *testing.T, method, url, body string, out any) *http.Response {
 }
 
 const pushBody = `{"name":"Push","exercises":[
-  {"name":"Bench","sets":[{"reps":8,"weight_kg":80},{"reps":8,"weight_kg":80,"rest_seconds":90}]},
-  {"name":"Dips","sets":[{"reps":10,"weight_kg":0,"warmup":true}]}]}`
+  {"name":"Bench Press","sets":[{"reps":8,"weight_kg":80},{"reps":8,"weight_kg":80,"rest_seconds":90}]},
+  {"name":"Dip","sets":[{"reps":10,"weight_kg":0,"warmup":true}]}]}`
 
 func TestRoutineCreateAndIncrement(t *testing.T) {
 	srv := newRoutineServer(t)
@@ -96,7 +96,7 @@ func TestRoutineBadRequests(t *testing.T) {
 		{"POST", "/api/routines", `{"name":""}`, 400},
 		{"POST", "/api/routines", `not json`, 400},
 		{"PUT", "/api/routines/" + created.ID, `{"id":"other","name":"x"}`, 400},
-		{"PUT", "/api/routines/" + created.ID, `{"name":"x","exercises":[{"id":"made-up","name":"Bench"}]}`, 400},
+		{"PUT", "/api/routines/" + created.ID, `{"name":"x","exercises":[{"id":"made-up","name":"Bench Press"}]}`, 400},
 		{"PUT", "/api/routines/missing", `{"name":"x"}`, 404},
 	}
 	for _, c := range cases {
@@ -188,5 +188,21 @@ func TestRoutineRepRange(t *testing.T) {
 	}
 	if st := passed.Exercises[0].Sets[0]; st.Reps != 12 || st.RepMin != 12 || st.RepMax != 8 {
 		t.Fatalf("set past its max = %+v", st)
+	}
+}
+
+func TestExercisesList(t *testing.T) {
+	srv := newRoutineServer(t)
+	var out exerciseList
+	if res := send(t, "GET", srv.URL+"/api/exercises", "", &out); res.StatusCode != 200 {
+		t.Fatalf("status = %d", res.StatusCode)
+	}
+	if len(out.Exercises) == 0 || out.Exercises[0].Name == "" || out.Exercises[0].Measure == "" || out.Exercises[0].Equipment == "" {
+		t.Fatalf("exercises = %+v", out.Exercises)
+	}
+
+	var e map[string]string
+	if res := send(t, "POST", srv.URL+"/api/routines", `{"name":"x","exercises":[{"name":"Zercher Carry"}]}`, &e); res.StatusCode != 400 || !strings.Contains(e["error"], "not a known exercise") {
+		t.Fatalf("unknown exercise: %d %v", res.StatusCode, e)
 	}
 }

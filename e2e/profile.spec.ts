@@ -21,7 +21,7 @@ test("profile shows stats, records and per-exercise progress", async ({
   request,
 }) => {
   const id = uid();
-  const squat = `Squat ${id}`;
+  const squat = "Squat";
 
   // An earlier session, logged a week ago from another device.
   const now = Date.now();
@@ -50,7 +50,7 @@ test("profile shows stats, records and per-exercise progress", async ({
             ...base,
             id: e,
             workout_id: w,
-            name: squat,
+            exercise_id: "squat",
             position: 1,
             superset_id: null,
           },
@@ -103,7 +103,7 @@ test("profile shows stats, records and per-exercise progress", async ({
   // The exercise screen charts both sessions and lists them newest first.
   await record.click();
   await expect(page).toHaveURL(
-    new RegExp(`/exercises/${encodeURIComponent(squat.toLowerCase())}$`),
+    new RegExp("/exercises/squat$"),
   );
   await expect(page.getByTestId("best-weight")).toContainText("105 kg");
   await expect(page.getByTestId("best-e1rm")).toHaveText("122.5 kg");

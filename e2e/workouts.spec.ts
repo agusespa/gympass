@@ -1,7 +1,9 @@
+import { readFileSync } from 'node:fs';
 import {
 	addExercise,
 	addSet,
 	exercise,
+	exerciseId,
 	exerciseMenu,
 	expect,
 	fillSet,
@@ -15,9 +17,13 @@ import {
 	unfold
 } from './helpers';
 
+const catalog: unknown[] = JSON.parse(
+	readFileSync(new URL('../internal/store/catalog.json', import.meta.url), 'utf8')
+);
+
 test("log a workout, start from last time's values, edit and delete", async ({ page, request }) => {
 	const id = uid();
-	const bench = `Bench ${id}`;
+	const bench = 'Bench Press';
 
 	await newWorkout(page, `Push ${id}`);
 	// Focused screen: no tab bar, just the back button.
@@ -43,7 +49,6 @@ test("log a workout, start from last time's values, edit and delete", async ({ p
 	await page.getByRole('button', { name: 'Save', exact: true }).click();
 	await expect(page).toHaveURL('/profile');
 	const entry = page.getByRole('link', { name: new RegExp(`Push ${id}`) });
-	await expect(entry).toContainText(bench);
 	await expect(entry).not.toContainText('In progress');
 	await entry.click();
 	await expect(page.getByRole('button', { name: 'Finish', exact: true })).toHaveCount(0);
@@ -51,9 +56,8 @@ test("log a workout, start from last time's values, edit and delete", async ({ p
 
 	// Next workout with the same exercise shows last time's numbers.
 	await newWorkout(page, `Push again ${id}`);
-	await page.getByLabel('New exercise name').fill(bench.toLowerCase());
-	await page.getByRole('button', { name: 'Add', exact: true }).click();
-	const again = exercise(page, bench.toLowerCase());
+	await addExercise(page, bench);
+	const again = exercise(page, bench);
 	// The sets start as last time's, still to do.
 	await expect(again.getByLabel('Weight set 1')).toHaveValue('80');
 	await expect(again.getByLabel('Reps set 2')).toHaveValue('6');
@@ -127,8 +131,8 @@ test('rename a workout and change its date', async ({ page }) => {
 	await expect(page.getByLabel('Workout date')).toHaveCount(0);
 	await page.getByLabel('Workout name').fill(`Legs day ${id}`);
 	await page.getByLabel('Workout name').blur();
-	await addExercise(page, `Squat ${id}`);
-	await fillSet(page, `Squat ${id}`, 1, '60', '5');
+	await addExercise(page, 'Squat');
+	await fillSet(page, 'Squat', 1, '60', '5');
 
 	// Once finished, the date can be fixed from history.
 	await finishWorkout(page);
@@ -140,20 +144,43 @@ test('rename a workout and change its date', async ({ page }) => {
 	await expect(page.getByLabel('Workout date')).toHaveValue('2026-01-02');
 });
 
-test('suggests exercise names used before', async ({ page }) => {
+test('exercises are picked from the catalogue', async ({ page, request }) => {
 	const id = uid();
-	await newWorkout(page, `Pull ${id}`);
-	await addExercise(page, `Deadlift ${id}`);
-	await fillSet(page, `Deadlift ${id}`, 1, '140', '3');
-	await finishWorkout(page);
-	await newWorkout(page, `Pull 2 ${id}`);
-	await expect(page.locator(`datalist#exercise-names option[value="Deadlift ${id}"]`)).toHaveCount(1);
+	await newWorkout(page, `Core ${id}`);
+	const find = page.getByLabel('Find exercise');
+	const matches = page.getByRole('list', { name: 'Matching exercises' });
+
+	// Tapping the box lists the whole catalogue; tapping elsewhere puts it away.
+	await find.click();
+	await expect(matches.getByRole('button')).toHaveCount(catalog.length);
+	await expect(matches.getByRole('button').first()).toHaveText('Back Extension');
+	await page.getByLabel('Workout name').click();
+	await expect(matches).toHaveCount(0);
+
+	// Typing narrows it: any part of the name, in any case.
+	await find.fill('PLANK');
+	await expect(matches.getByRole('button')).toHaveText(['Plank', 'Side Plank']);
+	await find.fill('zercher');
+	await expect(page.getByText('No exercise with that name.')).toBeVisible();
+	await expect(matches).toHaveCount(0);
+
+	// The catalogue knows a side plank is timed.
+	await addExercise(page, 'Side Plank');
+	await expect(find).toHaveValue('');
+	await expect(exercise(page, 'Side Plank').getByLabel('Time set 1')).toBeVisible();
+	await expect
+		.poll(async () => {
+			const data = await serverData(request);
+			const w = data.workouts?.find((r) => r.name === `Core ${id}`);
+			return data.workout_exercises?.find((e) => e.workout_id === w?.id)?.exercise_id;
+		})
+		.toBe('side-plank');
 });
 
 test('a running workout takes over the app until it is finished', async ({ page, request }) => {
 	const id = uid();
 	await newWorkout(page, `Arms ${id}`);
-	await addExercise(page, `Curl ${id}`);
+	await addExercise(page, 'Barbell Curl');
 	const workoutUrl = page.url();
 
 	// No back button and no tab bar: it is left by finishing or discarding it.
@@ -175,7 +202,7 @@ test('a running workout takes over the app until it is finished', async ({ page,
 	await expect(empty).toBeVisible();
 	await empty.getByRole('button', { name: 'Keep logging' }).click();
 	await expect(page).toHaveURL(/\/workouts\/[^/]+$/);
-	await fillSet(page, `Curl ${id}`, 1, '12', '10');
+	await fillSet(page, 'Barbell Curl', 1, '12', '10');
 
 	// Saving needs no confirmation; the toast's Undo puts the workout back in progress.
 	await finishWorkout(page);
@@ -205,8 +232,8 @@ test('a running workout takes over the app until it is finished', async ({ page,
 
 test('only checked-off sets count', async ({ page, request }) => {
 	const id = uid();
-	const row = `Row ${id}`;
-	const dips = `Dips ${id}`;
+	const row = 'Barbell Row';
+	const dips = 'Dip';
 
 	// A routine with three planned sets of rows and some dips.
 	await page.goto('/');
@@ -261,7 +288,7 @@ test('only checked-off sets count', async ({ page, request }) => {
 		.poll(async () => {
 			const data = await serverData(request);
 			const w = data.workouts?.find((r) => r.name === `Pull ${id}`);
-			const ex = data.workout_exercises?.find((e) => e.workout_id === w?.id && e.name === row);
+			const ex = data.workout_exercises?.find((e) => e.workout_id === w?.id && e.exercise_id === exerciseId(row));
 			return (data.sets ?? [])
 				.filter((s) => s.workout_exercise_id === ex?.id && !s.deleted)
 				.sort((x, y) => Number(x.position) - Number(y.position))
@@ -270,32 +297,23 @@ test('only checked-off sets count', async ({ page, request }) => {
 		.toEqual([true, true, false]);
 });
 
-test('rename an exercise from its menu', async ({ page }) => {
+test('tapping outside an exercise menu closes it', async ({ page }) => {
 	const id = uid();
-	const curl = `Curl ${id}`;
+	const curl = 'Barbell Curl';
 	await newWorkout(page, `Arms ${id}`);
 	await addExercise(page, curl);
 
-	// Tapping outside closes the menu without doing anything.
 	await exercise(page, curl).getByRole('button', { name: 'Exercise options' }).click();
 	await expect(exercise(page, curl).getByRole('menu')).toBeVisible();
 	await page.getByLabel('Workout name').click();
 	await expect(exercise(page, curl).getByRole('menu')).toHaveCount(0);
-
-	await exerciseMenu(page, curl, 'Rename');
-	const name = exercise(page, curl).getByLabel('Exercise name');
-	await expect(name).toBeFocused();
-	await name.fill(`Hammer curl ${id}`);
-	await name.press('Enter');
-	await expect(exercise(page, `Hammer curl ${id}`)).toBeVisible();
-	await expect(page.getByLabel('Exercise name', { exact: true })).toHaveCount(0);
 });
 
 test('an exercise menu near the bottom of the screen opens upward', async ({ page }) => {
 	const id = uid();
 	await newWorkout(page, `Long ${id}`);
-	for (const n of ['A', 'B', 'C']) await addExercise(page, `${n} ${id}`);
-	const last = exercise(page, `C ${id}`);
+	for (const n of ['Squat', 'Deadlift', 'Hip Thrust']) await addExercise(page, n);
+	const last = exercise(page, 'Hip Thrust');
 	const button = last.getByRole('button', { name: 'Exercise options' });
 	// Put the last exercise's ⋯ button just above the bottom edge.
 	await button.evaluate((el) => window.scrollBy(0, el.getBoundingClientRect().bottom - window.innerHeight + 20));
@@ -313,7 +331,7 @@ test('an exercise menu near the bottom of the screen opens upward', async ({ pag
 
 test('a finished exercise folds away in a running workout', async ({ page }) => {
 	const id = uid();
-	const curl = `Curl ${id}`;
+	const curl = 'Barbell Curl';
 	await newWorkout(page, `Arms ${id}`);
 	await addExercise(page, curl);
 	// In a workout, extra sets come from the exercise menu.
@@ -321,12 +339,17 @@ test('a finished exercise folds away in a running workout', async ({ page }) => 
 	await addSet(page, curl);
 	await fillSet(page, curl, 1, '12', '10');
 	await expect(exercise(page, curl).getByLabel('Weight set 2')).toBeVisible();
+	await expect(page.getByLabel('0 of 1 exercises done')).toHaveText('0/1');
+	// The line along the top bar follows the sets: one of two is checked.
+	await expect(page.getByTestId('progress-line')).toHaveAttribute('style', /width: 50%/);
 
 	// Checking off the last set folds the exercise down to its name.
 	await fillSet(page, curl, 2, '12', '9');
 	const fold = exercise(page, curl).getByRole('button', { name: new RegExp(curl) });
 	await expect(fold).toHaveAttribute('aria-expanded', 'false');
 	await expect(fold).toContainText('2 sets');
+	await expect(page.getByLabel('1 of 1 exercises done')).toHaveText('1/1');
+	await expect(page.getByTestId('progress-line')).toHaveAttribute('style', /width: 100%/);
 	await expect(exercise(page, curl).getByLabel('Weight set 1')).toHaveCount(0);
 
 	// Tapping the name opens it again.

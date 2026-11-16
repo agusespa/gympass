@@ -24,9 +24,9 @@ func workout(id string, updatedAt int64, name string) Row {
 	return Row{"id": id, "updated_at": updatedAt, "deleted": false, "name": name, "date": "2026-11-14", "started_at": int64(1), "finished_at": nil}
 }
 
-// exerciseRow is a workout exercise outside any superset.
-func exerciseRow(id, workoutID, name string, pos float64) Row {
-	return Row{"id": id, "updated_at": int64(1), "deleted": false, "workout_id": workoutID, "name": name, "position": pos, "superset_id": nil}
+// exerciseRow is a workout's entry for a catalogue exercise, outside any superset.
+func exerciseRow(id, workoutID, exerciseID string, pos float64) Row {
+	return Row{"id": id, "updated_at": int64(1), "deleted": false, "workout_id": workoutID, "exercise_id": exerciseID, "position": pos, "superset_id": nil}
 }
 
 // setRow is a checked working set with the default rest; tests override fields.
@@ -44,7 +44,7 @@ func TestSyncRoundTrip(t *testing.T) {
 		"workouts": {workout("w1", 100, "Push")},
 		"workout_exercises": {{
 			"id": "e1", "updated_at": int64(100), "deleted": false,
-			"workout_id": "w1", "name": "Bench", "position": 1.5, "superset_id": "s1",
+			"workout_id": "w1", "exercise_id": "bench-press", "position": 1.5, "superset_id": "s1",
 		}},
 		"sets": {{
 			"id": "s1", "updated_at": int64(100), "deleted": false,
@@ -186,7 +186,7 @@ func TestValidation(t *testing.T) {
 		{"rest too long", map[string][]Row{"sets": {set("rest_seconds", int64(3601))}}},
 		{"negative rest", map[string][]Row{"sets": {set("rest_seconds", int64(-1))}}},
 		{"string weight", map[string][]Row{"sets": {set("weight_kg", "1")}}},
-		{"setting id not its key", map[string][]Row{"exercise_settings": {{"id": "pull-up ", "updated_at": int64(1), "deleted": false, "name": "Pull-up", "timed": true}}}},
+		{"missing exercise", map[string][]Row{"workout_exercises": {{"id": "e", "updated_at": int64(1), "deleted": false, "workout_id": "w", "exercise_id": "", "position": 1.0, "superset_id": nil}}}},
 		{"settings id", map[string][]Row{"settings": {{"id": "other", "updated_at": int64(1), "deleted": false, "weekly_goal": int64(3)}}}},
 		{"weekly goal too high", map[string][]Row{"settings": {{"id": SettingsID, "updated_at": int64(1), "deleted": false, "weekly_goal": int64(8)}}}},
 	}
@@ -283,10 +283,8 @@ func TestTimedSetsSync(t *testing.T) {
 	hang["duration_seconds"] = int64(45)
 	_, out, rejected, err := s.Sync(ctx, 0, map[string][]Row{
 		"workouts":          {workout("w1", 1, "Grip")},
-		"workout_exercises": {exerciseRow("e1", "w1", "Dead hang", 1)},
+		"workout_exercises": {exerciseRow("e1", "w1", "dead-hang", 1)},
 		"sets":              {hang, setRow("s2", "e1", 2, 8, 20)},
-		"exercise_settings": {{"id": "dead hang", "updated_at": int64(1), "deleted": false,
-			"name": "Dead hang", "timed": true}},
 	})
 	if err != nil || len(rejected) > 0 {
 		t.Fatal(err, rejected)
@@ -297,9 +295,6 @@ func TestTimedSetsSync(t *testing.T) {
 	}
 	if got["s1"] != int64(45) || got["s2"] != int64(0) {
 		t.Fatalf("duration_seconds = %v", got)
-	}
-	if out["exercise_settings"][0]["timed"] != true {
-		t.Fatalf("timed = %v", out["exercise_settings"][0]["timed"])
 	}
 
 	bad := setRow("s3", "e1", 3, 0, 0)
@@ -317,7 +312,7 @@ func TestRepRangeSync(t *testing.T) {
 	ranged["rep_min"], ranged["rep_max"] = int64(8), int64(12)
 	_, out, rejected, err := s.Sync(ctx, 0, map[string][]Row{
 		"workouts":          {workout("w1", 1, "Push")},
-		"workout_exercises": {exerciseRow("e1", "w1", "Bench press", 1)},
+		"workout_exercises": {exerciseRow("e1", "w1", "bench-press", 1)},
 		"sets":              {ranged, setRow("s2", "e1", 2, 8, 60)},
 	})
 	if err != nil || len(rejected) > 0 {

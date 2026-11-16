@@ -39,6 +39,7 @@ func New(s *store.Store, static fs.FS) http.Handler {
 	mux.Handle("POST /api/sync", metrics.instrument(syncHandler(s, metrics)))
 	mux.Handle("GET /api/workouts", listWorkoutsHandler(s))
 	mux.Handle("GET /api/workouts/{id}", getWorkoutHandler(s))
+	mux.Handle("GET /api/exercises", listExercisesHandler())
 	mux.Handle("GET /api/routines", listRoutinesHandler(s))
 	mux.Handle("GET /api/routines/{id}", getRoutineHandler(s))
 	mux.Handle("POST /api/routines", createRoutineHandler(s))

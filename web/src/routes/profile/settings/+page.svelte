@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { version } from '$app/env';
 	import TopBar from '#lib/TopBar.svelte';
+	import { catalogExercise } from '#lib/catalog.ts';
 	import { db, SYNCED_TABLES } from '#lib/db.ts';
 	import { live } from '#lib/live.svelte.ts';
 	import { getWeeklyGoal, MAX_WEEKLY_GOAL, setWeeklyGoal, today } from '#lib/repo.ts';
@@ -130,7 +131,17 @@
 		const lines = [header.join(',')];
 		for (const { w, e, s } of rows) {
 			lines.push(
-				[w.date, w.name, e.name, s.position, s.weight_kg, s.reps, s.warmup, s.done, s.duration_seconds]
+				[
+					w.date,
+					w.name,
+					catalogExercise(e.exercise_id)?.name ?? '',
+					s.position,
+					s.weight_kg,
+					s.reps,
+					s.warmup,
+					s.done,
+					s.duration_seconds
+				]
 					.map(csvCell)
 					.join(',')
 			);

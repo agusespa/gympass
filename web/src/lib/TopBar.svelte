@@ -5,13 +5,15 @@
 	/**
 	 * Sticky screen header with a back button; `fallback` is used when there is no history to go back to.
 	 * `action` renders on the right (e.g. a Finish button). `back={false}` hides the back button.
+	 * `progress` (0 to 1) draws a line that far along the bar's bottom edge.
 	 */
 	let {
 		title = '',
 		fallback,
 		titleLabel,
 		back: showBack = true,
-		action
+		action,
+		progress
 	}: {
 		title?: string;
 		/** Accessible name for the title, e.g. "Elapsed time" for a running workout's clock. */
@@ -19,6 +21,7 @@
 		fallback: string;
 		back?: boolean;
 		action?: Snippet;
+		progress?: number;
 	} = $props();
 
 	function back() {
@@ -41,6 +44,11 @@
 	>
 	{#if action}
 		<span class="action">{@render action()}</span>
+	{/if}
+	{#if progress !== undefined}
+		<!-- Decorative: whoever passes it also says the same in words. -->
+		<span class="progress" data-testid="progress-line" style:width="{progress * 100}%" aria-hidden="true"
+		></span>
 	{/if}
 </div>
 
@@ -104,6 +112,16 @@
 		stroke-width: 2.2;
 		stroke-linecap: round;
 		stroke-linejoin: round;
+	}
+
+	/* Over the bar's bottom border. */
+	.progress {
+		position: absolute;
+		left: 0;
+		bottom: -1px;
+		height: 2px;
+		background: var(--accent);
+		transition: width 0.3s ease;
 	}
 
 	.action {

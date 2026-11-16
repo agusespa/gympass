@@ -12,9 +12,10 @@ import (
 // positions, a superset and timestamps from the phone's clock.
 func phoneRoutine(t *testing.T, s *Store, at int64) {
 	t.Helper()
+	exercises := map[string]string{"bench": "bench-press", "fly": "dumbbell-fly", "dips": "dip"}
 	ex := func(id string, pos float64, superset any) Row {
 		return Row{"id": id, "updated_at": at, "deleted": false, "routine_id": "r1",
-			"name": id, "position": pos, "superset_id": superset}
+			"exercise_id": exercises[id], "position": pos, "superset_id": superset}
 	}
 	set := func(id, ex string, pos float64, kg float64) Row {
 		return Row{"id": id, "updated_at": at, "deleted": false, "routine_exercise_id": ex,
@@ -59,7 +60,7 @@ func TestCreateRoutine(t *testing.T) {
 	ctx := context.Background()
 	in := Routine{ID: "ignored", Name: "  Legs ", Exercises: []RoutineExercise{
 		{ID: "ignored-too", Name: "Squat", Sets: []RoutineSet{{Reps: 5, WeightKg: 100, RestSeconds: 180}, {Reps: 5, WeightKg: 100, RestSeconds: 180}}},
-		{Name: "Curl", SupersetID: ptr("x")}, // a lone superset label is cleared
+		{Name: "Barbell Curl", SupersetID: ptr("x")}, // a lone superset label is cleared
 	}}
 	got, err := s.CreateRoutine(ctx, in)
 	if err != nil {
@@ -70,6 +71,9 @@ func TestCreateRoutine(t *testing.T) {
 	}
 	if len(got.Exercises) != 2 || got.Exercises[0].ID == "ignored-too" || len(got.Exercises[0].Sets) != 2 {
 		t.Fatalf("exercises = %+v", got.Exercises)
+	}
+	if got.Exercises[0].ExerciseID != "squat" || got.Exercises[1].ExerciseID != "barbell-curl" {
+		t.Fatalf("exercise ids = %q, %q", got.Exercises[0].ExerciseID, got.Exercises[1].ExerciseID)
 	}
 	if got.Exercises[1].SupersetID != nil || got.Exercises[1].Sets == nil {
 		t.Fatalf("curl = %+v, want no superset and an empty set list", got.Exercises[1])
@@ -131,13 +135,13 @@ func TestReplaceRoutineReshapes(t *testing.T) {
 	bench, dips := r.Exercises[0], r.Exercises[2]
 	bench.Sets = append(bench.Sets[:1], RoutineSet{Reps: 6, WeightKg: 85, RestSeconds: 120})
 	r.Name = "Push A"
-	r.Exercises = []RoutineExercise{dips, bench, {Name: "Pushdown", Sets: []RoutineSet{{Reps: 12, WeightKg: 30}}}}
+	r.Exercises = []RoutineExercise{dips, bench, {Name: "Triceps Pushdown", Sets: []RoutineSet{{Reps: 12, WeightKg: 30}}}}
 	got, err := s.ReplaceRoutine(ctx, r)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got.Name != "Push A" || len(got.Exercises) != 3 ||
-		got.Exercises[0].ID != "dips" || got.Exercises[1].ID != "bench" || got.Exercises[2].Name != "Pushdown" {
+		got.Exercises[0].ID != "dips" || got.Exercises[1].ID != "bench" || got.Exercises[2].Name != "Triceps Pushdown" {
 		t.Fatalf("saved = %+v", got)
 	}
 	if got.Exercises[1].SupersetID != nil {
@@ -182,7 +186,7 @@ func TestReplaceRoutineSupersetLabels(t *testing.T) {
 	phoneRoutine(t, s, 1_000_000)
 	r, _, _ := s.Routine(ctx, "r1")
 	r.Exercises[2].SupersetID = ptr("new")
-	r.Exercises = append(r.Exercises, RoutineExercise{Name: "Raise", SupersetID: ptr("new")})
+	r.Exercises = append(r.Exercises, RoutineExercise{Name: "Lateral Raise", SupersetID: ptr("new")})
 	got, err := s.ReplaceRoutine(ctx, r)
 	if err != nil {
 		t.Fatal(err)
@@ -199,7 +203,7 @@ func TestReplaceRoutineRejects(t *testing.T) {
 	phoneRoutine(t, s, 1_000_000)
 	mustSync(t, s, map[string][]Row{
 		"routines":          {{"id": "r2", "updated_at": int64(1), "deleted": false, "name": "Other"}},
-		"routine_exercises": {{"id": "other-ex", "updated_at": int64(1), "deleted": false, "routine_id": "r2", "name": "Row", "position": 1.0, "superset_id": nil}},
+		"routine_exercises": {{"id": "other-ex", "updated_at": int64(1), "deleted": false, "routine_id": "r2", "exercise_id": "row", "position": 1.0, "superset_id": nil}},
 	})
 	base, _, _ := s.Routine(ctx, "r1")
 	cursor := cursorNow(t, s)
@@ -213,6 +217,7 @@ func TestReplaceRoutineRejects(t *testing.T) {
 		"duplicate id":         func(r *Routine) { r.Exercises[1].ID = r.Exercises[0].ID },
 		"unknown exercise id":  func(r *Routine) { r.Exercises[0].ID = "made-up" },
 		"empty exercise name":  func(r *Routine) { r.Exercises[1].Name = "" },
+		"unknown exercise":     func(r *Routine) { r.Exercises[1].Name = "Zercher Carry" },
 		"too heavy":            func(r *Routine) { r.Exercises[0].Sets[0].WeightKg = 20000 },
 		"negative weight":      func(r *Routine) { r.Exercises[0].Sets[0].WeightKg = -5 },
 		"exercise without set": func(r *Routine) { r.Exercises[0].Sets[0].ID = "d1" },

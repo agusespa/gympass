@@ -1,8 +1,8 @@
 import {
   addExercise,
   addSet,
+  entryOf,
   exercise,
-  exerciseMenu,
   expect,
   newWorkout,
   serverData,
@@ -13,12 +13,11 @@ import {
 
 test("log a timed exercise such as a dead hang", async ({ page, request }) => {
   const id = uid();
-  const hang = `Dead hang ${id}`;
+  const hang = "Dead Hang";
 
   await newWorkout(page, `Grip ${id}`);
   await addExercise(page, hang);
   const ex = exercise(page, hang);
-  await exerciseMenu(page, hang, "Log time");
 
   // Seconds or m:ss, shown as m:ss.
   await setText(ex.getByLabel("Time set 1"), "45");
@@ -40,7 +39,7 @@ test("log a timed exercise such as a dead hang", async ({ page, request }) => {
   await expect
     .poll(async () => {
       const data = await serverData(request);
-      const exId = data.workout_exercises?.find((e) => e.name === hang)?.id;
+      const exId = entryOf(data, "workout_exercises", hang)?.id;
       return (data.sets ?? [])
         .filter((s) => s.workout_exercise_id === exId && !s.deleted)
         .map((s) => s.duration_seconds)

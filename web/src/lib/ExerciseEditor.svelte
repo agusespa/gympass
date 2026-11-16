@@ -1,5 +1,9 @@
 <script lang="ts">
+	import { tick } from 'svelte';
+	import { CATALOG } from './catalog';
+	import EquipmentIcon from './EquipmentIcon.svelte';
 	import Modal from './Modal.svelte';
+	import type { Progression } from './progression';
 	import {
 		durationLabel,
 		kg,
@@ -15,15 +19,14 @@
 	import {
 		addExercise,
 		addSet,
+		applyProgression,
 		deleteExercise,
 		deleteSet,
-		exerciseNames,
 		linkToAbove,
 		loadExercises,
+		loadProgressions,
 		moveBlock,
 		moveWithinSuperset,
-		renameExercise,
-		setTimed,
 		toBlocks,
 		unlink,
 		updateSet,
@@ -48,10 +51,11 @@
 		([k, id]) => loadExercises(k, id),
 		[] as ExerciseView[]
 	);
-	const names = live(
-		() => null,
-		() => exerciseNames(),
-		[] as string[]
+	/** What adding a step of weight would do, by exercise entry id; only a running workout has any. */
+	const progressions = live(
+		() => [kind, parentId] as const,
+		async ([k, id]): Promise<Record<string, Progression>> => (k === 'workout' ? loadProgressions(id) : {}),
+		{}
 	);
 
 	const blocks = $derived(toBlocks(exercises.current));
@@ -76,21 +80,32 @@
 	let menuFor = $state<string | null>(null);
 	/** The open menu opens upward: there was no room for it below the ⋯ button. */
 	let menuUp = $state(false);
-	/** Exercise whose name is being edited in place. */
-	let renaming = $state<string | null>(null);
 	/** Exercise waiting for its delete to be confirmed. */
 	let deleting = $state<string | null>(null);
 	let deleteModal: Modal;
 	/** Set whose type picker (normal / warm-up) is open. */
 	let typeFor = $state<string | null>(null);
-	let newName = $state('');
+	/** The add box is in use: the catalogue is listed, narrowed by what is typed in it. */
+	let picking = $state(false);
+	let query = $state('');
+	const matches = $derived.by(() => {
+		if (!picking) return [];
+		const q = query.trim().toLowerCase();
+		return CATALOG.filter((c) => c.name.toLowerCase().includes(q)).sort((a, b) =>
+			a.name.localeCompare(b.name)
+		);
+	});
 
-	async function add(e: SubmitEvent) {
-		e.preventDefault();
-		const name = newName.trim();
-		if (!name) return;
-		newName = '';
-		await addExercise(kind, parentId, name);
+	let findInput: HTMLInputElement;
+	// The matches open above the add box and push it down: keep it on screen.
+	$effect(() => {
+		if (matches.length > 0) void tick().then(() => findInput.scrollIntoView({ block: 'end' }));
+	});
+
+	async function add(exerciseId: string) {
+		picking = false;
+		query = '';
+		await addExercise(kind, parentId, exerciseId);
 	}
 
 	/** Position of a set among the exercise's sets of the same type (warm-up or working), 0-based. */
@@ -122,13 +137,6 @@
 		void action();
 	}
 
-	function saveName(ex: ExerciseView, value: string) {
-		const v = value.trim();
-		if (renaming !== ex.id) return;
-		renaming = null;
-		if (v && v !== ex.name) renameExercise(kind, ex.id, v);
-	}
-
 	/**
 	 * The menu opens over its ⋯ button, growing down from it. Near the bottom of the screen
 	 * it grows up instead, and if neither way fits it is scrolled into view.
@@ -144,11 +152,6 @@
 	}
 
 	/** Focuses and selects the name field as it appears. */
-	function focusSelect(el: HTMLInputElement) {
-		el.focus();
-		el.select();
-	}
-
 	/** Workout sets are checked off as they are performed; only checked sets count. */
 	const checkable = $derived(kind === 'workout');
 </script>
@@ -158,9 +161,13 @@
 		const target = e.target as Element;
 		if (typeFor && !target.closest('.set-cell')) typeFor = null;
 		if (menuFor && !target.closest('.ex-menu')) menuFor = null;
+		if (picking && !target.closest('.add-exercise')) picking = false;
 	}}
 	onkeydown={(e) => {
-		if (e.key === 'Escape') menuFor = typeFor = null;
+		if (e.key === 'Escape') {
+			menuFor = typeFor = null;
+			picking = false;
+		}
 	}}
 />
 
@@ -173,21 +180,13 @@
 		{#each block.items as ex, ei (ex.id)}
 			{@const finished = allDone(ex)}
 			{@const collapsed = finished && !expanded[ex.id]}
+			{@const progression = progressions.current[ex.id]}
 			<section aria-label={ex.name} class:collapsed>
 				<header>
-					{#if renaming === ex.id}
-						<input
-							class="rename"
-							aria-label="Exercise name"
-							value={ex.name}
-							{@attach focusSelect}
-							onblur={(e) => saveName(ex, e.currentTarget.value)}
-							onkeydown={(e) => {
-								if (e.key === 'Enter') e.currentTarget.blur();
-								if (e.key === 'Escape') renaming = null;
-							}}
-						/>
-					{:else if finished}
+					{#if ex.equipment}
+						<span class="equipment"><EquipmentIcon equipment={ex.equipment} /></span>
+					{/if}
+					{#if finished}
 						<!-- Every set is checked off: the name folds the sets away and opens them again. -->
 						<h2>
 							<button
@@ -226,6 +225,10 @@
 									r="2"
 								/>
 							</svg>
+							<!-- Last time every set reached the top of its rep range: the menu offers more weight. -->
+							{#if progression?.suggested}
+								<span class="menu-badge" data-testid="progression-badge"></span>
+							{/if}
 						</button>
 						{#if menuFor === ex.id}
 							<div
@@ -235,6 +238,16 @@
 								aria-label="{ex.name} options"
 								{@attach placeMenu}
 							>
+								{#if progression}
+									<button
+										role="menuitem"
+										class:suggested={progression.suggested}
+										onclick={() => pick(() => applyProgression(progression))}
+									>
+										<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l6-6 4 4 8-8M15 7h6v6" /></svg>
+										Add {kg(progression.step_kg)} kg
+									</button>
+								{/if}
 								<!-- Extra sets are rare in a workout, so there it lives here instead of under the sets. -->
 								{#if kind === 'workout'}
 									<button role="menuitem" onclick={() => pick(() => addSet(kind, ex.id))}>
@@ -242,24 +255,6 @@
 										Add set
 									</button>
 								{/if}
-								<button role="menuitem" onclick={() => pick(() => (renaming = ex.id))}>
-									<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z" /></svg>
-									Rename
-								</button>
-								<!-- A per-exercise setting: it applies to this exercise in every workout and routine. -->
-								<button role="menuitem" onclick={() => pick(() => setTimed(ex.name, !ex.timed))}>
-									{#if ex.timed}
-										<svg viewBox="0 0 24 24" aria-hidden="true"
-											><path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01" /></svg
-										>
-										Log reps
-									{:else}
-										<svg viewBox="0 0 24 24" aria-hidden="true"
-											><circle cx="12" cy="13" r="8" /><path d="M12 9v4l2.5 2.5M10 2.5h4" /></svg
-										>
-										Log time
-									{/if}
-								</button>
 								{#if block.superset}
 									<button
 										role="menuitem"
@@ -520,16 +515,33 @@
 	</div>
 {/each}
 
-<form class="add-exercise" onsubmit={add}>
+<!-- The matches sit above the box, where the phone's keyboard does not cover them. -->
+<div class="add-exercise">
+	{#if matches.length > 0}
+		<ul aria-label="Matching exercises">
+			{#each matches as c (c.id)}
+				<li>
+					<button onclick={() => add(c.id)}>
+						<EquipmentIcon equipment={c.equipment} />
+						{c.name}
+					</button>
+				</li>
+			{/each}
+		</ul>
+	{:else if picking}
+		<p>No exercise with that name.</p>
+	{/if}
 	<input
-		list="exercise-names"
-		aria-label="New exercise name"
+		aria-label="Find exercise"
 		placeholder="Add exercise"
 		autocomplete="off"
-		bind:value={newName}
+		bind:value={query}
+		bind:this={findInput}
+		onfocus={() => (picking = true)}
+		onclick={() => (picking = true)}
+		oninput={() => (picking = true)}
 	/>
-	<button class="primary" type="submit" disabled={!newName.trim()}>Add</button>
-</form>
+</div>
 
 <!-- One confirm for every exercise; the menu that asked has closed by the time it shows. -->
 <Modal bind:this={deleteModal} title="Delete exercise?" message="This can't be undone.">
@@ -545,11 +557,6 @@
 		>
 	{/snippet}
 </Modal>
-<datalist id="exercise-names">
-	{#each names.current as n (n)}
-		<option value={n}></option>
-	{/each}
-</datalist>
 
 <style>
 	section {
@@ -578,6 +585,12 @@
 		align-items: center;
 		gap: 0.5rem;
 		margin-bottom: 0.75rem;
+	}
+
+	.equipment {
+		display: flex;
+		flex: none;
+		color: var(--muted);
 	}
 
 	h2 {
@@ -660,16 +673,6 @@
 		flex: none;
 	}
 
-	.rename {
-		flex: 1;
-		min-width: 0;
-		font-size: 1.3rem;
-		font-weight: 600;
-		color: var(--accent);
-		background: transparent;
-		padding: 0.15rem 0.4rem;
-	}
-
 	/* Options for one exercise, under its ⋯ button. Same look as the set type menu. */
 	/* Opens over the ⋯ button, which it hides, and grows out of its corner. */
 	.dropdown {
@@ -740,6 +743,7 @@
 	}
 
 	.menu-button {
+		position: relative;
 		background: transparent;
 		padding: 0;
 		min-width: 40px;
@@ -748,6 +752,21 @@
 
 	.menu-button[aria-expanded='true'] {
 		visibility: hidden;
+	}
+
+	.menu-badge {
+		position: absolute;
+		top: 6px;
+		right: 6px;
+		width: 9px;
+		height: 9px;
+		border-radius: 50%;
+		background: var(--accent);
+	}
+
+	.dropdown .suggested {
+		color: var(--accent);
+		font-weight: 600;
 	}
 
 	.menu-button svg {
@@ -1012,8 +1031,6 @@
 	}
 
 	.add-exercise {
-		display: flex;
-		gap: 0.5rem;
 		margin-top: 1.25rem;
 	}
 
@@ -1025,9 +1042,31 @@
 		padding: 0 1rem;
 	}
 
-	.add-exercise button {
-		min-height: 48px;
+	.add-exercise ul {
+		margin: 0 0 0.5rem;
+		padding: 0.25rem;
+		list-style: none;
+		max-height: 40vh;
+		overflow-y: auto;
 		border-radius: 12px;
-		padding: 0 1.25rem;
+		background: var(--surface);
+	}
+
+	.add-exercise li button {
+		display: flex;
+		align-items: center;
+		gap: 0.6rem;
+		width: 100%;
+		padding: 0.6rem 0.75rem;
+		background: transparent;
+		color: var(--text);
+		font-weight: 500;
+		text-align: left;
+	}
+
+	.add-exercise p {
+		margin: 0 0 0.5rem;
+		color: var(--muted);
+		font-size: 0.9rem;
 	}
 </style>

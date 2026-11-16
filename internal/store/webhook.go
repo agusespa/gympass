@@ -167,7 +167,7 @@ func (s *Store) Workout(ctx context.Context, id string) (w WorkoutSnapshot, ok b
 	}
 	w.Deleted = deleted == 1
 
-	rs, err := s.db.QueryContext(ctx, `SELECT e.id, e.name, e.superset_id, s.reps, s.weight_kg, s.warmup, s.rest_seconds, s.duration_seconds
+	rs, err := s.db.QueryContext(ctx, `SELECT e.id, e.exercise_id, e.superset_id, s.reps, s.weight_kg, s.warmup, s.rest_seconds, s.duration_seconds
 FROM workout_exercises e
 LEFT JOIN sets s ON s.workout_exercise_id = e.id AND s.deleted = 0 AND s.done = 1
 WHERE e.workout_id = ? AND e.deleted = 0
@@ -178,15 +178,15 @@ ORDER BY e.position, e.id, s.position, s.id`, id)
 	defer func() { _ = rs.Close() }()
 	lastID := ""
 	for rs.Next() {
-		var exID, name string
+		var exID, exerciseID string
 		var superset sql.NullString
 		var reps, warmup, rest, duration sql.NullInt64
 		var weight sql.NullFloat64
-		if err := rs.Scan(&exID, &name, &superset, &reps, &weight, &warmup, &rest, &duration); err != nil {
+		if err := rs.Scan(&exID, &exerciseID, &superset, &reps, &weight, &warmup, &rest, &duration); err != nil {
 			return w, false, err
 		}
 		if exID != lastID {
-			ex := ExerciseSnapshot{Name: name, Sets: []SetSnapshot{}}
+			ex := ExerciseSnapshot{Name: exerciseName(exerciseID), Sets: []SetSnapshot{}}
 			if superset.Valid {
 				ex.SupersetID = &superset.String
 			}
@@ -204,9 +204,8 @@ ORDER BY e.position, e.id, s.position, s.id`, id)
 	return w, true, rs.Err()
 }
 
-// ExerciseKey is how exercises are matched by name: trimmed and lowercased
-// one rune at a time. The client must compute exactly the same key
-// (web/src/lib/exercise-key.ts); testdata/exercise_keys.json checks both.
+// ExerciseKey is how the API matches an exercise name to the catalogue:
+// trimmed and lowercased one rune at a time.
 func ExerciseKey(name string) string {
 	return strings.ToLower(TrimName(name))
 }

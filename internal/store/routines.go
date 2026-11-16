@@ -20,8 +20,11 @@ type Routine struct {
 }
 
 type RoutineExercise struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID string `json:"id"`
+	// ExerciseID is the catalogue entry's id, set on read. On write the
+	// exercise is chosen by Name, which must be a catalogue entry's.
+	ExerciseID string `json:"exercise_id"`
+	Name       string `json:"name"`
 	// SupersetID groups adjacent exercises into a superset. On write it is a
 	// label: adjacent exercises sharing one form a superset, a lone one is
 	// cleared, and a label that is not already this routine's superset id is
@@ -140,6 +143,9 @@ func (s *Store) saveRoutine(ctx context.Context, r Routine, create bool) (Routin
 	if err := validateRoutine(&r); err != nil {
 		return Routine{}, err
 	}
+	if err := resolveExercises(&r); err != nil {
+		return Routine{}, err
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return Routine{}, err
@@ -255,11 +261,11 @@ type storedRoutine struct {
 }
 
 type storedExercise struct {
-	id, name   string
-	supersetID *string
-	position   float64
-	updatedAt  int64
-	sets       []storedSet
+	id, exerciseID, name string
+	supersetID           *string
+	position             float64
+	updatedAt            int64
+	sets                 []storedSet
 }
 
 type storedSet struct {
@@ -278,7 +284,7 @@ type storedSet struct {
 func (c *storedRoutine) routine() Routine {
 	r := Routine{ID: c.id, Name: c.name, Exercises: make([]RoutineExercise, 0, len(c.exercises))}
 	for _, e := range c.exercises {
-		ex := RoutineExercise{ID: e.id, Name: e.name, SupersetID: e.supersetID, Sets: make([]RoutineSet, 0, len(e.sets))}
+		ex := RoutineExercise{ID: e.id, ExerciseID: e.exerciseID, Name: e.name, SupersetID: e.supersetID, Sets: make([]RoutineSet, 0, len(e.sets))}
 		for _, st := range e.sets {
 			ex.Sets = append(ex.Sets, RoutineSet{
 				ID: st.id, Reps: st.reps, WeightKg: st.weightKg, Warmup: st.warmup, RestSeconds: st.restSeconds,
@@ -301,7 +307,7 @@ func loadRoutine(ctx context.Context, tx *sql.Tx, id string) (*storedRoutine, er
 	if err != nil {
 		return nil, err
 	}
-	rs, err := tx.QueryContext(ctx, `SELECT e.id, e.name, e.superset_id, e.position, e.updated_at,
+	rs, err := tx.QueryContext(ctx, `SELECT e.id, e.exercise_id, e.superset_id, e.position, e.updated_at,
   s.id, s.position, s.reps, s.weight_kg, s.warmup, s.rest_seconds, s.duration_seconds, s.rep_min, s.rep_max, s.updated_at
 FROM routine_exercises e
 LEFT JOIN routine_sets s ON s.routine_exercise_id = e.id AND s.deleted = 0
@@ -316,11 +322,12 @@ ORDER BY e.position, e.id, s.position, s.id`, id)
 		var superset, setID sql.NullString
 		var setPos, weight sql.NullFloat64
 		var reps, warmup, rest, duration, repMin, repMax, setUpdated sql.NullInt64
-		if err := rs.Scan(&e.id, &e.name, &superset, &e.position, &e.updatedAt,
+		if err := rs.Scan(&e.id, &e.exerciseID, &superset, &e.position, &e.updatedAt,
 			&setID, &setPos, &reps, &weight, &warmup, &rest, &duration, &repMin, &repMax, &setUpdated); err != nil {
 			return nil, err
 		}
 		if n := len(c.exercises); n == 0 || c.exercises[n-1].id != e.id {
+			e.name = exerciseName(e.exerciseID)
 			if superset.Valid {
 				e.supersetID = &superset.String
 			}
@@ -356,6 +363,20 @@ func (w *rowWriter) add(name string, r Row) {
 	w.rows[t] = append(w.rows[t], r)
 }
 
+// resolveExercises sets each exercise's ExerciseID and Name from the
+// catalogue entry with that name; any other name is refused.
+func resolveExercises(r *Routine) error {
+	for i := range r.Exercises {
+		e := &r.Exercises[i]
+		c, ok := catalogByKey[ExerciseKey(e.Name)]
+		if !ok {
+			return invalid("exercises[%d].name %q is not a known exercise", i, e.Name)
+		}
+		e.ExerciseID, e.Name = c.ID, c.Name
+	}
+	return nil
+}
+
 func (w *rowWriter) plan(cur *storedRoutine, r Routine) error {
 	if cur.updatedAt == 0 || cur.name != r.Name {
 		w.add("routines", Row{"id": r.ID, "updated_at": w.stamp(cur.updatedAt), "deleted": false, "name": r.Name})
@@ -387,10 +408,10 @@ func (w *rowWriter) plan(cur *storedRoutine, r Routine) error {
 		}
 		pos := exPositions[i]
 		superset := supersets[i]
-		if old.updatedAt == 0 || old.name != e.Name || old.position != pos || !sameString(old.supersetID, superset) {
+		if old.updatedAt == 0 || old.exerciseID != e.ExerciseID || old.position != pos || !sameString(old.supersetID, superset) {
 			w.add("routine_exercises", Row{
 				"id": e.ID, "updated_at": w.stamp(old.updatedAt), "deleted": false,
-				"routine_id": r.ID, "name": e.Name, "position": pos, "superset_id": nullable(superset),
+				"routine_id": r.ID, "exercise_id": e.ExerciseID, "position": pos, "superset_id": nullable(superset),
 			})
 		}
 
@@ -441,7 +462,7 @@ func (w *rowWriter) plan(cur *storedRoutine, r Routine) error {
 		}
 		w.add("routine_exercises", Row{
 			"id": old.id, "updated_at": w.stamp(old.updatedAt), "deleted": true,
-			"routine_id": r.ID, "name": old.name, "position": old.position, "superset_id": nullable(old.supersetID),
+			"routine_id": r.ID, "exercise_id": old.exerciseID, "position": old.position, "superset_id": nullable(old.supersetID),
 		})
 		for _, os := range old.sets {
 			w.deleteSet(old.id, os)

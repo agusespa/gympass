@@ -76,9 +76,9 @@ func TestSendsFinishedWorkout(t *testing.T) {
 			r["started_at"] = finishedAt - (72*time.Minute + 30*time.Second).Milliseconds()
 			return r
 		}()},
-		"workout_exercises": {{"id": "e1", "updated_at": int64(1), "deleted": false, "workout_id": "w1", "name": "Bench", "position": 1.0, "superset_id": nil},
+		"workout_exercises": {{"id": "e1", "updated_at": int64(1), "deleted": false, "workout_id": "w1", "exercise_id": "bench-press", "position": 1.0, "superset_id": nil},
 			// Planned but never checked off: left out of the payload and the totals.
-			{"id": "e2", "updated_at": int64(1), "deleted": false, "workout_id": "w1", "name": "Dips", "position": 2.0, "superset_id": nil}},
+			{"id": "e2", "updated_at": int64(1), "deleted": false, "workout_id": "w1", "exercise_id": "dip", "position": 2.0, "superset_id": nil}},
 		"sets": {
 			{"id": "s4", "updated_at": int64(1), "deleted": false, "workout_exercise_id": "e1", "position": 4.0, "reps": int64(6), "warmup": false, "weight_kg": 85.0, "done": false, "rest_seconds": int64(120), "duration_seconds": int64(0), "rep_min": int64(0), "rep_max": int64(0)},
 			{"id": "s5", "updated_at": int64(1), "deleted": false, "workout_exercise_id": "e2", "position": 1.0, "reps": int64(10), "warmup": false, "weight_kg": 0.0, "done": false, "rest_seconds": int64(120), "duration_seconds": int64(0), "rep_min": int64(0), "rep_max": int64(0)},
@@ -101,7 +101,7 @@ func TestSendsFinishedWorkout(t *testing.T) {
 		w.StartedAt != "2026-11-14T17:17:30Z" || w.DurationSeconds != 72*60+30 {
 		t.Fatalf("workout = %+v", w)
 	}
-	if len(w.Exercises) != 1 || len(w.Exercises[0].Sets) != 3 || !w.Exercises[0].Sets[0].Warmup {
+	if len(w.Exercises) != 1 || w.Exercises[0].Name != "Bench Press" || len(w.Exercises[0].Sets) != 3 || !w.Exercises[0].Sets[0].Warmup {
 		t.Fatalf("exercises = %+v", w.Exercises)
 	}
 	want := Totals{Exercises: 1, WorkingSets: 2, Reps: 14}

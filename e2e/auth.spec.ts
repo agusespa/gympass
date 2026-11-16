@@ -15,8 +15,8 @@ for (const [kind, response] of Object.entries(accessResponses)) {
 
 		await newWorkout(page, `Kept ${id}`);
 		await expect(page.getByRole('alert')).toContainText('login has expired');
-		await addExercise(page, `Row ${id}`);
-		await fillSet(page, `Row ${id}`, 1, '50', '10');
+		await addExercise(page, 'Barbell Row');
+		await fillSet(page, 'Barbell Row', 1, '50', '10');
 		await finishWorkout(page);
 		await expect(page).toHaveURL('/profile');
 		await expect(page.getByRole('link', { name: new RegExp(`Kept ${id}`) })).toBeVisible();

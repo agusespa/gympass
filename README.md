@@ -183,7 +183,7 @@ There is no delete; remove routines in the app.
 {
   "id": "…", "name": "Push",
   "exercises": [
-    { "id": "…", "name": "Bench", "superset_id": null,
+    { "id": "…", "exercise_id": "bench-press", "name": "Bench Press", "superset_id": null,
       "sets": [{ "id": "…", "reps": 8, "weight_kg": 82.5, "warmup": false, "rest_seconds": 120,
                  "duration_seconds": 0, "rep_min": 8, "rep_max": 12 }] }
   ]
@@ -194,10 +194,21 @@ To change a routine, `GET` it, edit the JSON and `PUT` it back:
 
 - Exercises and sets that keep their `id` are updated, ones without an `id` are added, and ones you leave out are deleted. An `id` must belong to that routine (a set's to that exercise), otherwise the request fails with `400`.
 - Order in the array is the order in the app.
+- An exercise is chosen by `name`, ignoring case, from the built-in list (see [Exercises](#exercises)). Any other name fails with `400`. Reads also return `exercise_id`, which is ignored on write.
 - `weight_kg` is required, plus either `reps` or, for a timed exercise such as a dead hang, `duration_seconds` (0–36000). `warmup` defaults to `false` and `rest_seconds` to `120` (0–3600). Unknown fields are rejected, so a typo like `weight` fails instead of being dropped.
 - `rep_max` makes `reps` the bottom of a rep range: `"reps": 8, "rep_max": 12` plans 8–12 reps. Leave it out for a fixed count. Reads return the range as `rep_min` and `rep_max`; `rep_min` is ignored on write.
 - Adjacent exercises with the same `superset_id` form a superset. Any string works as a label for a new one.
 - Changes reach your phone on its next sync, like an edit made in the app. If the same set is edited in the app around the same time, the newest edit wins.
+
+### Exercises
+
+`GET /api/exercises` returns `{"exercises": [...]}`: every exercise there is, sorted by name. The list is built in (`internal/store/catalog.json`); there are no custom exercises.
+
+```json
+{ "id": "bench-press", "name": "Bench Press", "measure": "reps", "equipment": "barbell" }
+```
+
+`measure` is `reps` or `time`. `equipment` is `barbell`, `dumbbell`, `machine`, `cable`, `kettlebell` or `bodyweight`.
 
 ### Paging
 
@@ -205,7 +216,7 @@ List endpoints return at most `limit` items (1–200, default 50). While more re
 
 ### MCP
 
-AI assistants can use the same data through the Model Context Protocol at `/mcp` (Streamable HTTP). The tools are `list_workouts`, `get_workout`, `list_routines`, `get_routine`, `create_routine` and `update_routine`, with the same rules as the endpoints above.
+AI assistants can use the same data through the Model Context Protocol at `/mcp` (Streamable HTTP). The tools are `list_workouts`, `get_workout`, `list_exercises`, `list_routines`, `get_routine`, `create_routine` and `update_routine`, with the same rules as the endpoints above.
 
 ### Connecting
 

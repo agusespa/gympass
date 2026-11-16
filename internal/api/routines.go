@@ -24,8 +24,11 @@ type routineInput struct {
 }
 
 type exerciseInput struct {
-	ID         string     `json:"id,omitempty" jsonschema:"id of an existing exercise of this routine to keep it; leave out to add a new exercise"`
-	Name       string     `json:"name" jsonschema:"exercise name, e.g. Bench press"`
+	ID   string `json:"id,omitempty" jsonschema:"id of an existing exercise of this routine to keep it; leave out to add a new exercise"`
+	Name string `json:"name" jsonschema:"name of an exercise from list_exercises, e.g. Bench Press"`
+	// ExerciseID is returned when reading a routine, so it is accepted back
+	// but ignored: the exercise is chosen by name.
+	ExerciseID string     `json:"exercise_id,omitempty" jsonschema:"ignored; returned when reading a routine, the exercise is chosen by name"`
 	SupersetID *string    `json:"superset_id,omitempty" jsonschema:"adjacent exercises with the same value form a superset; any string works as a label for a new one"`
 	Sets       []setInput `json:"sets,omitempty" jsonschema:"planned sets, in order"`
 }
@@ -107,6 +110,17 @@ func writeStoreError(w http.ResponseWriter, what string, err error) {
 	default:
 		log.Printf("%s: %v", what, err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+	}
+}
+
+// exerciseList is the response of GET /api/exercises and list_exercises.
+type exerciseList struct {
+	Exercises []store.Exercise `json:"exercises"`
+}
+
+func listExercisesHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, exerciseList{Exercises: store.Exercises()})
 	}
 }
 

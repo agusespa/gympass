@@ -2,7 +2,7 @@ import { addExercise, exerciseMenu, exerciseOrder, expect, newWorkout, test, uid
 
 test('reorder exercises and build supersets', async ({ page }) => {
 	const id = uid();
-	const [a, b, c] = [`A ${id}`, `B ${id}`, `C ${id}`];
+	const [a, b, c] = ['Squat', 'Deadlift', 'Hip Thrust'];
 	await newWorkout(page, `Order ${id}`);
 	for (const n of [a, b, c]) await addExercise(page, n);
 

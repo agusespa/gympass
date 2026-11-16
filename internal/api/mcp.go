@@ -17,6 +17,8 @@ const mcpInstructions = `Gym Tracker holds the user's logged workouts and their 
 
 Weights are kilograms. Dates are YYYY-MM-DD in the user's own time zone.
 
+A routine's exercises are chosen by name from list_exercises; there are no other exercises.
+
 To change a routine, call get_routine, edit the result and pass the whole routine to update_routine. Keep the id of every exercise and set you keep; anything you leave out is deleted, and anything without an id is added. For progression (e.g. adding weight), first check recent performance with list_workouts.
 
 Changes reach the user's phone on its next sync.`
@@ -95,6 +97,15 @@ func newMCPServer(s *store.Store) *mcp.Server {
 			return nil, nil, fmt.Errorf("no finished workout with id %q", in.ID)
 		}
 		return nil, webhook.FromSnapshot(snap), nil
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "list_exercises",
+		Title:       "List exercises",
+		Description: "The exercises a routine can use, sorted by name, with what a set records (reps or time) and the equipment.",
+		Annotations: readOnly,
+	}, func(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.CallToolResult, exerciseList, error) {
+		return nil, exerciseList{Exercises: store.Exercises()}, nil
 	})
 
 	mcp.AddTool(server, &mcp.Tool{

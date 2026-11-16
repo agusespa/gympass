@@ -1,7 +1,9 @@
 import {
 	addExercise,
 	addSet,
+	entryOf,
 	exercise,
+	exerciseMenu,
 	expect,
 	fillSet,
 	finishWorkout,
@@ -13,7 +15,7 @@ import {
 
 test('a rep range in a routine carries into its workouts', async ({ page, request }) => {
 	const id = uid();
-	const bench = `Bench ${id}`;
+	const bench = 'Bench Press';
 	const name = `Push ${id}`;
 
 	await page.goto('/');
@@ -32,7 +34,7 @@ test('a rep range in a routine carries into its workouts', async ({ page, reques
 	await expect
 		.poll(async () => {
 			const data = await serverData(request);
-			const exId = data.routine_exercises?.find((e) => e.name === bench)?.id;
+			const exId = entryOf(data, 'routine_exercises', bench)?.id;
 			return (data.routine_sets ?? [])
 				.filter((s) => s.routine_exercise_id === exId && !s.deleted)
 				.map((s) => [s.reps, s.rep_min, s.rep_max]);
@@ -72,7 +74,7 @@ test('a rep range in a routine carries into its workouts', async ({ page, reques
 
 test('the max stays as a guide when the reps pass it', async ({ page, request }) => {
 	const id = uid();
-	const row = `Row ${id}`;
+	const row = 'Barbell Row';
 
 	await page.goto('/');
 	await page.getByRole('button', { name: 'New routine' }).click();
@@ -92,7 +94,7 @@ test('the max stays as a guide when the reps pass it', async ({ page, request })
 	await expect
 		.poll(async () => {
 			const data = await serverData(request);
-			const exId = data.routine_exercises?.find((e) => e.name === row)?.id;
+			const exId = entryOf(data, 'routine_exercises', row)?.id;
 			return (data.routine_sets ?? [])
 				.filter((s) => s.routine_exercise_id === exId && !s.deleted)
 				.map((s) => [s.reps, s.rep_min, s.rep_max]);
@@ -105,10 +107,71 @@ test('the max stays as a guide when the reps pass it', async ({ page, request })
 	await expect
 		.poll(async () => {
 			const data = await serverData(request);
-			const exId = data.routine_exercises?.find((e) => e.name === row)?.id;
+			const exId = entryOf(data, 'routine_exercises', row)?.id;
 			return (data.routine_sets ?? [])
 				.filter((s) => s.routine_exercise_id === exId && !s.deleted)
 				.map((s) => [s.reps, s.rep_min, s.rep_max]);
 		})
 		.toEqual([[15, 0, 0]]);
+});
+
+test('a session at the top of the rep range suggests more weight next time', async ({ page }) => {
+	const id = uid();
+	const press = 'Dumbbell Shoulder Press';
+	const name = `Shoulders ${id}`;
+
+	await page.goto('/');
+	await page.getByRole('button', { name: 'New routine' }).click();
+	await setText(page.getByLabel('Routine name'), name);
+	await addExercise(page, press);
+	const plan = exercise(page, press);
+	await setText(plan.getByLabel('Weight set 1'), '20');
+	await setText(plan.getByLabel('Reps set 1'), '8');
+	await setText(plan.getByLabel('Maximum reps for set 1'), '12');
+	await addSet(page, press);
+	await expect(plan.getByLabel('Maximum reps for set 2')).toHaveValue('12');
+	const start = async () => {
+		await page.goto('/');
+		await page.getByRole('button', { name: `Start ${name}` }).click();
+		await expect(exercise(page, press).getByLabel('Weight set 1')).toBeVisible();
+	};
+	// A dot on the exercise's ⋯ button says its menu has a suggestion.
+	const suggestion = exercise(page, press).getByTestId('progression-badge');
+
+	// One set short of the top: nothing to suggest next time.
+	await start();
+	await fillSet(page, press, 1, '20', '12');
+	await fillSet(page, press, 2, '20', '11');
+	await finishWorkout(page);
+	await start();
+	await expect(exercise(page, press).getByLabel('Reps set 2')).toHaveValue('11');
+	await expect(suggestion).toHaveCount(0);
+	// The menu still adds a step on request.
+	await exerciseMenu(page, press, 'Add 2 kg');
+	await expect(exercise(page, press).getByLabel('Weight set 1')).toHaveValue('22');
+	await expect(exercise(page, press).getByLabel('Reps set 1')).toHaveValue('8');
+
+	// Every set at the top or past it.
+	await fillSet(page, press, 1, '20', '12');
+	await fillSet(page, press, 2, '20', '13');
+	await finishWorkout(page);
+	await start();
+	const ex = exercise(page, press);
+	// Last time's numbers stay until the suggestion is taken.
+	await expect(ex.getByLabel('Weight set 1')).toHaveValue('20');
+	await expect(suggestion).toBeVisible();
+	// Choosing a weight by hand withdraws it; last time's weight brings it back.
+	await setText(ex.getByLabel('Weight set 2'), '21');
+	await expect(suggestion).toHaveCount(0);
+	await setText(ex.getByLabel('Weight set 2'), '20');
+	await expect(suggestion).toBeVisible();
+	await exerciseMenu(page, press, 'Add 2 kg');
+	await expect(ex.getByLabel('Weight set 1')).toHaveValue('22');
+	await expect(ex.getByLabel('Weight set 2')).toHaveValue('22');
+	await expect(ex.getByLabel('Reps set 1')).toHaveValue('8');
+	await expect(ex.getByLabel('Reps set 2')).toHaveValue('8');
+	await expect(suggestion).toHaveCount(0);
+	// Another step goes on top.
+	await exerciseMenu(page, press, 'Add 2 kg');
+	await expect(ex.getByLabel('Weight set 2')).toHaveValue('24');
 });

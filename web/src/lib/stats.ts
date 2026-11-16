@@ -3,8 +3,8 @@
  * finished workouts and their checked, non-warm-up sets count, the same rule
  * as workout totals and the webhook.
  */
+import { catalogExercise } from './catalog';
 import { db } from './db';
-import { exerciseKey } from './exercise-key';
 
 export interface HistorySet {
 	reps: number;
@@ -19,11 +19,11 @@ export interface Performance {
 	workoutName: string;
 	/** YYYY-MM-DD */
 	date: string;
-	/** Exercise name as typed in this workout. */
+	/** The exercise's name. */
 	name: string;
-	/** Lowercased, trimmed name: exercises with the same key are the same exercise. */
+	/** The exercise's catalogue id. */
 	key: string;
-	/** Logged by time instead of reps (the exercise's current setting). */
+	/** Logged by time instead of reps. */
 	timed: boolean;
 	sets: HistorySet[];
 }
@@ -34,8 +34,6 @@ export interface History {
 	/** Oldest first. */
 	performances: Performance[];
 }
-
-export { exerciseKey };
 
 export async function loadHistory(): Promise<History> {
 	const workouts = (await db.workouts.toArray()).filter((w) => !w.deleted && w.finished_at != null);
@@ -52,22 +50,19 @@ export async function loadHistory(): Promise<History> {
 		list.push({ reps: s.reps, weight_kg: s.weight_kg, duration_seconds });
 		setsByExercise.set(s.workout_exercise_id, list);
 	}
-	const timed = new Set(
-		(await db.exercise_settings.toArray()).filter((x) => !x.deleted && x.timed).map((x) => x.id)
-	);
 	const performances: Performance[] = [];
 	for (const e of exercises) {
 		const sets = setsByExercise.get(e.id);
-		const key = exerciseKey(e.name);
-		if (!sets?.length || !key) continue;
+		const exercise = catalogExercise(e.exercise_id);
+		if (!sets?.length || !exercise) continue;
 		const w = byId.get(e.workout_id)!;
 		performances.push({
 			workoutId: w.id,
 			workoutName: w.name,
 			date: w.date,
-			name: e.name.trim(),
-			key,
-			timed: timed.has(key),
+			name: exercise.name,
+			key: exercise.id,
+			timed: exercise.measure === 'time',
 			sets
 		});
 	}

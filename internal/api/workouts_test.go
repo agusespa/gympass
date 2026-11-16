@@ -28,7 +28,7 @@ func newReadServer(t *testing.T) *httptest.Server {
 	}
 	ex := func(id, workout string) store.Row {
 		return store.Row{"id": id, "updated_at": int64(100), "deleted": false,
-			"workout_id": workout, "name": "Bench", "position": 1.0, "superset_id": nil}
+			"workout_id": workout, "exercise_id": "bench-press", "position": 1.0, "superset_id": nil}
 	}
 	set := func(id, exercise string, reps int64, kg float64, warmup bool) store.Row {
 		return store.Row{"id": id, "updated_at": int64(100), "deleted": false, "workout_exercise_id": exercise,

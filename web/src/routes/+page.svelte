@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Workout } from '#lib/db.ts';
 	import { goto } from '$app/navigation';
 	import { live } from '#lib/live.svelte.ts';
 	import {
@@ -7,8 +8,7 @@
 		listRoutines,
 		listRunningWorkouts,
 		startWorkoutFromRoutine,
-		type RoutineSummary,
-		type WorkoutSummary
+		type RoutineSummary
 	} from '#lib/repo.ts';
 
 	const routines = live(
@@ -20,7 +20,7 @@
 	const running = live(
 		() => null,
 		() => listRunningWorkouts(),
-		[] as WorkoutSummary[]
+		[] as Workout[]
 	);
 
 	const todayLabel = new Date().toLocaleDateString(undefined, {
@@ -98,9 +98,9 @@
 					<span class="info">
 						<span class="name">{r.name}</span>
 						<span class="meta">
-							{#if r.exercises.length > 0}
-								<b>{r.exercises.length}</b>
-								{r.exercises.length === 1 ? 'exercise' : 'exercises'} · {r.exercises.join(', ')}
+							{#if r.exercise_count > 0}
+								<b>{r.exercise_count}</b>
+								{r.exercise_count === 1 ? 'exercise' : 'exercises'}
 							{:else}
 								No exercises yet
 							{/if}

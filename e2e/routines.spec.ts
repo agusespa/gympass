@@ -13,7 +13,7 @@ import {
 
 test('save a workout as a routine and start a workout from it', async ({ page }) => {
 	const id = uid();
-	const squat = `Squat ${id}`;
+	const squat = 'Squat';
 
 	await newWorkout(page, `Legs ${id}`);
 	await addExercise(page, squat);
@@ -44,14 +44,14 @@ test('create a routine from scratch, start it from the list, delete it', async (
 	await page.goto('/');
 	await page.getByRole('button', { name: 'New routine' }).click();
 	await setText(page.getByLabel('Routine name'), `Arms ${id}`);
-	await addExercise(page, `Curl ${id}`);
-	await fillSet(page, `Curl ${id}`, 1, '15', '12');
+	await addExercise(page, 'Barbell Curl');
+	await fillSet(page, 'Barbell Curl', 1, '15', '12');
 
 	await page.getByRole('button', { name: 'Done' }).click();
 	await expect(page).toHaveURL(/\/$/);
 	await page.getByRole('button', { name: `Start Arms ${id}` }).click();
 	await expect(page.getByLabel('Workout name')).toHaveValue(`Arms ${id}`);
-	await expect(exercise(page, `Curl ${id}`).getByLabel('Reps set 1')).toHaveValue('12');
+	await expect(exercise(page, 'Barbell Curl').getByLabel('Reps set 1')).toHaveValue('12');
 
 	// Discarding the workout returns to the start screen.
 	await page.getByRole('button', { name: 'Finish', exact: true }).click();
@@ -74,7 +74,7 @@ test('create a routine from scratch, start it from the list, delete it', async (
 
 test('warm-up sets in a routine carry into the workout', async ({ page, request }) => {
 	const id = uid();
-	const press = `Press ${id}`;
+	const press = 'Overhead Press';
 	await page.goto('/');
 	await page.getByRole('button', { name: 'New routine' }).click();
 	await setText(page.getByLabel('Routine name'), `Warm ${id}`);
@@ -123,7 +123,7 @@ test('warm-up sets in a routine carry into the workout', async ({ page, request 
 
 test('a new routine exercise starts from the last workout with it', async ({ page }) => {
 	const id = uid();
-	const lunge = `Lunge ${id}`;
+	const lunge = 'Dumbbell Lunge';
 	await newWorkout(page, `Legs ${id}`);
 	await addExercise(page, lunge);
 	await fillSet(page, lunge, 1, '20', '12');

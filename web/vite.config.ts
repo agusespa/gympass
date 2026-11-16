@@ -18,6 +18,8 @@ export default defineConfig(({ mode }) => ({
 		})
 	],
 	server: {
+		// The built-in exercises are shared with the server.
+		fs: { allow: ['../internal/store/catalog.json'] },
 		proxy: {
 			'/api': 'http://localhost:8080'
 		}

@@ -32,7 +32,7 @@ func TestFinishedWorkouts(t *testing.T) {
 		},
 		"workout_exercises": {{
 			"id": "e1", "updated_at": int64(100), "deleted": false,
-			"workout_id": "early", "name": "Bench", "position": 1.0, "superset_id": nil,
+			"workout_id": "early", "exercise_id": "bench-press", "position": 1.0, "superset_id": nil,
 		}},
 		"sets": {setRow("s1", "e1", 1, 8, 80)},
 	})

@@ -1,7 +1,8 @@
 <script lang="ts">
+	import type { Workout } from '#lib/db.ts';
 	import { duration, durationLabel, kg, longDate, setLabel, shortDate } from '#lib/format.ts';
 	import { live } from '#lib/live.svelte.ts';
-	import { getWeeklyGoal, listWorkouts, today, type WorkoutSummary } from '#lib/repo.ts';
+	import { getWeeklyGoal, listWorkouts, today } from '#lib/repo.ts';
 	import {
 		behindGoal,
 		exerciseStats,
@@ -18,7 +19,7 @@
 	const workouts = live(
 		() => null,
 		() => listWorkouts(),
-		[] as WorkoutSummary[]
+		[] as Workout[]
 	);
 	const history = live(
 		() => null,
@@ -75,7 +76,7 @@
 	}
 
 	const byDate = $derived.by(() => {
-		const map = new Map<string, WorkoutSummary[]>();
+		const map = new Map<string, Workout[]>();
 		for (const w of workouts.current) {
 			const list = map.get(w.date);
 			if (list) list.push(w);
@@ -186,9 +187,6 @@
 		</strong>
 		{#if w.finished_at && duration(w.finished_at - w.started_at)}
 			<span class="muted date">{duration(w.finished_at - w.started_at)}</span>
-		{/if}
-		{#if w.exercises.length > 0}
-			<span class="muted summary">{w.exercises.join(', ')}</span>
 		{/if}
 	</a>
 {/each}
@@ -476,14 +474,5 @@
 		display: block;
 		font-size: 0.9rem;
 		margin-top: 0.15rem;
-	}
-
-	.summary {
-		display: -webkit-box;
-		-webkit-line-clamp: 2;
-		line-clamp: 2;
-		-webkit-box-orient: vertical;
-		overflow: hidden;
-		margin-top: 0.4rem;
 	}
 </style>

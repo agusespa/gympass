@@ -6,7 +6,14 @@
 	import TopBar from '#lib/TopBar.svelte';
 	import { elapsed } from '#lib/format.ts';
 	import { live } from '#lib/live.svelte.ts';
-	import { deleteWorkout, getWorkout, saveWorkoutAsRoutine, updateWorkout } from '#lib/repo.ts';
+	import {
+		deleteWorkout,
+		getWorkout,
+		loadExercises,
+		saveWorkoutAsRoutine,
+		updateWorkout,
+		type ExerciseView
+	} from '#lib/repo.ts';
 	import type { Workout } from '#lib/db.ts';
 
 	const id = $derived(page.params.id ?? '');
@@ -15,6 +22,22 @@
 		(id) => getWorkout(id),
 		undefined as Workout | undefined
 	);
+
+	const exercises = live(
+		() => id,
+		(id) => loadExercises('workout', id),
+		[] as ExerciseView[]
+	);
+	/** Exercises with every set checked off: the ones the editor folds away. */
+	const finished = $derived(
+		exercises.current.filter((e) => e.sets.length > 0 && e.sets.every((s) => s.done)).length
+	);
+
+	/** Share of all sets, warm-ups included, that are checked off. */
+	const setsDone = $derived.by(() => {
+		const sets = exercises.current.flatMap((e) => e.sets);
+		return sets.length > 0 ? sets.filter((s) => s.done).length / sets.length : 0;
+	});
 
 	// Ticks once a second while a running workout is open.
 	let now = $state(Date.now());
@@ -46,8 +69,14 @@
 		back={!running}
 		title={running ? elapsed(now - w.started_at) : ''}
 		titleLabel={running ? 'Elapsed time' : undefined}
+		progress={running ? setsDone : undefined}
 	>
 		{#snippet action()}
+			{#if running && exercises.current.length > 0}
+				<span class="progress" aria-label="{finished} of {exercises.current.length} exercises done">
+					{finished}/{exercises.current.length}
+				</span>
+			{/if}
 			{#if running}
 				<button class="primary finish" onclick={() => goto(`/workouts/${id}/finish`)}>Finish</button>
 			{/if}
@@ -99,6 +128,14 @@
 		background: var(--surface);
 		border-color: transparent;
 		margin-top: 0.4rem;
+	}
+
+	.progress {
+		align-self: center;
+		margin-right: 0.75rem;
+		color: var(--muted);
+		font-weight: 600;
+		font-variant-numeric: tabular-nums;
 	}
 
 	.finish {
