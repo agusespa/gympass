@@ -62,7 +62,7 @@
 		gap: 0.25rem;
 		margin: calc(-1 * (env(safe-area-inset-top) + 1rem)) -1rem 0;
 		/* Extra room at the top keeps the back button and title below iOS's own status bar blur. */
-		padding: calc(env(safe-area-inset-top) + 1.6rem) 1rem 0.35rem;
+		padding: calc(env(safe-area-inset-top) + 2rem) 1rem 0.35rem;
 		background: var(--bar);
 		-webkit-backdrop-filter: var(--bar-filter);
 		backdrop-filter: var(--bar-filter);
