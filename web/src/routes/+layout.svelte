@@ -29,6 +29,9 @@
 
 	const TABS = ['/', '/profile'];
 
+	/** The status bar blur shows only once the page has scrolled, so nothing at rest sits under it. */
+	let scrolled = $state(false);
+
 	// Switching tabs slides the page toward the tab that was tapped (Safari 18+, Chrome);
 	// browsers without view transitions just switch.
 	onNavigate((nav) => {
@@ -46,6 +49,8 @@
 		});
 	});
 </script>
+
+<svelte:window onscroll={() => (scrolled = scrollY > 0)} />
 
 <svelte:head>
 	<link rel="icon" href={favicon} />
@@ -87,7 +92,7 @@
 
 {#if showTabs}
 	<!-- Tab screens have no top bar, so this blurs the page as it scrolls under the status bar. -->
-	<div class="status-blur" aria-hidden="true"></div>
+	<div class="status-blur" class:visible={scrolled} aria-hidden="true"></div>
 	<!-- Only on the tab screens: a pull on a workout screen would get in the way of editing sets. -->
 	<PullToRefresh />
 	<nav class="tabbar" style="--tab: {onProfile ? 1 : 0}">
@@ -186,6 +191,12 @@
 		backdrop-filter: var(--bar-filter);
 		-webkit-mask-image: linear-gradient(to bottom, #000 60%, transparent);
 		mask-image: linear-gradient(to bottom, #000 60%, transparent);
+		opacity: 0;
+		transition: opacity 0.2s;
+	}
+
+	.status-blur.visible {
+		opacity: 1;
 	}
 
 	/* Floating pill tab bar, centered above the home indicator. */
