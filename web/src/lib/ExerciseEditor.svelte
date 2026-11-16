@@ -203,7 +203,7 @@
 							>
 								<span class="fold-name">{ex.name}</span>
 								{#if collapsed}
-									<span class="fold-summary" in:fade={{ duration: foldMs }}>
+									<span class="fold-summary" transition:fade={{ duration: foldMs }}>
 										<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
 										{ex.sets.length === 1 ? '1 set' : `${ex.sets.length} sets`}
 									</span>
