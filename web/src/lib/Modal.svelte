@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Snippet } from 'svelte';
+	import { onDestroy, type Snippet } from 'svelte';
 	import { motion } from './motion';
 
 	/** Centered alert-style modal; `buttons` gets `close` so a button can dismiss it. */
@@ -9,6 +9,11 @@
 	let dialog: HTMLDialogElement;
 	/** Playing the closing animation; the dialog closes when it ends. */
 	let closing = $state(false);
+	let closeTimer: ReturnType<typeof setTimeout> | undefined;
+
+	// A button can close the modal and navigate away at once; don't touch the
+	// unmounted dialog when the closing animation would have ended.
+	onDestroy(() => clearTimeout(closeTimer));
 
 	export function open() {
 		closing = false;
@@ -20,7 +25,7 @@
 		const ms = motion(150);
 		if (!ms) return dialog.close();
 		closing = true;
-		setTimeout(() => {
+		closeTimer = setTimeout(() => {
 			if (!closing) return;
 			closing = false;
 			dialog.close();

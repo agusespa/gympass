@@ -91,6 +91,9 @@ test("log a workout, start from last time's values, edit and delete", async ({ p
 	await expect(confirmDiscard).toBeVisible();
 	await confirmDiscard.getByRole('button', { name: 'Discard', exact: true }).click();
 	await expect(page).toHaveURL('/');
+	// The dialog's closing animation outlives the page it was on; that must not error.
+	await page.waitForTimeout(300);
+	await expect(page.getByText('Something went wrong')).toHaveCount(0);
 	await page.getByRole('link', { name: 'Profile', exact: true }).click();
 	await expect(page.getByRole('link', { name: new RegExp(`Push ${id}`) })).toBeVisible();
 	await expect(page.getByRole('link', { name: new RegExp(`Push again ${id}`) })).toHaveCount(0);
