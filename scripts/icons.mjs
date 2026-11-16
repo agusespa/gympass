@@ -6,25 +6,30 @@ import { chromium } from '@playwright/test';
 const FROM = '#27272a';
 const TO = '#09090b';
 const INK = '#bef264';
+const LIGHT = '#d9f99d';
 
-// Flat lime dumbbell on a 512×512 canvas: bar plus two plates a side, drawn for
-// the left half and mirrored. Its farthest corner stays inside the maskable
-// safe zone (a circle of radius 204 around the centre).
-const HALF = `<rect x="58" y="200" width="38" height="112" rx="16"/>
-  <rect x="102" y="140" width="64" height="232" rx="22"/>`;
+// A chunky lime lightning bolt with slightly rough edges and a
+// lighter left facet, on a 512×512 canvas. Every point stays inside the
+// maskable safe zone (a circle of radius 204 around the centre).
+const BOLT = '232,68 326,68 282,212 360,212 226,450 256,298 160,298';
+// The left half of the bolt, lit a shade lighter for a bevelled look.
+const FACET = '232,68 279,68 236,212 282,212 226,450 256,298 160,298';
 
-const GLYPH = `<g fill="${INK}">
-  <rect x="160" y="234" width="192" height="44" rx="10"/>
-  ${HALF}
-  <g transform="translate(512 0) scale(-1 1)">${HALF}</g>
-</g>`;
+const DEFS = `<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${FROM}"/><stop offset="1" stop-color="${TO}"/></linearGradient>
+<filter id="rough" x="-10%" y="-10%" width="120%" height="120%">
+  <feTurbulence type="fractalNoise" baseFrequency="0.05" numOctaves="2" seed="7" result="warp"/>
+  <feDisplacementMap in="SourceGraphic" in2="warp" scale="3" xChannelSelector="R" yChannelSelector="G"/>
+</filter>`;
 
 /** rounded: transparent corners (favicon, manifest "any"); otherwise a full square (iOS, maskable). */
 function svg(rounded) {
 	return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-<defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${FROM}"/><stop offset="1" stop-color="${TO}"/></linearGradient></defs>
+<defs>${DEFS}</defs>
 <rect width="512" height="512"${rounded ? ' rx="112"' : ''} fill="url(#bg)"/>
-${GLYPH}
+<g filter="url(#rough)" stroke-linejoin="round">
+  <polygon points="${BOLT}" fill="${INK}"/>
+  <polygon points="${FACET}" fill="${LIGHT}"/>
+</g>
 </svg>
 `;
 }
