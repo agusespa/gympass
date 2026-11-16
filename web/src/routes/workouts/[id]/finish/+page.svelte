@@ -117,7 +117,7 @@
 	{@const w = workout.current}
 	<TopBar title="Finish workout" fallback={`/workouts/${id}`}>
 		{#snippet action()}
-			<button class="save" onclick={save}>Save</button>
+			<button class="primary save" onclick={save}>Save</button>
 		{/snippet}
 	</TopBar>
 
@@ -202,14 +202,11 @@
 {/if}
 
 <style>
-	/* Plain text, like an iOS bar button: a filled pill's top edge caught iOS's status bar blur. */
 	.save {
-		min-height: 44px;
-		padding: 0 0.5rem;
-		background: transparent;
-		color: var(--accent);
-		font-size: 1.05rem;
-		font-weight: 600;
+		min-height: 32px;
+		padding: 0 0.95rem;
+		border-radius: 999px;
+		font-size: 0.95rem;
 	}
 
 	.stats {
