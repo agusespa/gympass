@@ -78,7 +78,7 @@
 				</span>
 			{/if}
 			{#if running}
-				<button class="primary finish" onclick={() => goto(`/workouts/${id}/finish`)}>Finish</button>
+				<button class="finish" onclick={() => goto(`/workouts/${id}/finish`)}>Finish</button>
 			{/if}
 		{/snippet}
 	</TopBar>
@@ -138,10 +138,13 @@
 		font-variant-numeric: tabular-nums;
 	}
 
+	/* Plain text like the finish screen's Save, an iOS-style bar button. */
 	.finish {
-		min-height: 32px;
-		padding: 0 0.95rem;
-		border-radius: 999px;
-		font-size: 0.95rem;
+		min-height: 44px;
+		padding: 0 0.5rem;
+		background: transparent;
+		color: var(--accent);
+		font-size: 1.05rem;
+		font-weight: 600;
 	}
 </style>
