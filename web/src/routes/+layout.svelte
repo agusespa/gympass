@@ -123,7 +123,7 @@
 		 * Extra room at the top: in the home-screen app iOS draws its own soft blur just below the
 		 * status bar, which caught the top of the date at 1rem.
 		 */
-		padding-top: calc(env(safe-area-inset-top) + 2rem);
+		padding-top: calc(env(safe-area-inset-top) + 1.6rem);
 		padding-bottom: calc(env(safe-area-inset-bottom) + 6rem);
 	}
 
