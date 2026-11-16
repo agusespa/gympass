@@ -19,7 +19,7 @@ Weights are kilograms. Dates are YYYY-MM-DD in the user's own time zone.
 
 A routine's exercises are chosen by name from list_exercises; there are no other exercises.
 
-To change a routine, call get_routine, edit the result and pass the whole routine to update_routine. Keep the id of every exercise and set you keep; anything you leave out is deleted, and anything without an id is added. For progression (e.g. adding weight), first check recent performance with list_workouts.
+To change a routine, call get_routine, edit the result and pass the whole routine to update_routine. Keep the id of every exercise and set you keep; anything you leave out is deleted, and anything without an id is added. Routines hold no weights: a workout started from a routine takes each set's weight and reps from the last session of that exercise.
 
 Changes reach the user's phone on its next sync.`
 

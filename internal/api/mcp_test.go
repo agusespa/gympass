@@ -95,7 +95,7 @@ func TestMCPRoutineFlow(t *testing.T) {
 	msg := call(t, cs, "create_routine", map[string]any{
 		"name": "Push",
 		"exercises": []any{map[string]any{
-			"name": "Bench Press", "sets": []any{map[string]any{"reps": 8, "weight_kg": 80}},
+			"name": "Bench Press", "sets": []any{map[string]any{"reps": 8}},
 		}},
 	}, &created)
 	if msg != "" || created.ID == "" || created.Exercises[0].ExerciseID != "bench-press" || created.Exercises[0].Sets[0].RestSeconds != 120 {
@@ -104,12 +104,12 @@ func TestMCPRoutineFlow(t *testing.T) {
 
 	var r store.Routine
 	call(t, cs, "get_routine", map[string]any{"id": created.ID}, &r)
-	r.Exercises[0].Sets[0].WeightKg = 82.5
+	r.Exercises[0].Sets[0].Reps = 10
 	var saved store.Routine
 	if msg := call(t, cs, "update_routine", r, &saved); msg != "" {
 		t.Fatalf("update_routine: %s", msg)
 	}
-	if saved.Exercises[0].Sets[0].WeightKg != 82.5 || saved.Exercises[0].Sets[0].ID != r.Exercises[0].Sets[0].ID {
+	if saved.Exercises[0].Sets[0].Reps != 10 || saved.Exercises[0].Sets[0].ID != r.Exercises[0].Sets[0].ID {
 		t.Fatalf("saved = %+v", saved)
 	}
 
@@ -121,10 +121,10 @@ func TestMCPRoutineFlow(t *testing.T) {
 	}{
 		"misspelt field": {"create_routine", map[string]any{"name": "x", "exercises": []any{map[string]any{
 			"name": "Bench Press", "sets": []any{map[string]any{"reps": 8, "weight": 80}}}}}, "weight"},
-		"bad reps":        {"update_routine", map[string]any{"id": created.ID, "name": "x", "exercises": []any{map[string]any{"name": "Bench Press", "sets": []any{map[string]any{"reps": -1, "weight_kg": 1}}}}}, "reps"},
+		"bad reps":        {"update_routine", map[string]any{"id": created.ID, "name": "x", "exercises": []any{map[string]any{"name": "Bench Press", "sets": []any{map[string]any{"reps": -1}}}}}, "reps"},
 		"unknown routine": {"update_routine", map[string]any{"id": "missing", "name": "x"}, "no routine"},
 		"unknown set id": {"update_routine", map[string]any{"id": created.ID, "name": "x", "exercises": []any{map[string]any{
-			"id": saved.Exercises[0].ID, "name": "Bench Press", "sets": []any{map[string]any{"id": "made-up", "reps": 1, "weight_kg": 1}}}}}, "not a set"},
+			"id": saved.Exercises[0].ID, "name": "Bench Press", "sets": []any{map[string]any{"id": "made-up", "reps": 1}}}}}, "not a set"},
 		"bad range":       {"list_workouts", map[string]any{"from": "2026-11-10", "to": "2026-11-01"}, "before"},
 		"missing workout": {"get_workout", map[string]any{"id": "nope"}, "no finished workout"},
 		"bad limit":       {"list_routines", map[string]any{"limit": 500}, "limit"},

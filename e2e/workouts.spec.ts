@@ -240,11 +240,11 @@ test('only checked-off sets count', async ({ page, request }) => {
 	await page.getByRole('button', { name: 'New routine' }).click();
 	await setText(page.getByLabel('Routine name'), `Pull ${id}`);
 	await addExercise(page, row);
-	await fillSet(page, row, 1, '60', '10');
+	await setText(exercise(page, row).getByLabel('Reps set 1'), '10');
 	await exercise(page, row).getByRole('button', { name: 'Add set' }).click();
 	await exercise(page, row).getByRole('button', { name: 'Add set' }).click();
 	await addExercise(page, dips);
-	await fillSet(page, dips, 1, '0', '12');
+	await setText(exercise(page, dips).getByLabel('Reps set 1'), '12');
 	// Routines are plans, so they have no checkmarks.
 	await expect(page.getByRole('button', { name: /^Complete set/ })).toHaveCount(0);
 	await page.goto('/');
@@ -256,7 +256,7 @@ test('only checked-off sets count', async ({ page, request }) => {
 	await expect(checks).toHaveCount(3);
 	for (const c of await checks.all()) await expect(c).toHaveAttribute('aria-pressed', 'false');
 	// Did two sets of rows, the second heavier; skipped the third and the dips.
-	await exercise(page, row).getByRole('button', { name: 'Complete set 1', exact: true }).click();
+	await fillSet(page, row, 1, '60', '10');
 	await fillSet(page, row, 2, '65', '8');
 	// A check can be undone: the last one folds the exercise, so open it again first.
 	const third = exercise(page, row).getByRole('button', { name: 'Complete set 3', exact: true });

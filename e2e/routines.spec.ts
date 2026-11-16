@@ -23,7 +23,9 @@ test('save a workout as a routine and start a workout from it', async ({ page })
 	await page.getByRole('button', { name: 'Save as routine' }).click();
 	await expect(page).toHaveURL(/\/routines\//);
 	await expect(page.getByLabel('Routine name')).toHaveValue(`Legs ${id}`);
-	await expect(exercise(page, squat).getByLabel('Weight set 1')).toHaveValue('100');
+	// A routine plans no weights.
+	await expect(exercise(page, squat).getByLabel('Reps set 1')).toHaveValue('5');
+	await expect(exercise(page, squat).getByLabel('Weight set 1')).toHaveCount(0);
 
 	// Edit the routine template.
 	await setText(exercise(page, squat).getByLabel('Reps set 1'), '3');
@@ -45,7 +47,7 @@ test('create a routine from scratch, start it from the list, delete it', async (
 	await page.getByRole('button', { name: 'New routine' }).click();
 	await setText(page.getByLabel('Routine name'), `Arms ${id}`);
 	await addExercise(page, 'Barbell Curl');
-	await fillSet(page, 'Barbell Curl', 1, '15', '12');
+	await setText(exercise(page, 'Barbell Curl').getByLabel('Reps set 1'), '12');
 
 	await page.getByRole('button', { name: 'Done' }).click();
 	await expect(page).toHaveURL(/\/$/);
@@ -80,9 +82,9 @@ test('warm-up sets in a routine carry into the workout', async ({ page, request 
 	await setText(page.getByLabel('Routine name'), `Warm ${id}`);
 	await addExercise(page, press);
 	const ex = exercise(page, press);
-	await fillSet(page, press, 1, '40', '10');
+	await setText(ex.getByLabel('Reps set 1'), '10');
 	await ex.getByRole('button', { name: 'Add set' }).click();
-	await fillSet(page, press, 2, '80', '5');
+	await setText(ex.getByLabel('Reps set 2'), '5');
 
 	// Mark the first set as a warm-up; working sets are numbered on their own.
 	await ex.getByRole('button', { name: 'Set 1 type: normal' }).click();
@@ -100,7 +102,7 @@ test('warm-up sets in a routine carry into the workout', async ({ page, request 
 		.poll(async () => {
 			const data = await serverData(request);
 			return (
-				data.routine_sets?.filter((s) => s.weight_kg === 40 && s.warmup === true && s.rest_seconds === 60)
+				data.routine_sets?.filter((s) => s.reps === 10 && s.warmup === true && s.rest_seconds === 60)
 					.length ?? 0
 			);
 		})
@@ -111,7 +113,9 @@ test('warm-up sets in a routine carry into the workout', async ({ page, request 
 	await expect(page).toHaveURL(/\/workouts\//);
 	const w = exercise(page, press);
 	await expect(w.getByRole('button', { name: /^Set \d type/ })).toHaveText(['W', '1']);
-	await expect(w.getByLabel('Weight set 1')).toHaveValue('40');
+	// Never done before, so there is no weight to start from yet.
+	await expect(w.getByLabel('Weight set 1')).toHaveValue('');
+	await expect(w.getByLabel('Reps set 1')).toHaveValue('10');
 	await expect(w.getByLabel('Rest after set 1')).toHaveValue('60');
 	await expect(w.getByLabel('Rest after set 2')).toHaveValue('0');
 
@@ -133,6 +137,6 @@ test('a new routine exercise starts from the last workout with it', async ({ pag
 	await page.getByRole('button', { name: 'New routine' }).click();
 	await setText(page.getByLabel('Routine name'), `Plan ${id}`);
 	await addExercise(page, lunge);
-	await expect(exercise(page, lunge).getByLabel('Weight set 1')).toHaveValue('20');
 	await expect(exercise(page, lunge).getByLabel('Reps set 1')).toHaveValue('12');
+	await expect(exercise(page, lunge).getByLabel('Weight set 1')).toHaveCount(0);
 });

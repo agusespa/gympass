@@ -23,7 +23,6 @@ test('a rep range in a routine carries into its workouts', async ({ page, reques
 	await setText(page.getByLabel('Routine name'), name);
 	await addExercise(page, bench);
 	const plan = exercise(page, bench);
-	await setText(plan.getByLabel('Weight set 1'), '60');
 	// Reps and a max above them plan a range.
 	await setText(plan.getByLabel('Reps set 1'), '8');
 	await setText(plan.getByLabel('Maximum reps for set 1'), '12');
@@ -125,7 +124,6 @@ test('a session at the top of the rep range suggests more weight next time', asy
 	await setText(page.getByLabel('Routine name'), name);
 	await addExercise(page, press);
 	const plan = exercise(page, press);
-	await setText(plan.getByLabel('Weight set 1'), '20');
 	await setText(plan.getByLabel('Reps set 1'), '8');
 	await setText(plan.getByLabel('Maximum reps for set 1'), '12');
 	await addSet(page, press);

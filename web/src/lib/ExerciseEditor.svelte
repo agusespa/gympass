@@ -350,14 +350,17 @@
 				</header>
 
 				{#if !collapsed}
-					<div class="sets">
+					<!-- A routine plans sets without weights: a workout takes them from the last session. -->
+					<div class="sets" class:plan={!checkable}>
 						<span class="th">Set</span>
-						<span class="th">
-							<svg class="kg-icon" viewBox="0 0 24 24" aria-hidden="true">
-								<path d="M2 12h20M6 8v8M18 8v8M9 9.5v5M15 9.5v5" />
-							</svg>
-							kg
-						</span>
+						{#if checkable}
+							<span class="th">
+								<svg class="kg-icon" viewBox="0 0 24 24" aria-hidden="true">
+									<path d="M2 12h20M6 8v8M18 8v8M9 9.5v5M15 9.5v5" />
+								</svg>
+								kg
+							</span>
+						{/if}
 						<span class="th">{ex.timed ? 'Time' : 'Reps'}</span>
 						<span class="th"></span>
 
@@ -396,14 +399,16 @@
 									</span>
 								{/if}
 							</span>
-							<input
-								class:done
-								inputmode="decimal"
-								aria-label="Weight set {si + 1}"
-								placeholder="0"
-								value={set.weight_kg ? kg(set.weight_kg) : ''}
-								onchange={(e) => updateSet(kind, set.id, { weight_kg: parseWeight(e.currentTarget.value) })}
-							/>
+							{#if checkable}
+								<input
+									class:done
+									inputmode="decimal"
+									aria-label="Weight set {si + 1}"
+									placeholder="0"
+									value={set.weight_kg ? kg(set.weight_kg) : ''}
+									onchange={(e) => updateSet(kind, set.id, { weight_kg: parseWeight(e.currentTarget.value) })}
+								/>
+							{/if}
 							{#if ex.timed}
 								<!-- Seconds or m:ss; the decimal keypad's separator works as the colon. -->
 								<input
@@ -776,12 +781,16 @@
 		stroke: none;
 	}
 
-	/* Set table as a grid: Set | kg | Reps | check or delete */
+	/* Set table as a grid: Set | kg | Reps | check, or in a routine Set | Reps | delete */
 	.sets {
 		display: grid;
 		grid-template-columns: 44px 1fr 1fr 44px;
 		align-items: center;
 		gap: 0.6rem 0.6rem;
+	}
+
+	.sets.plan {
+		grid-template-columns: 44px 1fr 44px;
 	}
 
 	.th {

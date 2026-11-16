@@ -25,6 +25,7 @@ export interface SetView {
 	id: string;
 	position: number;
 	reps: number;
+	/** 0 in a routine, whose sets plan no weight. */
 	weight_kg: number;
 	warmup: boolean;
 	rest_seconds: number;
@@ -37,13 +38,13 @@ export interface SetView {
 	done: boolean;
 }
 
-/** Routine sets have no done flag: they are plans, so they count as done. */
-function toSetView(s: SetRow & { done?: boolean }): SetView {
+/** Routine sets have no done flag or weight: they are plans, so they count as done. */
+function toSetView(s: SetRow & { done?: boolean; weight_kg?: number }): SetView {
 	return {
 		id: s.id,
 		position: s.position,
 		reps: s.reps,
-		weight_kg: s.weight_kg,
+		weight_kg: s.weight_kg ?? 0,
 		warmup: s.warmup,
 		rest_seconds: s.rest_seconds,
 		duration_seconds: s.duration_seconds,
@@ -170,19 +171,18 @@ function newSet(
 	parentId: string,
 	like?: Partial<Omit<SetView, 'id'>>
 ): SetRow & Synced & Record<string, unknown> {
-	const { done = false, ...rest } = like ?? {};
+	const { done = false, weight_kg = 0, ...rest } = like ?? {};
 	return fresh({
 		position: 1,
 		reps: 0,
-		weight_kg: 0,
 		warmup: false,
 		rest_seconds: DEFAULT_REST_SECONDS,
 		duration_seconds: 0,
 		rep_min: 0,
 		rep_max: 0,
 		...rest,
-		// Only workout sets get checked off; routine sets are plans.
-		...(parentKey === 'workout_exercise_id' ? { done } : {}),
+		// Only workout sets are weighed and checked off; routine sets are plans.
+		...(parentKey === 'workout_exercise_id' ? { weight_kg, done } : {}),
 		[parentKey]: parentId
 	}) as SetRow & Synced & Record<string, unknown>;
 }
@@ -495,7 +495,7 @@ export async function addSet(kind: Kind, exerciseId: string) {
 					? {
 							position: last.position + 1,
 							reps: last.reps,
-							weight_kg: last.weight_kg,
+							weight_kg: toSetView(last).weight_kg,
 							duration_seconds: last.duration_seconds,
 							rep_min: last.rep_min,
 							rep_max: last.rep_max,
@@ -512,7 +512,9 @@ export async function updateSet(
 	kind: Kind,
 	id: string,
 	changes: Partial<
-		Pick<SetRow, 'reps' | 'weight_kg' | 'warmup' | 'rest_seconds'> & {
+		Pick<SetRow, 'reps' | 'warmup' | 'rest_seconds'> & {
+			/** Workout sets only. */
+			weight_kg: number;
 			done: boolean;
 			duration_seconds: number;
 			rep_min: number;

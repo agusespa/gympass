@@ -95,7 +95,6 @@ var tables = []table{
 		{name: "routine_exercise_id", typ: colRef},
 		{name: "position", typ: colPosition},
 		{name: "reps", typ: colInt, max: maxReps},
-		{name: "weight_kg", typ: colNum, max: maxWeightKg},
 		{name: "warmup", typ: colBool},
 		{name: "rest_seconds", typ: colInt, max: maxRestSeconds},
 		{name: "duration_seconds", typ: colInt, max: maxDurationSeconds},

@@ -45,8 +45,8 @@ func send(t *testing.T, method, url, body string, out any) *http.Response {
 }
 
 const pushBody = `{"name":"Push","exercises":[
-  {"name":"Bench Press","sets":[{"reps":8,"weight_kg":80},{"reps":8,"weight_kg":80,"rest_seconds":90}]},
-  {"name":"Dip","sets":[{"reps":10,"weight_kg":0,"warmup":true}]}]}`
+  {"name":"Bench Press","sets":[{"reps":8},{"reps":8,"rest_seconds":90}]},
+  {"name":"Dip","sets":[{"reps":10,"warmup":true}]}]}`
 
 func TestRoutineCreateAndIncrement(t *testing.T) {
 	srv := newRoutineServer(t)
@@ -60,24 +60,24 @@ func TestRoutineCreateAndIncrement(t *testing.T) {
 		t.Fatalf("created = %+v", created)
 	}
 
-	// Read, add 2.5 kg to every bench set, write back.
+	// Read, add 2 reps to every bench set, write back.
 	var r store.Routine
 	send(t, "GET", srv.URL+"/api/routines/"+created.ID, "", &r)
 	for i := range r.Exercises[0].Sets {
-		r.Exercises[0].Sets[i].WeightKg += 2.5
+		r.Exercises[0].Sets[i].Reps += 2
 	}
 	body, _ := json.Marshal(r)
 	var saved store.Routine
 	if res := send(t, "PUT", srv.URL+"/api/routines/"+r.ID, string(body), &saved); res.StatusCode != http.StatusOK {
 		t.Fatalf("PUT status %d", res.StatusCode)
 	}
-	if saved.Exercises[0].Sets[0].WeightKg != 82.5 || saved.Exercises[0].Sets[0].ID != bench.Sets[0].ID {
+	if saved.Exercises[0].Sets[0].Reps != 10 || saved.Exercises[0].Sets[0].ID != bench.Sets[0].ID {
 		t.Fatalf("saved = %+v", saved.Exercises[0])
 	}
 
 	var list struct{ Routines []store.Routine }
 	send(t, "GET", srv.URL+"/api/routines", "", &list)
-	if len(list.Routines) != 1 || list.Routines[0].Exercises[0].Sets[1].WeightKg != 82.5 {
+	if len(list.Routines) != 1 || list.Routines[0].Exercises[0].Sets[1].Reps != 10 {
 		t.Fatalf("list = %+v", list)
 	}
 }
@@ -91,8 +91,8 @@ func TestRoutineBadRequests(t *testing.T) {
 		method, path, body string
 		want               int
 	}{
-		{"POST", "/api/routines", `{"name":"x","exercises":[{"name":"Bench","sets":[{"reps":8,"weight":80}]}]}`, 400}, // misspelt field
-		{"POST", "/api/routines", `{"name":"x","exercises":[{"name":"Bench","sets":[{"reps":8}]}]}`, 400},             // missing weight
+		{"POST", "/api/routines", `{"name":"x","exercises":[{"name":"Bench","sets":[{"reps":8,"weight":80}]}]}`, 400},    // misspelt field
+		{"POST", "/api/routines", `{"name":"x","exercises":[{"name":"Bench","sets":[{"reps":8,"weight_kg":80}]}]}`, 400}, // routines hold no weight
 		{"POST", "/api/routines", `{"name":""}`, 400},
 		{"POST", "/api/routines", `not json`, 400},
 		{"PUT", "/api/routines/" + created.ID, `{"id":"other","name":"x"}`, 400},
@@ -147,7 +147,7 @@ func TestRoutineTimedSets(t *testing.T) {
 	srv := newRoutineServer(t)
 	var created store.Routine
 	res := send(t, "POST", srv.URL+"/api/routines",
-		`{"name":"Grip","exercises":[{"name":"Dead hang","sets":[{"duration_seconds":45,"weight_kg":0}]}]}`, &created)
+		`{"name":"Grip","exercises":[{"name":"Dead hang","sets":[{"duration_seconds":45}]}]}`, &created)
 	if res.StatusCode != http.StatusCreated {
 		t.Fatalf("status %d", res.StatusCode)
 	}
@@ -157,7 +157,7 @@ func TestRoutineTimedSets(t *testing.T) {
 
 	var e map[string]string
 	res = send(t, "POST", srv.URL+"/api/routines",
-		`{"name":"Grip","exercises":[{"name":"Dead hang","sets":[{"weight_kg":0}]}]}`, &e)
+		`{"name":"Grip","exercises":[{"name":"Dead hang","sets":[{"warmup":true}]}]}`, &e)
 	if res.StatusCode != http.StatusBadRequest || !strings.Contains(e["error"], "reps or duration_seconds") {
 		t.Fatalf("status %d, %v", res.StatusCode, e)
 	}
@@ -167,7 +167,7 @@ func TestRoutineRepRange(t *testing.T) {
 	srv := newRoutineServer(t)
 	var created store.Routine
 	res := send(t, "POST", srv.URL+"/api/routines",
-		`{"name":"Push","exercises":[{"name":"Bench press","sets":[{"reps":8,"rep_max":12,"weight_kg":60},{"reps":5,"weight_kg":80}]}]}`, &created)
+		`{"name":"Push","exercises":[{"name":"Bench press","sets":[{"reps":8,"rep_max":12},{"reps":5}]}]}`, &created)
 	if res.StatusCode != http.StatusCreated {
 		t.Fatalf("status %d", res.StatusCode)
 	}
@@ -182,7 +182,7 @@ func TestRoutineRepRange(t *testing.T) {
 	// The range is a guide: reps above the max keep both as given.
 	var passed store.Routine
 	res = send(t, "POST", srv.URL+"/api/routines",
-		`{"name":"Push","exercises":[{"name":"Bench press","sets":[{"reps":12,"rep_max":8,"weight_kg":60}]}]}`, &passed)
+		`{"name":"Push","exercises":[{"name":"Bench press","sets":[{"reps":12,"rep_max":8}]}]}`, &passed)
 	if res.StatusCode != http.StatusCreated {
 		t.Fatalf("status %d", res.StatusCode)
 	}

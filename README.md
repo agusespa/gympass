@@ -5,7 +5,7 @@
 A personal, offline-first web app for managing workout gym sessions.
 
 ### Features
-- **Routines**: Reusable templates with exercises, sets, target reps or rep ranges and weight. Start a workout from one with a single tap.
+- **Routines**: Reusable templates with exercises, sets and target reps or rep ranges. Start a workout from one with a single tap; each set starts from the weight and reps of your last session.
 - **Workout logging**: Weight, reps and rest per set. Mark warm-ups, group exercises into supersets and reorder them as you go.
 - **Running workouts**: A workout stays open with a live timer until you finish or discard it, even if you close the app.
 - **Offline-first and synced**: Your data lives on the phone and syncs to your server, so nothing is lost if you lose or reset the phone.
@@ -184,7 +184,7 @@ There is no delete; remove routines in the app.
   "id": "…", "name": "Push",
   "exercises": [
     { "id": "…", "exercise_id": "bench-press", "name": "Bench Press", "superset_id": null,
-      "sets": [{ "id": "…", "reps": 8, "weight_kg": 82.5, "warmup": false, "rest_seconds": 120,
+      "sets": [{ "id": "…", "reps": 8, "warmup": false, "rest_seconds": 120,
                  "duration_seconds": 0, "rep_min": 8, "rep_max": 12 }] }
   ]
 }
@@ -195,7 +195,8 @@ To change a routine, `GET` it, edit the JSON and `PUT` it back:
 - Exercises and sets that keep their `id` are updated, ones without an `id` are added, and ones you leave out are deleted. An `id` must belong to that routine (a set's to that exercise), otherwise the request fails with `400`.
 - Order in the array is the order in the app.
 - An exercise is chosen by `name`, ignoring case, from the built-in list (see [Exercises](#exercises)). Any other name fails with `400`. Reads also return `exercise_id`, which is ignored on write.
-- `weight_kg` is required, plus either `reps` or, for a timed exercise such as a dead hang, `duration_seconds` (0–36000). `warmup` defaults to `false` and `rest_seconds` to `120` (0–3600). Unknown fields are rejected, so a typo like `weight` fails instead of being dropped.
+- Each set needs `reps` or, for a timed exercise such as a dead hang, `duration_seconds` (0–36000). `warmup` defaults to `false` and `rest_seconds` to `120` (0–3600). Unknown fields are rejected, so a typo like `rest` fails instead of being dropped.
+- Routines plan no weights. A workout started from a routine takes each set's weight and reps from the last session of that exercise, so progression happens in the workouts, not here.
 - `rep_max` makes `reps` the bottom of a rep range: `"reps": 8, "rep_max": 12` plans 8–12 reps. Leave it out for a fixed count. Reads return the range as `rep_min` and `rep_max`; `rep_min` is ignored on write.
 - Adjacent exercises with the same `superset_id` form a superset. Any string works as a label for a new one.
 - Changes reach your phone on its next sync, like an edit made in the app. If the same set is edited in the app around the same time, the newest edit wins.

@@ -41,7 +41,6 @@ export interface RoutineExercise extends ExerciseEntry {
 export interface SetRow extends Synced {
 	position: number;
 	reps: number;
-	weight_kg: number;
 	/** Warm-up set; left out of totals. */
 	warmup: boolean;
 	/** Rest after this set, seconds. */
@@ -62,10 +61,12 @@ export const DEFAULT_REST_SECONDS = 120;
 
 export interface WorkoutSet extends SetRow {
 	workout_exercise_id: string;
+	weight_kg: number;
 	/** Checked off as performed; only done sets count. */
 	done: boolean;
 }
 
+/** A planned set. It has no weight: a workout takes that from the last session. */
 export interface RoutineSet extends SetRow {
 	routine_exercise_id: string;
 }
