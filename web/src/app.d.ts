@@ -1,6 +1,9 @@
 // See https://svelte.dev/docs/kit/types#app.d.ts
 // for information about these interfaces
 declare global {
+	/** The release this build came from, e.g. "0.8.2"; set in vite.config.ts. */
+	const __APP_VERSION__: string;
+
 	namespace App {
 		// interface Error {}
 		// interface Locals {}

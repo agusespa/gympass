@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { version } from '$app/env';
 	import TopBar from '#lib/TopBar.svelte';
 	import { db, SYNCED_TABLES } from '#lib/db.ts';
 	import { live } from '#lib/live.svelte.ts';
@@ -52,6 +53,18 @@
 			? d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
 			: d.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
 	}
+
+	// SvelteKit's build version is the build's timestamp; it tells two builds of one release apart.
+	const builtMs = Number(version);
+	const builtAt = Number.isFinite(builtMs)
+		? new Date(builtMs).toLocaleString(undefined, {
+				day: 'numeric',
+				month: 'short',
+				year: 'numeric',
+				hour: 'numeric',
+				minute: '2-digit'
+			})
+		: null;
 
 	function download(name: string, type: string, body: string) {
 		const url = URL.createObjectURL(new Blob([body], { type }));
@@ -178,6 +191,10 @@
 	CSV has one row per set of every finished workout, for spreadsheets. JSON has workouts and routines in full.
 </p>
 
+<p class="muted version" data-testid="app-version">
+	Version {__APP_VERSION__}{#if builtAt}<br />Built {builtAt}{/if}
+</p>
+
 <style>
 	.group {
 		font-size: 0.8rem;
@@ -244,5 +261,12 @@
 	.note {
 		font-size: 0.8rem;
 		margin: 0 0.9rem;
+	}
+
+	.version {
+		font-size: 0.8rem;
+		text-align: center;
+		margin: 2.5rem 0 0;
+		font-variant-numeric: tabular-nums;
 	}
 </style>

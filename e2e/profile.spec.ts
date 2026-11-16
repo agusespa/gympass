@@ -192,3 +192,10 @@ test("weekly goal syncs and flags weeks that fall short", async ({
     0,
   );
 });
+
+test("settings shows the running version", async ({ page }) => {
+  await openApp(page, "/profile/settings");
+  const version = page.getByTestId("app-version");
+  await expect(version).toContainText(/Version \S+/);
+  await expect(version).toContainText("Built");
+});
