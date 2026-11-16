@@ -191,12 +191,21 @@
 		backdrop-filter: var(--bar-filter);
 		-webkit-mask-image: linear-gradient(to bottom, #000 60%, transparent);
 		mask-image: linear-gradient(to bottom, #000 60%, transparent);
+		/*
+		 * Hidden, not just transparent, at rest: iOS can still paint a backdrop-filter at opacity 0,
+		 * which blurred the top of the date. visibility waits for the fade-out before applying.
+		 */
 		opacity: 0;
-		transition: opacity 0.2s;
+		visibility: hidden;
+		transition:
+			opacity 0.2s,
+			visibility 0s 0.2s;
 	}
 
 	.status-blur.visible {
 		opacity: 1;
+		visibility: visible;
+		transition: opacity 0.2s;
 	}
 
 	/* Floating pill tab bar, centered above the home indicator. */

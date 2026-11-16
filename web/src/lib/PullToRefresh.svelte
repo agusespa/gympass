@@ -80,6 +80,7 @@
 	class:dragging
 	class:ready
 	class:refreshing
+	class:idle={pull === 0 && !refreshing}
 	style:--pull="{pull}px"
 	style:--progress={Math.min(pull / THRESHOLD, 1)}
 	data-testid="pull-to-refresh"
@@ -113,6 +114,18 @@
 			transform 0.3s cubic-bezier(0.3, 1.3, 0.5, 1),
 			opacity 0.2s;
 		pointer-events: none;
+	}
+
+	/*
+	 * Not painted at rest: its glass and shadow sit just above the page, and iOS can still paint a
+	 * backdrop-filter at opacity 0. Hidden only once it has finished easing back up.
+	 */
+	.ptr.idle {
+		visibility: hidden;
+		transition:
+			transform 0.3s cubic-bezier(0.3, 1.3, 0.5, 1),
+			opacity 0.2s,
+			visibility 0s 0.3s;
 	}
 
 	/* Follow the finger exactly while pulling; ease back only on release. */
