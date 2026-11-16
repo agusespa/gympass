@@ -86,6 +86,8 @@
 {/if}
 
 {#if showTabs}
+	<!-- Tab screens have no top bar, so this blurs the page as it scrolls under the status bar. -->
+	<div class="status-blur" aria-hidden="true"></div>
 	<!-- Only on the tab screens: a pull on a workout screen would get in the way of editing sets. -->
 	<PullToRefresh />
 	<nav class="tabbar" style="--tab: {onProfile ? 1 : 0}">
@@ -164,6 +166,26 @@
 		background: transparent;
 		color: var(--accent);
 		font-weight: 600;
+	}
+
+	.status-blur {
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		z-index: 10;
+		/*
+		 * Only as tall as the status bar, and faded out inside it, so the page's first elements
+		 * (which start 1rem below it) stay sharp until they actually scroll under it.
+		 */
+		height: env(safe-area-inset-top);
+		pointer-events: none;
+		view-transition-name: status-blur;
+		background: var(--bar);
+		-webkit-backdrop-filter: var(--bar-filter);
+		backdrop-filter: var(--bar-filter);
+		-webkit-mask-image: linear-gradient(to bottom, #000 60%, transparent);
+		mask-image: linear-gradient(to bottom, #000 60%, transparent);
 	}
 
 	/* Floating pill tab bar, centered above the home indicator. */
