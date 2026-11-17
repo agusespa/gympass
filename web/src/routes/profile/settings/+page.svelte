@@ -18,15 +18,6 @@
 		async () => Number((await db.meta.get(LAST_SYNCED_KEY))?.value ?? 0),
 		0
 	);
-	const pending = live(
-		() => null,
-		async () => {
-			let n = 0;
-			for (const name of SYNCED_TABLES) n += await db.table(name).where('dirty').equals(1).count();
-			return n;
-		},
-		0
-	);
 
 	// Re-renders "x min ago" while the screen is open.
 	let now = $state(Date.now());
@@ -187,7 +178,7 @@
 	</div>
 	<div class="row">
 		<span>Changes not synced</span>
-		<span class="muted" data-testid="pending">{pending.current}</span>
+		<span class="muted" data-testid="pending">{sync.pending}</span>
 	</div>
 	<button class="row action" disabled={sync.status === 'syncing'} onclick={() => syncNow()}>Sync now</button>
 </div>

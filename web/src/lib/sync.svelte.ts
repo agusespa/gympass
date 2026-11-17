@@ -4,6 +4,7 @@
  * case a newer server accepts them) while the rest of the sync goes through. If Cloudflare Access answers instead of the API (redirect,
  * 401/403 or non-JSON), local data is kept and the UI asks for a reload.
  */
+import { liveQuery } from 'dexie';
 import { db, SYNCED_TABLES, type Synced, type SyncedTable } from './db';
 import { onLocalChange } from './repo';
 
@@ -12,8 +13,24 @@ export type SyncStatus = 'idle' | 'syncing' | 'offline' | 'auth-expired' | 'erro
 export const sync = $state({
 	status: 'idle' as SyncStatus,
 	/** Local changes the server refused on the last sync; they stay on this phone. */
-	rejected: 0
+	rejected: 0,
+	/** Local changes not yet accepted by the server, kept live while syncing is started. */
+	pending: 0
 });
+
+/**
+ * True when changes are waiting and the last sync could not reach the server.
+ * Not just pending > 0: every edit is pending for a moment before it syncs.
+ */
+export function needsSync(): boolean {
+	return sync.pending > 0 && (sync.status === 'offline' || sync.status === 'error');
+}
+
+async function countPending(): Promise<number> {
+	let n = 0;
+	for (const name of SYNCED_TABLES) n += await table(name).where('dirty').equals(1).count();
+	return n;
+}
 
 type Wire = Omit<Synced, 'dirty'> & Record<string, unknown>;
 type Changes = Partial<Record<SyncedTable, Wire[]>>;
@@ -150,6 +167,10 @@ let started = false;
 export function startSync() {
 	if (started) return;
 	started = true;
+	liveQuery(countPending).subscribe({
+		next: (n) => (sync.pending = n),
+		error: (e) => console.error('pending count failed', e)
+	});
 	onLocalChange(scheduleSync);
 	window.addEventListener('online', () => void syncNow());
 	window.addEventListener('offline', () => (sync.status = 'offline'));

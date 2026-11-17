@@ -8,7 +8,7 @@
 	import { motion } from '#lib/motion.ts';
 	import { installErrorToasts } from '#lib/errors.ts';
 	import PullToRefresh from '#lib/PullToRefresh.svelte';
-	import { startSync, sync } from '#lib/sync.svelte.ts';
+	import { needsSync, startSync, sync } from '#lib/sync.svelte.ts';
 	import { runToastAction, toast } from '#lib/toast.svelte.ts';
 	import type { LayoutProps } from './$types';
 
@@ -114,6 +114,10 @@
 				<circle cx="14" cy="9.5" r="4.75" />
 				<path d="M5 24c.8-4.6 4.5-7.5 9-7.5s8.2 2.9 9 7.5" />
 			</svg>
+			{#if needsSync()}
+				<!-- Changes are waiting to sync; Settings (under Profile) has the details and Sync now. -->
+				<span class="sync-dot" data-testid="sync-badge" aria-hidden="true"></span>
+			{/if}
 			<span>Profile</span>
 		</a>
 	</nav>
@@ -222,6 +226,16 @@
 	}
 
 	/* viewBox is cropped to the drawing so padding alone sets the spacing. */
+	.sync-dot {
+		position: absolute;
+		top: 6px;
+		left: calc(50% + 9px);
+		width: 9px;
+		height: 9px;
+		border-radius: 50%;
+		background: var(--danger);
+	}
+
 	.tabbar a:active {
 		transform: scale(0.94);
 	}

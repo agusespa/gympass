@@ -32,6 +32,8 @@ test("works offline and syncs when back online", async ({
   // Finishing and navigating between screens still work offline.
   await finishWorkout(page);
   await expect(page).toHaveURL("/profile");
+  // Waiting changes put a dot on the Profile tab and the settings gear.
+  await expect(page.getByTestId("sync-badge")).toHaveCount(2);
   await page.getByRole("link", { name: "Workout", exact: true }).click();
   await page.getByRole("link", { name: "Profile", exact: true }).click();
   await expect(
@@ -45,6 +47,7 @@ test("works offline and syncs when back online", async ({
   );
 
   await context.setOffline(false);
+  await expect(page.getByTestId("sync-badge")).toHaveCount(0);
   await expect
     .poll(async () => {
       data = await serverData(request);
