@@ -19,10 +19,12 @@ export const sync = $state({
 });
 
 /**
- * True when changes are waiting and the last sync could not reach the server.
- * Not just pending > 0: every edit is pending for a moment before it syncs.
+ * True when sync needs a look in Settings: changes are waiting and the last
+ * sync could not reach the server, the login expired, or the server refused
+ * changes. Not just pending > 0: every edit is pending for a moment before it syncs.
  */
-export function needsSync(): boolean {
+export function syncNeedsAttention(): boolean {
+	if (sync.status === 'auth-expired' || sync.rejected > 0) return true;
 	return sync.pending > 0 && (sync.status === 'offline' || sync.status === 'error');
 }
 

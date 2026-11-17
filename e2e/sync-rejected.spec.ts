@@ -1,4 +1,4 @@
-import { expect, newWorkout, openApp, serverData, test, uid } from "./helpers";
+import { addExercise, expect, fillSet, finishWorkout, newWorkout, openApp, serverData, test, uid } from "./helpers";
 
 test("a row the server refuses does not block the rest of sync", async ({
   page,
@@ -40,9 +40,13 @@ test("a row the server refuses does not block the rest of sync", async ({
   );
 
   await newWorkout(page, `Kept ${id}`);
-  await expect(page.getByRole("alert")).toContainText(
-    "1 change couldn't be saved to the server",
-  );
+  await addExercise(page, "Barbell Row");
+  await fillSet(page, "Barbell Row", 1, "50", "10");
+  await finishWorkout(page);
+  await expect(page).toHaveURL("/profile");
+  await expect(page.getByTestId("sync-badge")).toHaveCount(2);
+  await page.getByRole("link", { name: "Settings" }).click();
+  await expect(page.getByTestId("rejected")).toHaveText("1");
   await expect
     .poll(async () =>
       (await serverData(request)).workouts?.some(

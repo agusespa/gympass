@@ -8,7 +8,7 @@
 	import { motion } from '#lib/motion.ts';
 	import { installErrorToasts } from '#lib/errors.ts';
 	import PullToRefresh from '#lib/PullToRefresh.svelte';
-	import { needsSync, startSync, sync } from '#lib/sync.svelte.ts';
+	import { startSync, syncNeedsAttention } from '#lib/sync.svelte.ts';
 	import { runToastAction, toast } from '#lib/toast.svelte.ts';
 	import type { LayoutProps } from './$types';
 
@@ -60,20 +60,6 @@
 			<span>This app needs a secure connection. Open it through its https:// address.</span>
 		</div>
 	{/if}
-	{#if sync.status === 'auth-expired'}
-		<div class="banner" role="alert">
-			<span>Your login has expired. Your data is saved on this phone.</span>
-			<button class="primary" onclick={() => location.reload()}>Reload</button>
-		</div>
-	{/if}
-	{#if sync.rejected > 0}
-		<div class="banner" role="alert">
-			<span>
-				{sync.rejected === 1 ? '1 change' : `${sync.rejected} changes`} couldn't be saved to the server. They're
-				kept on this phone.
-			</span>
-		</div>
-	{/if}
 	{@render children()}
 </main>
 
@@ -114,8 +100,8 @@
 				<circle cx="14" cy="9.5" r="4.75" />
 				<path d="M5 24c.8-4.6 4.5-7.5 9-7.5s8.2 2.9 9 7.5" />
 			</svg>
-			{#if needsSync()}
-				<!-- Changes are waiting to sync; Settings (under Profile) has the details and Sync now. -->
+			{#if syncNeedsAttention()}
+				<!-- Sync needs a look; Settings (under Profile) says why. -->
 				<span class="sync-dot" data-testid="sync-badge" aria-hidden="true"></span>
 			{/if}
 			<span>Profile</span>

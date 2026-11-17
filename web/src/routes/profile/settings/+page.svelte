@@ -180,9 +180,30 @@
 		<span>Changes not synced</span>
 		<span class="muted" data-testid="pending">{sync.pending}</span>
 	</div>
-	<button class="row action" disabled={sync.status === 'syncing'} onclick={() => syncNow()}>Sync now</button>
+	{#if sync.rejected > 0}
+		<div class="row">
+			<span>Refused by the server</span>
+			<span class="danger" data-testid="rejected">{sync.rejected}</span>
+		</div>
+	{/if}
+	{#if sync.status === 'auth-expired'}
+		<button class="row action" onclick={() => location.reload()}>Log in again</button>
+	{:else}
+		<button class="row action" disabled={sync.status === 'syncing'} onclick={() => syncNow()}>Sync now</button
+		>
+	{/if}
 </div>
-<p class="muted note">Everything is kept on this phone too, so you can train offline and sync later.</p>
+<p class="muted note">
+	{#if sync.status === 'auth-expired'}
+		Your login has expired. Your changes are kept on this phone and sync once you log in again.
+	{:else if sync.rejected > 0}
+		The server refused {sync.rejected === 1 ? 'a change' : 'some changes'}. {sync.rejected === 1
+			? "It's"
+			: "They're"} kept on this phone and sent again on every sync.
+	{:else}
+		Everything is kept on this phone too, so you can train offline and sync later.
+	{/if}
+</p>
 
 <h2 class="group">Export</h2>
 <div class="card rows">
@@ -231,6 +252,10 @@
 		background: none;
 		color: var(--accent);
 		text-align: left;
+	}
+
+	.danger {
+		color: var(--danger);
 	}
 
 	.stepper {

@@ -14,18 +14,23 @@ for (const [kind, response] of Object.entries(accessResponses)) {
 		await page.route('**/api/sync', (route) => route.fulfill(response));
 
 		await newWorkout(page, `Kept ${id}`);
-		await expect(page.getByRole('alert')).toContainText('login has expired');
 		await addExercise(page, 'Barbell Row');
 		await fillSet(page, 'Barbell Row', 1, '50', '10');
 		await finishWorkout(page);
 		await expect(page).toHaveURL('/profile');
 		await expect(page.getByRole('link', { name: new RegExp(`Kept ${id}`) })).toBeVisible();
 
+		// No banner: the Profile tab and settings gear get a dot, and Settings says why.
+		await expect(page.getByRole('alert')).toHaveCount(0);
+		await expect(page.getByTestId('sync-badge')).toHaveCount(2);
+		await page.getByRole('link', { name: 'Settings' }).click();
+		await expect(page.getByTestId('sync-status')).toHaveText('Login expired');
+
 		// Logged in again: reload syncs what was kept.
 		await page.unroute('**/api/sync');
-		await page.getByRole('button', { name: 'Reload' }).click();
-		await expect(page.getByRole('alert')).toHaveCount(0);
-		await expect(page.getByRole('link', { name: new RegExp(`Kept ${id}`) })).toBeVisible();
+		await page.getByRole('button', { name: 'Log in again' }).click();
+		await expect(page.getByTestId('sync-status')).toHaveText('Up to date');
+		await expect(page.getByTestId('sync-badge')).toHaveCount(0);
 		await expect
 			.poll(async () => (await serverData(request)).workouts?.some((w) => w.name === `Kept ${id}`))
 			.toBe(true);
