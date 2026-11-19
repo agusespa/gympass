@@ -173,7 +173,7 @@
 	.tabbar {
 		position: fixed;
 		left: 50%;
-		bottom: calc(env(safe-area-inset-bottom) + 8px);
+		bottom: calc(env(safe-area-inset-bottom) + 2px);
 		transform: translateX(-50%);
 		z-index: 10;
 		display: flex;
