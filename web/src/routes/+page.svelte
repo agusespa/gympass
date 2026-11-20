@@ -3,6 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { plural } from '#lib/format.ts';
 	import { live } from '#lib/live.svelte.ts';
+	import RoutineIcon from '#lib/RoutineIcon.svelte';
 	import {
 		createRoutine,
 		createWorkout,
@@ -26,14 +27,6 @@
 		let h = 0;
 		for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) % 360;
 		return h;
-	}
-
-	function initials(name: string): string {
-		const words = name
-			.trim()
-			.split(/[\s-]+/)
-			.filter(Boolean);
-		return ((words[0]?.[0] ?? '') + (words[1]?.[0] ?? '')).toUpperCase() || '?';
 	}
 
 	/** True while a button here is creating something and navigating to it. */
@@ -86,7 +79,7 @@
 		{#each routines.current as r (r.id)}
 			<li style="--h: {hue(r.name)}">
 				<a href="/routines/{r.id}">
-					<span class="avatar" aria-hidden="true">{initials(r.name)}</span>
+					<span class="avatar" aria-hidden="true"><RoutineIcon icon={r.icon} /></span>
 					<span class="info">
 						<span class="name">{r.name}</span>
 						<span class="meta">
@@ -230,9 +223,7 @@
 		border-radius: 13px;
 		background: hsl(var(--h) 70% 55% / 0.18);
 		color: hsl(var(--h) 75% 60%);
-		font-size: 0.85rem;
-		font-weight: 800;
-		letter-spacing: 0.02em;
+		padding: 5px;
 	}
 
 	.info {

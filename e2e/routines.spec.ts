@@ -46,6 +46,10 @@ test('create a routine from scratch, start it from the list, delete it', async (
 	await page.goto('/');
 	await page.getByRole('button', { name: 'New routine' }).click();
 	await setText(page.getByLabel('Routine name'), `Arms ${id}`);
+	const icons = page.getByRole('group', { name: 'Icon' });
+	await expect(icons.getByRole('button', { name: 'Default icon' })).toHaveAttribute('aria-pressed', 'true');
+	await icons.getByRole('button', { name: 'Arms icon' }).click();
+	await expect(icons.getByRole('button', { name: 'Arms icon' })).toHaveAttribute('aria-pressed', 'true');
 	await addExercise(page, 'Barbell Curl');
 	await setText(exercise(page, 'Barbell Curl').getByLabel('Reps set 1'), '12');
 
@@ -65,6 +69,7 @@ test('create a routine from scratch, start it from the list, delete it', async (
 	await expect(page).toHaveURL('/');
 	const routine = page.getByRole('list').getByRole('link', { name: `Arms ${id}` });
 	await routine.click();
+	await expect(icons.getByRole('button', { name: 'Arms icon' })).toHaveAttribute('aria-pressed', 'true');
 	await page.getByRole('button', { name: 'Delete routine' }).click();
 	await page
 		.getByRole('dialog', { name: 'Delete routine?' })
@@ -108,7 +113,7 @@ test('warm-up sets in a routine carry into the workout', async ({ page, request 
 		})
 		.toBeGreaterThan(0);
 
-	await page.getByRole('button', { name: 'Back' }).click();
+	await page.getByRole('button', { name: 'Back', exact: true }).click();
 	await page.getByRole('button', { name: `Start Warm ${id}` }).click();
 	await expect(page).toHaveURL(/\/workouts\//);
 	const w = exercise(page, press);

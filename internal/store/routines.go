@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"unicode/utf8"
 )
@@ -13,10 +14,16 @@ import (
 // Routine is a routine with its live exercises and sets, in order. It is the
 // shape both read and written by the routine API.
 type Routine struct {
-	ID        string            `json:"id"`
-	Name      string            `json:"name"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// Icon is one of RoutineIcons, or "" for the default icon.
+	Icon      string            `json:"icon"`
 	Exercises []RoutineExercise `json:"exercises"`
 }
+
+// RoutineIcons are the body-part icons a routine can show, by the split it
+// trains. The app draws them (web/src/lib/routine-icons.ts mirrors this list).
+var RoutineIcons = []string{"full", "upper", "lower", "push", "pull", "chest", "back", "shoulders", "arms", "core"}
 
 type RoutineExercise struct {
 	ID string `json:"id"`
@@ -176,6 +183,9 @@ func validateRoutine(r *Routine) error {
 	if r.Name, err = text("name", r.Name); err != nil {
 		return err
 	}
+	if r.Icon != "" && !slices.Contains(RoutineIcons, r.Icon) {
+		return invalid("icon must be one of %s, or empty", strings.Join(RoutineIcons, ", "))
+	}
 	if len(r.Exercises) > maxRoutineExercises {
 		return invalid("at most %d exercises", maxRoutineExercises)
 	}
@@ -239,9 +249,9 @@ func validateRoutine(r *Routine) error {
 
 // storedRoutine is a routine's live rows as they are in the database.
 type storedRoutine struct {
-	id, name  string
-	updatedAt int64
-	exercises []storedExercise
+	id, name, icon string
+	updatedAt      int64
+	exercises      []storedExercise
 }
 
 type storedExercise struct {
@@ -265,7 +275,7 @@ type storedSet struct {
 }
 
 func (c *storedRoutine) routine() Routine {
-	r := Routine{ID: c.id, Name: c.name, Exercises: make([]RoutineExercise, 0, len(c.exercises))}
+	r := Routine{ID: c.id, Name: c.name, Icon: c.icon, Exercises: make([]RoutineExercise, 0, len(c.exercises))}
 	for _, e := range c.exercises {
 		ex := RoutineExercise{ID: e.id, ExerciseID: e.exerciseID, Name: e.name, SupersetID: e.supersetID, Sets: make([]RoutineSet, 0, len(e.sets))}
 		for _, st := range e.sets {
@@ -282,8 +292,8 @@ func (c *storedRoutine) routine() Routine {
 // loadRoutine returns nil if the routine is missing or deleted.
 func loadRoutine(ctx context.Context, tx *sql.Tx, id string) (*storedRoutine, error) {
 	c := &storedRoutine{id: id}
-	err := tx.QueryRowContext(ctx, "SELECT name, updated_at FROM routines WHERE id = ? AND deleted = 0", id).
-		Scan(&c.name, &c.updatedAt)
+	err := tx.QueryRowContext(ctx, "SELECT name, icon, updated_at FROM routines WHERE id = ? AND deleted = 0", id).
+		Scan(&c.name, &c.icon, &c.updatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -361,8 +371,8 @@ func resolveExercises(r *Routine) error {
 }
 
 func (w *rowWriter) plan(cur *storedRoutine, r Routine) error {
-	if cur.updatedAt == 0 || cur.name != r.Name {
-		w.add("routines", Row{"id": r.ID, "updated_at": w.stamp(cur.updatedAt), "deleted": false, "name": r.Name})
+	if cur.updatedAt == 0 || cur.name != r.Name || cur.icon != r.Icon {
+		w.add("routines", Row{"id": r.ID, "updated_at": w.stamp(cur.updatedAt), "deleted": false, "name": r.Name, "icon": r.Icon})
 	}
 
 	oldEx := map[string]*storedExercise{}

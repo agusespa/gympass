@@ -57,12 +57,14 @@ type idArgs struct {
 
 type createRoutineArgs struct {
 	Name      string          `json:"name" jsonschema:"routine name, e.g. Push A"`
+	Icon      string          `json:"icon,omitempty" jsonschema:"body-part icon for the split it trains: full, upper, lower, push, pull, chest, back, shoulders, arms or core; leave out for the default icon"`
 	Exercises []exerciseInput `json:"exercises,omitempty" jsonschema:"exercises in order"`
 }
 
 type updateRoutineArgs struct {
 	ID        string          `json:"id" jsonschema:"id of the routine to change"`
 	Name      string          `json:"name" jsonschema:"routine name"`
+	Icon      string          `json:"icon,omitempty" jsonschema:"body-part icon for the split it trains: full, upper, lower, push, pull, chest, back, shoulders, arms or core; leave out for the default icon"`
 	Exercises []exerciseInput `json:"exercises,omitempty" jsonschema:"the complete list of exercises in order; exercises left out are deleted"`
 }
 
@@ -141,7 +143,7 @@ func newMCPServer(s *store.Store) *mcp.Server {
 		Description: "Create a new routine. Returns it with its new ids.",
 		Annotations: &mcp.ToolAnnotations{DestructiveHint: new(false), OpenWorldHint: new(false)},
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in createRoutineArgs) (*mcp.CallToolResult, store.Routine, error) {
-		r, err := routineInput{Name: in.Name, Exercises: in.Exercises}.routine()
+		r, err := routineInput{Name: in.Name, Icon: in.Icon, Exercises: in.Exercises}.routine()
 		if err != nil {
 			return nil, store.Routine{}, err
 		}

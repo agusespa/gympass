@@ -5,7 +5,7 @@
 A personal, offline-first web app for managing workout gym sessions.
 
 ### Features
-- **Routines**: Reusable templates with exercises, sets and target reps or rep ranges. Start a workout from one with a single tap; each set starts from the weight and reps of your last session.
+- **Routines**: Reusable templates with exercises, sets and target reps or rep ranges, each with a body-part icon for its split. Start a workout from one with a single tap; each set starts from the weight and reps of your last session.
 - **Workout logging**: Weight, reps and rest per set. Mark warm-ups, group exercises into supersets and reorder them as you go.
 - **Running workouts**: A workout stays open with a live timer until you finish or discard it, even if you close the app.
 - **Offline-first and synced**: Your data lives on the phone and syncs to your server, so nothing is lost if you lose or reset the phone.
@@ -181,7 +181,7 @@ There is no delete; remove routines in the app.
 
 ```json
 {
-  "id": "…", "name": "Push",
+  "id": "…", "name": "Push", "icon": "push",
   "exercises": [
     { "id": "…", "exercise_id": "bench-press", "name": "Bench Press", "superset_id": null,
       "sets": [{ "id": "…", "reps": 8, "warmup": false, "rest_seconds": 120,
@@ -194,6 +194,7 @@ To change a routine, `GET` it, edit the JSON and `PUT` it back:
 
 - Exercises and sets that keep their `id` are updated, ones without an `id` are added, and ones you leave out are deleted. An `id` must belong to that routine (a set's to that exercise), otherwise the request fails with `400`.
 - Order in the array is the order in the app.
+- `icon` is the body-part icon the app shows for the split: `full`, `upper`, `lower`, `push`, `pull`, `chest`, `back`, `shoulders`, `arms` or `core`. Leave it out (or send `""`) for the default icon.
 - An exercise is chosen by `name`, ignoring case, from the built-in list (see [Exercises](#exercises)). Any other name fails with `400`. Reads also return `exercise_id`, which is ignored on write.
 - Each set needs `reps` or, for a timed exercise such as a dead hang, `duration_seconds` (0–36000). `warmup` defaults to `false` and `rest_seconds` to `120` (0–3600). Unknown fields are rejected, so a typo like `rest` fails instead of being dropped.
 - Routines plan no weights. A workout started from a routine takes each set's weight and reps from the last session of that exercise, so progression happens in the workouts, not here.

@@ -84,6 +84,8 @@ var tables = []table{
 	}, indexes: []string{"workout_exercise_id"}},
 	{name: "routines", cols: []column{
 		{name: "name", typ: colText},
+		// One of RoutineIcons, or "" for the default icon.
+		{name: "icon", typ: colText},
 	}},
 	{name: "routine_exercises", cols: []column{
 		{name: "routine_id", typ: colRef},

@@ -18,6 +18,7 @@ const defaultRestSeconds = 120
 type routineInput struct {
 	ID        string          `json:"id,omitempty"`
 	Name      string          `json:"name"`
+	Icon      string          `json:"icon,omitempty"`
 	Exercises []exerciseInput `json:"exercises,omitempty"`
 }
 
@@ -46,7 +47,7 @@ type setInput struct {
 }
 
 func (in routineInput) routine() (store.Routine, error) {
-	r := store.Routine{ID: in.ID, Name: in.Name, Exercises: make([]store.RoutineExercise, 0, len(in.Exercises))}
+	r := store.Routine{ID: in.ID, Name: in.Name, Icon: in.Icon, Exercises: make([]store.RoutineExercise, 0, len(in.Exercises))}
 	for i, e := range in.Exercises {
 		ex := store.RoutineExercise{ID: e.ID, Name: e.Name, SupersetID: e.SupersetID, Sets: make([]store.RoutineSet, 0, len(e.Sets))}
 		for j, st := range e.Sets {

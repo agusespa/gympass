@@ -22,7 +22,7 @@ func phoneRoutine(t *testing.T, s *Store, at int64) {
 			"position": pos, "reps": reps, "warmup": false, "rest_seconds": int64(90), "duration_seconds": int64(0), "rep_min": int64(0), "rep_max": int64(0)}
 	}
 	mustSync(t, s, map[string][]Row{
-		"routines":          {{"id": "r1", "updated_at": at, "deleted": false, "name": "Push"}},
+		"routines":          {{"id": "r1", "updated_at": at, "deleted": false, "name": "Push", "icon": ""}},
 		"routine_exercises": {ex("bench", 1, "g1"), ex("fly", 1.5, "g1"), ex("dips", 2, nil)},
 		"routine_sets": {
 			set("b1", "bench", 1, 8), set("b2", "bench", 2, 8),
@@ -202,7 +202,7 @@ func TestReplaceRoutineRejects(t *testing.T) {
 	ctx := context.Background()
 	phoneRoutine(t, s, 1_000_000)
 	mustSync(t, s, map[string][]Row{
-		"routines":          {{"id": "r2", "updated_at": int64(1), "deleted": false, "name": "Other"}},
+		"routines":          {{"id": "r2", "updated_at": int64(1), "deleted": false, "name": "Other", "icon": ""}},
 		"routine_exercises": {{"id": "other-ex", "updated_at": int64(1), "deleted": false, "routine_id": "r2", "exercise_id": "row", "position": 1.0, "superset_id": nil}},
 	})
 	base, _, _ := s.Routine(ctx, "r1")
@@ -210,6 +210,7 @@ func TestReplaceRoutineRejects(t *testing.T) {
 
 	cases := map[string]func(r *Routine){
 		"empty name":           func(r *Routine) { r.Name = " " },
+		"unknown icon":         func(r *Routine) { r.Icon = "neck" },
 		"negative reps":        func(r *Routine) { r.Exercises[0].Sets[0].Reps = -1 },
 		"long rest":            func(r *Routine) { r.Exercises[0].Sets[0].RestSeconds = 3601 },
 		"other routine's ex":   func(r *Routine) { r.Exercises[0].ID = "other-ex" },
@@ -236,7 +237,7 @@ func TestReplaceRoutineRejects(t *testing.T) {
 	if _, err := s.ReplaceRoutine(ctx, base); !errors.Is(err, ErrNotFound) {
 		t.Errorf("missing routine: err = %v, want ErrNotFound", err)
 	}
-	mustSync(t, s, map[string][]Row{"routines": {{"id": "r2", "updated_at": int64(2), "deleted": true, "name": "Other"}}})
+	mustSync(t, s, map[string][]Row{"routines": {{"id": "r2", "updated_at": int64(2), "deleted": true, "name": "Other", "icon": ""}}})
 	base.ID = "r2"
 	base.Exercises = nil
 	if _, err := s.ReplaceRoutine(ctx, base); !errors.Is(err, ErrNotFound) {
@@ -251,7 +252,7 @@ func TestRoutinesList(t *testing.T) {
 	if _, err := s.CreateRoutine(ctx, Routine{Name: "arms"}); err != nil {
 		t.Fatal(err)
 	}
-	mustSync(t, s, map[string][]Row{"routines": {{"id": "gone", "updated_at": int64(1), "deleted": true, "name": "Abs"}}})
+	mustSync(t, s, map[string][]Row{"routines": {{"id": "gone", "updated_at": int64(1), "deleted": true, "name": "Abs", "icon": ""}}})
 	got, more, err := s.RoutinePage(ctx, "", "", 10)
 	if err != nil {
 		t.Fatal(err)
@@ -326,5 +327,24 @@ func TestReplaceRoutineReorderWritesOnlyMovedExercise(t *testing.T) {
 	_, rows := changedSince(t, s, cursor)
 	if len(rows) != 1 || len(rows["routine_exercises"]) != 1 || rows["routine_exercises"][0]["id"] != "dips" {
 		t.Fatalf("written = %v, want only dips", rows)
+	}
+}
+
+func TestReplaceRoutineIcon(t *testing.T) {
+	s, _ := routineStore(t)
+	ctx := context.Background()
+	phoneRoutine(t, s, 1_000_000)
+	r, _, _ := s.Routine(ctx, "r1")
+	cursor := cursorNow(t, s)
+	r.Icon = "push"
+	got, err := s.ReplaceRoutine(ctx, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Icon != "push" {
+		t.Fatalf("icon = %q, want push", got.Icon)
+	}
+	if _, rows := changedSince(t, s, cursor); len(rows["routines"]) != 1 || rows["routines"][0]["icon"] != "push" {
+		t.Fatalf("synced rows = %v", rows)
 	}
 }
