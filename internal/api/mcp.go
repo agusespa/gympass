@@ -89,11 +89,11 @@ func newMCPServer(s *store.Store) *mcp.Server {
 		Description: "One finished workout by id.",
 		Annotations: readOnly,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in idArgs) (*mcp.CallToolResult, *webhook.Workout, error) {
-		snap, ok, err := s.Workout(ctx, in.ID)
+		snap, ok, err := s.FinishedWorkout(ctx, in.ID)
 		if err != nil {
 			return nil, nil, toolError("get workout", err)
 		}
-		if !ok || snap.Deleted || snap.FinishedAt == nil {
+		if !ok {
 			return nil, nil, fmt.Errorf("no finished workout with id %q", in.ID)
 		}
 		return nil, webhook.FromSnapshot(snap), nil
@@ -176,9 +176,7 @@ func toolError(what string, err error) error {
 	if err == nil {
 		return nil
 	}
-	var ve *store.ValidationError
-	var pe paramError
-	if errors.As(err, &ve) || errors.As(err, &pe) {
+	if clientError(err) {
 		return err
 	}
 	log.Printf("mcp %s: %v", what, err)

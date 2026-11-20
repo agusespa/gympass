@@ -8,6 +8,7 @@ import {
 	db,
 	DEFAULT_REST_SECONDS,
 	SETTINGS_ID,
+	SYNCED_TABLES,
 	type ExerciseEntry,
 	type Routine,
 	type SetRow,
@@ -15,8 +16,9 @@ import {
 	type Synced,
 	type Workout
 } from './db';
+import { today } from './dates';
 import { trimName } from './exercise-key';
-import { MAX_DURATION_SECONDS, MAX_REPS, MAX_TEXT_LEN, MAX_WEIGHT_KG } from './limits';
+import { MAX_DURATION_SECONDS, MAX_REPS, MAX_TEXT_LEN, MAX_WEEKLY_GOAL, MAX_WEIGHT_KG } from './limits';
 import { progression, type Progression } from './progression';
 
 export type Kind = 'workout' | 'routine';
@@ -99,13 +101,6 @@ export function uuid(): string {
 	return crypto.randomUUID();
 }
 
-export function today(): string {
-	const d = new Date();
-	const m = String(d.getMonth() + 1).padStart(2, '0');
-	const day = String(d.getDate()).padStart(2, '0');
-	return `${d.getFullYear()}-${m}-${day}`;
-}
-
 /** A user-typed name as the server accepts it: trimmed, at most MAX_TEXT_LEN code points. */
 export function cleanName(name: string): string {
 	return Array.from(trimName(name)).slice(0, MAX_TEXT_LEN).join('');
@@ -128,18 +123,8 @@ function keyed<T extends object>(id: string, row: T): T & Synced {
 	return { ...row, id, updated_at: stamp(), deleted: false, dirty: 1 } as T & Synced;
 }
 
-const allTables = () => [
-	db.workouts,
-	db.workout_exercises,
-	db.sets,
-	db.routines,
-	db.routine_exercises,
-	db.routine_sets,
-	db.settings
-];
-
 async function write<T>(fn: () => Promise<T>): Promise<T> {
-	const result = await db.transaction('rw', allTables(), fn);
+	const result = await db.transaction('rw', [...SYNCED_TABLES], fn);
 	changed();
 	return result;
 }
@@ -163,6 +148,19 @@ async function getLive<T extends Synced>(
 ): Promise<T | undefined> {
 	const row = await table.get(id);
 	return row && !row.deleted ? row : undefined;
+}
+
+/** The numbers a new set copies from an earlier one; rest and done are decided by the caller. */
+function numbersOf(
+	s: SetView
+): Pick<SetView, 'reps' | 'weight_kg' | 'duration_seconds' | 'rep_min' | 'rep_max'> {
+	return {
+		reps: s.reps,
+		weight_kg: s.weight_kg,
+		duration_seconds: s.duration_seconds,
+		rep_min: s.rep_min,
+		rep_max: s.rep_max
+	};
 }
 
 /** A new set row with defaults; values from `like` (e.g. the set it copies) override them. */
@@ -230,8 +228,13 @@ async function isFinished(workoutId: string): Promise<boolean> {
 	return (await db.workouts.get(workoutId))?.finished_at != null;
 }
 
+/** A workout row started now. */
+function newWorkout(name: string) {
+	return fresh({ name: cleanName(name), date: today(), started_at: Date.now(), finished_at: null });
+}
+
 export async function createWorkout(name = 'Workout'): Promise<string> {
-	const w = fresh({ name: cleanName(name), date: today(), started_at: Date.now(), finished_at: null });
+	const w = newWorkout(name);
 	await write(async () => {
 		await db.workouts.add(w);
 	});
@@ -357,7 +360,7 @@ export async function saveWorkoutAsRoutine(workoutId: string): Promise<string> {
 export async function startWorkoutFromRoutine(routineId: string): Promise<string> {
 	const r = await getRoutine(routineId);
 	if (!r) throw new Error('routine not found');
-	const w = fresh({ name: r.name, date: today(), started_at: Date.now(), finished_at: null });
+	const w = newWorkout(r.name);
 	await write(async () => {
 		await db.workouts.add(w);
 		await copyExercises('routine', routineId, 'workout', w.id);
@@ -377,19 +380,22 @@ export async function loadExercises(kind: Kind, parentId: string): Promise<Exerc
 			.anyOf(exercises.map((e) => e.id))
 			.toArray()
 	);
-	return exercises.map((e) => ({
-		id: e.id,
-		exercise_id: e.exercise_id,
-		name: catalogExercise(e.exercise_id)?.name ?? '',
-		position: e.position,
-		superset_id: e.superset_id,
-		timed: catalogExercise(e.exercise_id)?.measure === 'time',
-		equipment: catalogExercise(e.exercise_id)?.equipment,
-		sets: sets
-			.filter((s) => s[t.setParent] === e.id)
-			.sort(byPosition)
-			.map(toSetView)
-	}));
+	return exercises.map((e) => {
+		const c = catalogExercise(e.exercise_id);
+		return {
+			id: e.id,
+			exercise_id: e.exercise_id,
+			name: c?.name ?? '',
+			position: e.position,
+			superset_id: e.superset_id,
+			timed: c?.measure === 'time',
+			equipment: c?.equipment,
+			sets: sets
+				.filter((s) => s[t.setParent] === e.id)
+				.sort(byPosition)
+				.map(toSetView)
+		};
+	});
 }
 
 /** Group exercises into blocks: runs of 2+ adjacent exercises with one superset_id. */
@@ -408,6 +414,11 @@ export function toBlocks(exercises: ExerciseView[]): Block[] {
 	return blocks;
 }
 
+/** The block holding an exercise entry. */
+function blockOf(blocks: Block[], exerciseId: string): Block | undefined {
+	return blocks.find((b) => b.items.some((e) => e.id === exerciseId));
+}
+
 /** Add a catalogue exercise (by its id) to a workout or routine. */
 export async function addExercise(kind: Kind, parentId: string, exerciseId: string): Promise<string> {
 	const t = tables(kind);
@@ -416,25 +427,18 @@ export async function addExercise(kind: Kind, parentId: string, exerciseId: stri
 		const position = (existing.at(-1)?.position ?? 0) + 1;
 		const ex = fresh({ exercise_id: exerciseId, position, superset_id: null, [t.exParent]: parentId });
 		await t.ex.add(ex);
+		const workout = kind === 'workout' ? await getWorkout(parentId) : undefined;
 		// A set added to a running workout is still to do; one added to history already happened.
-		const done = kind === 'workout' && (await isFinished(parentId));
+		const done = workout?.finished_at != null;
 		// Start from what was done last time, so only the numbers need changing.
-		const before = kind === 'workout' ? (await getWorkout(parentId))?.date : undefined;
-		const last = await lastSetsFor(exerciseId, { exclude: parentId, before });
+		const last = await lastSetsFor(exerciseId, { exclude: parentId, before: workout?.date });
 		const sets = last.length > 0 ? last : [undefined];
 		for (const [i, s] of sets.entries()) {
 			const isLast = i === sets.length - 1;
 			await t.sets.add(
 				newSet(t.setParent, ex.id, {
 					position: i + 1,
-					...(s && {
-						reps: s.reps,
-						weight_kg: s.weight_kg,
-						warmup: s.warmup,
-						duration_seconds: s.duration_seconds,
-						rep_min: s.rep_min,
-						rep_max: s.rep_max
-					}),
+					...(s && { ...numbersOf(s), warmup: s.warmup }),
 					// The last set gets no rest; the others keep theirs (or the default).
 					rest_seconds: isLast ? 0 : s?.rest_seconds || DEFAULT_REST_SECONDS,
 					done
@@ -492,16 +496,7 @@ export async function addSet(kind: Kind, exerciseId: string) {
 				t.setParent,
 				exerciseId,
 				last
-					? {
-							position: last.position + 1,
-							reps: last.reps,
-							weight_kg: toSetView(last).weight_kg,
-							duration_seconds: last.duration_seconds,
-							rep_min: last.rep_min,
-							rep_max: last.rep_max,
-							rest_seconds: 0,
-							done
-						}
+					? { ...numbersOf(toSetView(last)), position: last.position + 1, rest_seconds: 0, done }
 					: { rest_seconds: 0, done }
 			)
 		);
@@ -560,7 +555,8 @@ async function setPositions(kind: Kind, items: ExerciseView[], positions: number
 export async function moveBlock(kind: Kind, parentId: string, exerciseId: string, dir: -1 | 1) {
 	await write(async () => {
 		const blocks = toBlocks(await loadExercises(kind, parentId));
-		const i = blocks.findIndex((b) => b.items.some((e) => e.id === exerciseId));
+		const block = blockOf(blocks, exerciseId);
+		const i = block ? blocks.indexOf(block) : -1;
 		const j = i + dir;
 		if (i < 0 || j < 0 || j >= blocks.length) return;
 		const moving = blocks[i].items;
@@ -576,9 +572,7 @@ export async function moveBlock(kind: Kind, parentId: string, exerciseId: string
 /** Swap an exercise with its neighbour inside the same superset. */
 export async function moveWithinSuperset(kind: Kind, parentId: string, exerciseId: string, dir: -1 | 1) {
 	await write(async () => {
-		const block = toBlocks(await loadExercises(kind, parentId)).find((b) =>
-			b.items.some((e) => e.id === exerciseId)
-		);
+		const block = blockOf(toBlocks(await loadExercises(kind, parentId)), exerciseId);
 		if (!block?.superset) return;
 		const i = block.items.findIndex((e) => e.id === exerciseId);
 		const j = i + dir;
@@ -617,8 +611,7 @@ export async function linkToAbove(kind: Kind, parentId: string, exerciseId: stri
 /** Take an exercise out of its superset. Exercises after it stay grouped among themselves. */
 export async function unlink(kind: Kind, parentId: string, exerciseId: string) {
 	await write(async () => {
-		const exercises = await loadExercises(kind, parentId);
-		const block = toBlocks(exercises).find((b) => b.items.some((e) => e.id === exerciseId));
+		const block = blockOf(toBlocks(await loadExercises(kind, parentId)), exerciseId);
 		if (!block?.superset) return;
 		const t = tables(kind);
 		const i = block.items.findIndex((e) => e.id === exerciseId);
@@ -718,15 +711,12 @@ export function applyProgression(p: Progression) {
 
 // ---------- settings ----------
 
-/** Mirrors maxWeeklyGoal in internal/store/schema.go. */
-export const MAX_WEEKLY_GOAL = 7;
-
 /** Workouts per week to aim for, 0 for no goal. */
 export async function getWeeklyGoal(): Promise<number> {
 	return (await getLive<Settings>(db.settings, SETTINGS_ID))?.weekly_goal ?? 0;
 }
 
 export function setWeeklyGoal(goal: number) {
-	const weekly_goal = Math.max(0, Math.min(MAX_WEEKLY_GOAL, Math.round(goal)));
+	const weekly_goal = Math.round(clamp(goal, MAX_WEEKLY_GOAL));
 	return write(() => db.settings.put(keyed(SETTINGS_ID, { weekly_goal })));
 }

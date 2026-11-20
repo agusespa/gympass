@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { parseIso } from './dates';
 	import { shortDate } from './format';
 	import type { Point } from './stats';
 
@@ -14,7 +15,7 @@
 	let picked = $state<number | null>(null);
 	const index = $derived(Math.min(picked ?? points.length - 1, points.length - 1));
 
-	const time = (d: string) => new Date(d + 'T00:00:00').getTime();
+	const time = (d: string) => parseIso(d).getTime();
 	const geometry = $derived.by(() => {
 		const values = points.map((p) => p.value);
 		let lo = Math.min(...values);

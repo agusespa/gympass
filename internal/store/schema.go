@@ -31,7 +31,7 @@ const (
 	maxRestSeconds = 3600
 	// maxDurationSeconds bounds a timed set (e.g. a dead hang), 10 hours.
 	maxDurationSeconds = 36000
-	maxWeeklyGoal      = 7 // mirrors MAX_WEEKLY_GOAL in web/src/lib/repo.ts
+	maxWeeklyGoal      = 7
 	// SettingsID is the id of the only settings row.
 	SettingsID = "user"
 )

@@ -60,13 +60,13 @@ func New(s *store.Store, static fs.FS) http.Handler {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 	})
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		jsonError(w, http.StatusNotFound, "not found")
 	})
 	mux.Handle("/", staticHandler(static))
 
 	csrf := http.NewCrossOriginProtection()
 	csrf.SetDenyHandler(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "cross-origin request refused"})
+		jsonError(w, http.StatusForbidden, "cross-origin request refused")
 	}))
 	return csrf.Handler(mux)
 }
@@ -77,18 +77,12 @@ func syncHandler(s *store.Store, metrics *syncMetrics) http.HandlerFunc {
 		dec.UseNumber()
 		var req syncBody
 		if err := dec.Decode(&req); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON: " + err.Error()})
+			jsonError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
 			return
 		}
 		cursor, changes, rejected, err := s.Sync(r.Context(), req.Cursor, req.Changes)
 		if err != nil {
-			var ve *store.ValidationError
-			if errors.As(err, &ve) {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": ve.Error()})
-				return
-			}
-			log.Printf("sync: %v", err)
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+			writeError(w, "sync", err)
 			return
 		}
 		if changes == nil {
@@ -107,6 +101,33 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+// jsonError answers with {"error": msg}.
+func jsonError(w http.ResponseWriter, status int, msg string) {
+	writeJSON(w, status, map[string]string{"error": msg})
+}
+
+// clientError reports whether err is the caller's fault (a malformed body,
+// query parameter or tool argument), so its message can be shown to them.
+func clientError(err error) bool {
+	var ve *store.ValidationError
+	var pe paramError
+	return errors.As(err, &ve) || errors.As(err, &pe)
+}
+
+// writeError answers a failed request: 400 for the caller's mistakes, 404 for
+// a missing record, and 500 for anything else, logged and not shown.
+func writeError(w http.ResponseWriter, what string, err error) {
+	switch {
+	case clientError(err):
+		jsonError(w, http.StatusBadRequest, err.Error())
+	case errors.Is(err, store.ErrNotFound):
+		jsonError(w, http.StatusNotFound, "not found")
+	default:
+		log.Printf("%s: %v", what, err)
+		jsonError(w, http.StatusInternalServerError, "internal error")
+	}
 }
 
 // staticHandler serves the SPA: existing files as-is, everything else index.html.

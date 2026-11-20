@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { shortDate } from './format';
+	import { plural, shortDate } from './format';
 	import type { Week } from './stats';
 
 	/**
@@ -15,9 +15,7 @@
 	const max = $derived(Math.max(goal, ...weeks.map((w) => w.workouts)));
 	const missed = (i: number) => goal > 0 && i < weeks.length - 1 && weeks[i].workouts < goal;
 	const count = (w: Week) =>
-		goal > 0
-			? `${w.workouts} / ${goal} workouts`
-			: `${w.workouts} ${w.workouts === 1 ? 'workout' : 'workouts'}`;
+		goal > 0 ? `${w.workouts} / ${goal} workouts` : `${w.workouts} ${plural(w.workouts, 'workout')}`;
 	const label = (w: Week, i: number) =>
 		`Week of ${shortDate(w.start)}: ${count(w)}${missed(i) ? ', goal missed' : ''}`;
 </script>

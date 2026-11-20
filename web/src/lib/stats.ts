@@ -4,6 +4,7 @@
  * as workout totals and the webhook.
  */
 import { catalogExercise } from './catalog';
+import { addDays, parseIso, weekStart } from './dates';
 import { db } from './db';
 
 export interface HistorySet {
@@ -70,30 +71,6 @@ export async function loadHistory(): Promise<History> {
 	return { workoutDates: workouts.map((w) => w.date), performances };
 }
 
-// ---------- dates ----------
-
-function parse(iso: string): Date {
-	const [y, m, d] = iso.split('-').map(Number);
-	return new Date(y, m - 1, d);
-}
-
-export function isoDate(d: Date): string {
-	return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-/** The Monday of the week holding iso. */
-export function weekStart(iso: string): string {
-	const d = parse(iso);
-	d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
-	return isoDate(d);
-}
-
-function addDays(iso: string, days: number): string {
-	const d = parse(iso);
-	d.setDate(d.getDate() + days);
-	return isoDate(d);
-}
-
 // ---------- numbers ----------
 
 /**
@@ -140,7 +117,7 @@ export function summary(h: History, today: string, goal = 0): Summary {
 	if (first) {
 		const from = [weekStart(first), addDays(week, -7 * 12)].sort()[1];
 		const finished = h.workoutDates.filter((d) => d >= from && d < week).length;
-		const weeks = Math.round((parse(week).getTime() - parse(from).getTime()) / (7 * 86_400_000));
+		const weeks = Math.round((parseIso(week).getTime() - parseIso(from).getTime()) / (7 * 86_400_000));
 		if (weeks > 0) avgPerWeek = finished / weeks;
 	}
 	return {
@@ -157,7 +134,7 @@ export function summary(h: History, today: string, goal = 0): Summary {
  */
 export function behindGoal(thisWeek: number, goal: number, today: string): boolean {
 	const needed = goal - thisWeek;
-	const daysLeft = 7 - ((parse(today).getDay() + 6) % 7);
+	const daysLeft = 7 - ((parseIso(today).getDay() + 6) % 7);
 	return needed > 0 && needed >= daysLeft;
 }
 
@@ -222,6 +199,17 @@ function better(
 	return { value, set, date: p.date, workoutId: p.workoutId, improved: seen };
 }
 
+type BestKey = 'heaviest' | 'bestE1rm' | 'mostReps' | 'longest';
+
+/** What each best measures in a set. */
+const BEST_VALUE: Record<BestKey, (s: HistorySet) => number> = {
+	// Heavier weight wins; at the same weight, more reps (or a longer timed set).
+	heaviest: (s) => s.weight_kg + s.reps / 1000 + s.duration_seconds / 1e6,
+	bestE1rm: e1rm,
+	mostReps: (s) => s.reps,
+	longest: (s) => s.duration_seconds
+};
+
 /** Every exercise with its bests, alphabetical by name. */
 export function exerciseStats(h: History): ExerciseStats[] {
 	const map = new Map<string, ExerciseStats>();
@@ -245,22 +233,13 @@ export function exerciseStats(h: History): ExerciseStats[] {
 		x.sessions++;
 		x.lastDate = p.date;
 		x.name = p.name;
-		// Bests within this session first, so a session that beats a record twice counts once.
-		let heaviest: Best | null = null;
-		let bestE1rm: Best | null = null;
-		let mostReps: Best | null = null;
-		let longest: Best | null = null;
-		for (const s of p.sets) {
-			// Heavier weight wins; at the same weight, more reps (or a longer timed set).
-			heaviest = better(heaviest, s.weight_kg + s.reps / 1000 + s.duration_seconds / 1e6, p, s, seen);
-			bestE1rm = better(bestE1rm, e1rm(s), p, s, seen);
-			mostReps = better(mostReps, s.reps, p, s, seen);
-			longest = better(longest, s.duration_seconds, p, s, seen);
+		for (const [k, value] of Object.entries(BEST_VALUE) as [BestKey, (s: HistorySet) => number][]) {
+			// The best within this session first, so a session that beats a record twice counts once.
+			let session: Best | null = null;
+			for (const s of p.sets) session = better(session, value(s), p, s, seen);
+			const current = x[k];
+			if (session && (!current || session.value > current.value)) x[k] = session;
 		}
-		if (heaviest && (!x.heaviest || heaviest.value > x.heaviest.value)) x.heaviest = heaviest;
-		if (bestE1rm && (!x.bestE1rm || bestE1rm.value > x.bestE1rm.value)) x.bestE1rm = bestE1rm;
-		if (mostReps && (!x.mostReps || mostReps.value > x.mostReps.value)) x.mostReps = mostReps;
-		if (longest && (!x.longest || longest.value > x.longest.value)) x.longest = longest;
 	}
 	return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -282,13 +261,13 @@ export function recentRecords(stats: ExerciseStats[], today: string, days = 30):
 	const out: RecentRecord[] = [];
 	for (const x of stats) {
 		const candidates: RecentRecord[] = [];
-		if (x.heaviest) candidates.push({ key: x.key, name: x.name, kind: 'heaviest', record: x.heaviest });
-		if (x.bestE1rm) candidates.push({ key: x.key, name: x.name, kind: 'e1rm', record: x.bestE1rm });
-		if (x.timed) {
-			if (x.longest && !x.heaviest?.set.weight_kg)
-				candidates.push({ key: x.key, name: x.name, kind: 'time', record: x.longest });
-		} else if (x.mostReps && !x.heaviest?.set.weight_kg)
-			candidates.push({ key: x.key, name: x.name, kind: 'reps', record: x.mostReps });
+		const add = (kind: RecentRecord['kind'], record: Best | null) => {
+			if (record) candidates.push({ key: x.key, name: x.name, kind, record });
+		};
+		add('heaviest', x.heaviest);
+		add('e1rm', x.bestE1rm);
+		// Reps or time only count as a record for exercises done without weight.
+		if (!x.heaviest?.set.weight_kg) add(x.timed ? 'time' : 'reps', x.timed ? x.longest : x.mostReps);
 		const shown = new Set<string>();
 		for (const c of candidates) {
 			if (!c.record.improved || c.record.date < since || shown.has(c.record.date)) continue;

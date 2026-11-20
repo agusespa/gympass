@@ -3,9 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"log"
 	"net/http"
 
 	"github.com/agusespa/gym-tracker/internal/store"
@@ -84,29 +82,15 @@ func decodeRoutine(w http.ResponseWriter, r *http.Request) (store.Routine, bool)
 	dec.DisallowUnknownFields()
 	var in routineInput
 	if err := dec.Decode(&in); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON: " + err.Error()})
+		jsonError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
 		return store.Routine{}, false
 	}
 	routine, err := in.routine()
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		jsonError(w, http.StatusBadRequest, err.Error())
 		return store.Routine{}, false
 	}
 	return routine, true
-}
-
-// writeStoreError answers a failed store call.
-func writeStoreError(w http.ResponseWriter, what string, err error) {
-	var ve *store.ValidationError
-	switch {
-	case errors.As(err, &ve):
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": ve.Error()})
-	case errors.Is(err, store.ErrNotFound):
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
-	default:
-		log.Printf("%s: %v", what, err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
-	}
 }
 
 // exerciseList is the response of GET /api/exercises and list_exercises.
@@ -135,7 +119,7 @@ func listRoutinesHandler(s *store.Store) http.HandlerFunc {
 			out, err = routinePage(r.Context(), s, limit, q.Get("cursor"))
 		}
 		if err != nil {
-			writeListError(w, "list routines", err)
+			writeError(w, "list routines", err)
 			return
 		}
 		writeJSON(w, http.StatusOK, out)
@@ -175,12 +159,11 @@ func routinePage(ctx context.Context, s *store.Store, limit int, cursor string) 
 func getRoutineHandler(s *store.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		routine, ok, err := s.Routine(r.Context(), r.PathValue("id"))
-		if err != nil {
-			writeStoreError(w, "get routine", err)
-			return
+		if err == nil && !ok {
+			err = store.ErrNotFound
 		}
-		if !ok {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		if err != nil {
+			writeError(w, "get routine", err)
 			return
 		}
 		writeJSON(w, http.StatusOK, routine)
@@ -195,7 +178,7 @@ func createRoutineHandler(s *store.Store) http.HandlerFunc {
 		}
 		saved, err := s.CreateRoutine(r.Context(), routine)
 		if err != nil {
-			writeStoreError(w, "create routine", err)
+			writeError(w, "create routine", err)
 			return
 		}
 		w.Header().Set("Location", "/api/routines/"+saved.ID)
@@ -211,13 +194,13 @@ func replaceRoutineHandler(s *store.Store) http.HandlerFunc {
 		}
 		id := r.PathValue("id")
 		if routine.ID != "" && routine.ID != id {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "id in the body does not match the URL"})
+			jsonError(w, http.StatusBadRequest, "id in the body does not match the URL")
 			return
 		}
 		routine.ID = id
 		saved, err := s.ReplaceRoutine(r.Context(), routine)
 		if err != nil {
-			writeStoreError(w, "replace routine", err)
+			writeError(w, "replace routine", err)
 			return
 		}
 		writeJSON(w, http.StatusOK, saved)

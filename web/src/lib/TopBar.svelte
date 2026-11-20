@@ -6,6 +6,7 @@
 	 * Sticky screen header with a back button; `fallback` is used when there is no history to go back to.
 	 * `action` renders on the right (e.g. a Finish button). `back={false}` hides the back button.
 	 * `progress` (0 to 1) draws a line that far along the bar's bottom edge.
+	 * Children render under the row, inside the bar, so they stay on screen too (e.g. a workout's name).
 	 */
 	let {
 		title = '',
@@ -13,7 +14,8 @@
 		titleLabel,
 		back: showBack = true,
 		action,
-		progress
+		progress,
+		children
 	}: {
 		title?: string;
 		/** Accessible name for the title, e.g. "Elapsed time" for a running workout's clock. */
@@ -22,6 +24,7 @@
 		back?: boolean;
 		action?: Snippet;
 		progress?: number;
+		children?: Snippet;
 	} = $props();
 
 	function back() {
@@ -31,19 +34,26 @@
 </script>
 
 <div class="topbar">
-	{#if showBack}
-		<button class="back" aria-label="Back" onclick={back}>
-			<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
-		</button>
-	{/if}
-	<!-- No whitespace around the text, so the timer reads exactly "0:42". -->
-	<span class="title" role={titleLabel ? 'timer' : undefined} aria-label={titleLabel}
-		>{#if titleLabel && title}<svg class="clock" viewBox="0 0 24 24" aria-hidden="true"
-				><circle cx="12" cy="13.5" r="7.5" /><path d="M12 13.5V10M10 2.5h4M12 2.5V6M18.5 6.5l1.5-1.5" /></svg
-			>{/if}{title}</span
-	>
-	{#if action}
-		<span class="action">{@render action()}</span>
+	<div class="row">
+		{#if showBack}
+			<button class="back" aria-label="Back" onclick={back}>
+				<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
+			</button>
+		{/if}
+		<!-- No whitespace around the text, so the timer reads exactly "0:42". -->
+		<span class="title" role={titleLabel ? 'timer' : undefined} aria-label={titleLabel}
+			>{#if titleLabel && title}<svg class="clock" viewBox="0 0 24 24" aria-hidden="true"
+					><circle cx="12" cy="13.5" r="7.5" /><path
+						d="M12 13.5V10M10 2.5h4M12 2.5V6M18.5 6.5l1.5-1.5"
+					/></svg
+				>{/if}{title}</span
+		>
+		{#if action}
+			<span class="action">{@render action()}</span>
+		{/if}
+	</div>
+	{#if children}
+		<div class="below">{@render children()}</div>
 	{/if}
 	{#if progress !== undefined}
 		<!-- Decorative: whoever passes it also says the same in words. -->
@@ -57,9 +67,6 @@
 		position: sticky;
 		top: 0;
 		z-index: 5;
-		display: flex;
-		align-items: center;
-		gap: 0.25rem;
 		margin: calc(-1 * (env(safe-area-inset-top) + 1rem)) -1rem 0;
 		/* The 44px row lines up with the tab screens' title row (e.g. the Profile settings icon). */
 		padding: calc(env(safe-area-inset-top) + 1.55rem) 1rem 0.35rem;
@@ -67,6 +74,16 @@
 		-webkit-backdrop-filter: var(--bar-filter);
 		backdrop-filter: var(--bar-filter);
 		border-bottom: 1px solid var(--border);
+	}
+
+	.row {
+		display: flex;
+		align-items: center;
+		gap: 0.25rem;
+	}
+
+	.below {
+		padding: 0.25rem 0 0.4rem;
 	}
 
 	/* iOS-style back chevron: no background, tinted like a link. */

@@ -2,22 +2,15 @@
 	import { version } from '$app/env';
 	import TopBar from '#lib/TopBar.svelte';
 	import { catalogExercise } from '#lib/catalog.ts';
+	import { today } from '#lib/dates.ts';
 	import { db, SYNCED_TABLES } from '#lib/db.ts';
+	import { MAX_WEEKLY_GOAL } from '#lib/limits.ts';
 	import { live } from '#lib/live.svelte.ts';
-	import { getWeeklyGoal, MAX_WEEKLY_GOAL, setWeeklyGoal, today } from '#lib/repo.ts';
+	import { getWeeklyGoal, setWeeklyGoal } from '#lib/repo.ts';
 	import { LAST_SYNCED_KEY, sync, syncNow, type SyncStatus } from '#lib/sync.svelte.ts';
 
-	const goal = live(
-		() => null,
-		() => getWeeklyGoal(),
-		0
-	);
-
-	const lastSynced = live(
-		() => null,
-		async () => Number((await db.meta.get(LAST_SYNCED_KEY))?.value ?? 0),
-		0
-	);
+	const goal = live(getWeeklyGoal, 0);
+	const lastSynced = live(async () => Number((await db.meta.get(LAST_SYNCED_KEY))?.value ?? 0), 0);
 
 	// Re-renders "x min ago" while the screen is open.
 	let now = $state(Date.now());

@@ -69,6 +69,13 @@ func Open(path string) (*Store, error) {
 
 func (s *Store) Close() error { return s.db.Close() }
 
+func (s *Store) nowMs() int64 {
+	if s.now != nil {
+		return s.now().UnixMilli()
+	}
+	return time.Now().UnixMilli()
+}
+
 // Ready checks the sync metadata and write access without committing changes.
 func (s *Store) Ready(ctx context.Context) error {
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -429,4 +436,18 @@ func toFloat(v any) (float64, bool) {
 		return float64(n), true
 	}
 	return 0, false
+}
+
+// scanIDs reads a single-column result of ids and closes it.
+func scanIDs(rs *sql.Rows) ([]string, error) {
+	defer func() { _ = rs.Close() }()
+	var ids []string
+	for rs.Next() {
+		var id string
+		if err := rs.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rs.Err()
 }

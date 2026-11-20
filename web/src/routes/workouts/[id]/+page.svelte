@@ -3,6 +3,7 @@
 	import { page } from '$app/state';
 	import ConfirmButton from '#lib/ConfirmButton.svelte';
 	import ExerciseEditor from '#lib/ExerciseEditor.svelte';
+	import NameInput from '#lib/NameInput.svelte';
 	import TopBar from '#lib/TopBar.svelte';
 	import { elapsed } from '#lib/format.ts';
 	import { live } from '#lib/live.svelte.ts';
@@ -81,17 +82,8 @@
 				<button class="primary finish" onclick={() => goto(`/workouts/${id}/finish`)}>Finish</button>
 			{/if}
 		{/snippet}
-	</TopBar>
-	<div class="page-details">
-		<input
-			class="page-name"
-			aria-label="Workout name"
-			value={w.name}
-			onchange={(e) => {
-				const v = e.currentTarget.value.trim();
-				if (v) updateWorkout(id, { name: v });
-			}}
-		/>
+		<!-- Inside the bar, so the name stays on screen while scrolling through the sets. -->
+		<NameInput label="Workout name" value={w.name} onsave={(name) => updateWorkout(id, { name })} />
 		<!-- A running workout is always today; the date is only editable once it is in history. -->
 		{#if !running}
 			<input
@@ -104,7 +96,7 @@
 				}}
 			/>
 		{/if}
-	</div>
+	</TopBar>
 
 	{#key id}
 		<ExerciseEditor kind="workout" parentId={id} collapseDone={running} />

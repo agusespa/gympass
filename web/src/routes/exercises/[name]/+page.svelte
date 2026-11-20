@@ -2,16 +2,12 @@
 	import { page } from '$app/state';
 	import ProgressChart from '#lib/ProgressChart.svelte';
 	import TopBar from '#lib/TopBar.svelte';
-	import { durationLabel, kg, longDate, setLabel } from '#lib/format.ts';
+	import { durationLabel, kg, kg1, longDate, setLabel } from '#lib/format.ts';
 	import { live } from '#lib/live.svelte.ts';
 	import { exerciseSessions, exerciseStats, loadHistory, type History } from '#lib/stats.ts';
 
 	const key = $derived(page.params.name ?? '');
-	const history = live(
-		() => null,
-		() => loadHistory(),
-		{ workoutDates: [], performances: [] } as History
-	);
+	const history = live(loadHistory, { workoutDates: [], performances: [] } as History);
 
 	const stats = $derived(exerciseStats(history.current).find((x) => x.key === key));
 	const sessions = $derived(exerciseSessions(history.current, key));
@@ -31,10 +27,8 @@
 	);
 	const chartLabel = $derived(weighted ? 'Est. 1RM' : timed ? 'Longest' : 'Most reps');
 	const chartFormat = $derived(
-		weighted ? (v: number) => `${oneDecimal(v)} kg` : timed ? durationLabel : (v: number) => `${v} reps`
+		weighted ? (v: number) => `${kg1(v)} kg` : timed ? durationLabel : (v: number) => `${v} reps`
 	);
-
-	const oneDecimal = (v: number) => kg(Math.round(v * 10) / 10);
 </script>
 
 <TopBar fallback="/profile" title={stats?.name ?? ''} />
@@ -54,7 +48,7 @@
 			</div>
 			<div>
 				<dt>Est. 1RM</dt>
-				<dd data-testid="best-e1rm">{oneDecimal(stats.bestE1rm?.value ?? 0)} kg</dd>
+				<dd data-testid="best-e1rm">{kg1(stats.bestE1rm?.value ?? 0)} kg</dd>
 			</div>
 		{/if}
 		{#if timed}

@@ -3,6 +3,7 @@
 	import { page } from '$app/state';
 	import ConfirmButton from '#lib/ConfirmButton.svelte';
 	import Modal from '#lib/Modal.svelte';
+	import NameInput from '#lib/NameInput.svelte';
 	import TopBar from '#lib/TopBar.svelte';
 	import { live } from '#lib/live.svelte.ts';
 	import {
@@ -17,7 +18,7 @@
 		type SetView
 	} from '#lib/repo.ts';
 	import { showToast } from '#lib/toast.svelte.ts';
-	import { durationLabel } from '#lib/format.ts';
+	import { plural, setLabel } from '#lib/format.ts';
 	import type { Workout } from '#lib/db.ts';
 
 	const id = $derived(page.params.id ?? '');
@@ -51,21 +52,13 @@
 		return working(e).sort((a, b) => b.weight_kg - a.weight_kg || effort(b) - effort(a))[0];
 	}
 
-	const kg = (n: number) => `${Math.round(n * 10) / 10}`;
-
 	/** e.g. "3 sets · best 100 kg × 5" or "3 sets · best 0:45"; bodyweight rep sets show no best. */
 	function summary(e: ExerciseView): string {
 		const n = working(e).length;
 		const top = best(e);
-		const sets = `${n} ${n === 1 ? 'set' : 'sets'}`;
-		if (!top) return sets;
-		if (e.timed) {
-			const time = durationLabel(top.duration_seconds);
-			return top.weight_kg > 0
-				? `${sets} · best ${kg(top.weight_kg)} kg × ${time}`
-				: `${sets} · best ${time}`;
-		}
-		return top.weight_kg > 0 ? `${sets} · best ${kg(top.weight_kg)} kg × ${top.reps}` : sets;
+		const sets = `${n} ${plural(n, 'set')}`;
+		if (!top || (!e.timed && !top.weight_kg)) return sets;
+		return `${sets} · best ${setLabel(top, e.timed)}`;
 	}
 
 	/** Set while saving, so finishing doesn't trigger the redirect below. */
@@ -122,15 +115,7 @@
 	</TopBar>
 
 	<div class="page-details">
-		<input
-			class="page-name"
-			aria-label="Workout name"
-			value={w.name}
-			onchange={(e) => {
-				const v = e.currentTarget.value.trim();
-				if (v) updateWorkout(id, { name: v });
-			}}
-		/>
+		<NameInput label="Workout name" value={w.name} onsave={(name) => updateWorkout(id, { name })} />
 	</div>
 
 	<dl class="stats">
@@ -162,7 +147,7 @@
 	{/if}
 	{#if done.length > 0 && unchecked > 0}
 		<p class="muted unchecked" data-testid="unchecked">
-			{unchecked} unchecked {unchecked === 1 ? 'set' : 'sets'} won't count.
+			{unchecked} unchecked {plural(unchecked, 'set')} won't count.
 		</p>
 	{/if}
 

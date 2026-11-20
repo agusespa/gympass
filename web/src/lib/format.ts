@@ -1,8 +1,19 @@
+import { parseIso } from './dates';
 import { MAX_DURATION_SECONDS, MAX_REPS, MAX_WEIGHT_KG } from './limits';
 
 /** 82.5 → "82.5", 80 → "80". */
 export function kg(n: number): string {
 	return String(Math.round(n * 100) / 100);
+}
+
+/** A weight rounded to one decimal, for estimates: 101.666 → "101.7". */
+export function kg1(n: number): string {
+	return kg(Math.round(n * 10) / 10);
+}
+
+/** word, or its plural (word + "s") unless n is 1. */
+export function plural(n: number, word: string): string {
+	return n === 1 ? word : `${word}s`;
 }
 
 /** Parse a weight the iPhone keyboard may type with a decimal comma. */
@@ -40,7 +51,7 @@ export function parseDuration(s: string): number {
 	return Math.min(MAX_DURATION_SECONDS, n);
 }
 
-/** A set length, e.g. 45 → "0:45", 90 → "1:30", 3725 → "1:02:05". */
+/** A set length or rest, e.g. 45 → "0:45", 90 → "1:30", 3725 → "1:02:05". */
 export function durationLabel(seconds: number): string {
 	return elapsed(seconds * 1000);
 }
@@ -56,20 +67,12 @@ export function setLabel(
 
 /** "2026-11-14" → "Sat 14 Nov 2026" in the device locale. */
 export function longDate(iso: string): string {
-	const [y, m, d] = iso.split('-').map(Number);
-	return new Date(y, m - 1, d).toLocaleDateString(undefined, {
+	return parseIso(iso).toLocaleDateString(undefined, {
 		weekday: 'short',
 		day: 'numeric',
 		month: 'short',
 		year: 'numeric'
 	});
-}
-
-/** Rest duration as m:ss, e.g. 90 → "1:30". */
-export function restLabel(seconds: number): string {
-	const m = Math.floor(seconds / 60);
-	const s = seconds % 60;
-	return `${m}:${String(s).padStart(2, '0')}`;
 }
 
 /** Stopwatch time, e.g. 75_000 → "1:15", 3_725_000 → "1:02:05". */
@@ -95,6 +98,5 @@ export function duration(ms: number): string {
 
 /** "2026-11-09" → "9 Nov" in the device locale. */
 export function shortDate(iso: string): string {
-	const [y, m, d] = iso.split('-').map(Number);
-	return new Date(y, m - 1, d).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+	return parseIso(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 }

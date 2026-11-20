@@ -69,19 +69,7 @@ ORDER BY name COLLATE NOCASE, id LIMIT ?3`, afterName, afterID, limit+1)
 	if err != nil {
 		return nil, false, err
 	}
-	var ids []string
-	for rs.Next() {
-		var id string
-		if err := rs.Scan(&id); err != nil {
-			_ = rs.Close()
-			return nil, false, err
-		}
-		ids = append(ids, id)
-	}
-	err = rs.Err()
-	if cerr := rs.Close(); err == nil {
-		err = cerr
-	}
+	ids, err := scanIDs(rs)
 	if err != nil {
 		return nil, false, err
 	}
@@ -401,13 +389,9 @@ func (w *rowWriter) plan(cur *storedRoutine, r Routine) error {
 		} else {
 			e.ID = newID()
 		}
-		pos := exPositions[i]
-		superset := supersets[i]
-		if old.updatedAt == 0 || old.exerciseID != e.ExerciseID || old.position != pos || !sameString(old.supersetID, superset) {
-			w.add("routine_exercises", Row{
-				"id": e.ID, "updated_at": w.stamp(old.updatedAt), "deleted": false,
-				"routine_id": r.ID, "exercise_id": e.ExerciseID, "position": pos, "superset_id": nullable(superset),
-			})
+		next := storedExercise{id: e.ID, exerciseID: e.ExerciseID, position: exPositions[i], supersetID: supersets[i], updatedAt: old.updatedAt}
+		if old.updatedAt == 0 || old.exerciseID != next.exerciseID || old.position != next.position || !sameString(old.supersetID, next.supersetID) {
+			w.exercise(r.ID, next, false)
 		}
 
 		oldSets := map[string]*storedSet{}
@@ -433,21 +417,17 @@ func (w *rowWriter) plan(cur *storedRoutine, r Routine) error {
 			} else {
 				st.ID = newID()
 			}
-			pos := setPositions[j]
-			if os.updatedAt == 0 || os.position != pos || os.reps != st.Reps ||
-				os.warmup != st.Warmup || os.restSeconds != st.RestSeconds || os.duration != st.DurationSeconds ||
-				os.repMin != st.RepMin || os.repMax != st.RepMax {
-				w.add("routine_sets", Row{
-					"id": st.ID, "updated_at": w.stamp(os.updatedAt), "deleted": false,
-					"routine_exercise_id": e.ID, "position": pos, "reps": st.Reps,
-					"warmup": st.Warmup, "rest_seconds": st.RestSeconds, "duration_seconds": st.DurationSeconds,
-					"rep_min": st.RepMin, "rep_max": st.RepMax,
-				})
+			next := storedSet{
+				id: st.ID, position: setPositions[j], reps: st.Reps, warmup: st.Warmup, restSeconds: st.RestSeconds,
+				duration: st.DurationSeconds, repMin: st.RepMin, repMax: st.RepMax, updatedAt: os.updatedAt,
+			}
+			if os.updatedAt == 0 || *os != next {
+				w.set(e.ID, next, false)
 			}
 		}
 		for _, os := range old.sets {
 			if !keptSets[os.id] {
-				w.deleteSet(e.ID, os)
+				w.set(e.ID, os, true)
 			}
 		}
 	}
@@ -455,20 +435,26 @@ func (w *rowWriter) plan(cur *storedRoutine, r Routine) error {
 		if keptEx[old.id] {
 			continue
 		}
-		w.add("routine_exercises", Row{
-			"id": old.id, "updated_at": w.stamp(old.updatedAt), "deleted": true,
-			"routine_id": r.ID, "exercise_id": old.exerciseID, "position": old.position, "superset_id": nullable(old.supersetID),
-		})
+		w.exercise(r.ID, old, true)
 		for _, os := range old.sets {
-			w.deleteSet(old.id, os)
+			w.set(old.id, os, true)
 		}
 	}
 	return nil
 }
 
-func (w *rowWriter) deleteSet(exerciseID string, s storedSet) {
+// exercise and set queue a routine_exercises or routine_sets row with e's or
+// s's values, stamped to beat the stored updated_at they carry.
+func (w *rowWriter) exercise(routineID string, e storedExercise, deleted bool) {
+	w.add("routine_exercises", Row{
+		"id": e.id, "updated_at": w.stamp(e.updatedAt), "deleted": deleted,
+		"routine_id": routineID, "exercise_id": e.exerciseID, "position": e.position, "superset_id": nullable(e.supersetID),
+	})
+}
+
+func (w *rowWriter) set(exerciseID string, s storedSet, deleted bool) {
 	w.add("routine_sets", Row{
-		"id": s.id, "updated_at": w.stamp(s.updatedAt), "deleted": true,
+		"id": s.id, "updated_at": w.stamp(s.updatedAt), "deleted": deleted,
 		"routine_exercise_id": exerciseID, "position": s.position, "reps": s.reps,
 		"warmup": s.warmup, "rest_seconds": s.restSeconds, "duration_seconds": s.duration,
 		"rep_min": s.repMin, "rep_max": s.repMax,

@@ -14,10 +14,10 @@
 		parseDuration,
 		parseReps,
 		parseWeight,
+		plural,
 		repRange,
 		repTarget,
-		REST_CHOICES,
-		restLabel
+		REST_CHOICES
 	} from './format';
 	import { live } from './live.svelte';
 	import {
@@ -34,6 +34,7 @@
 		toBlocks,
 		unlink,
 		updateSet,
+		type Block,
 		type ExerciseView,
 		type Kind,
 		type SetView
@@ -152,6 +153,53 @@
 		if (set.warmup !== warmup) updateSet(kind, set.id, { warmup });
 	}
 
+	const UP_ICON = 'M12 19V5M6 11l6-6 6 6';
+	const DOWN_ICON = 'M12 5v14M6 13l6 6 6-6';
+
+	/** The menu's move items: a lone exercise moves as a block; one in a superset moves within it, or moves the whole superset. */
+	function moves(ex: ExerciseView, block: Block, bi: number, ei: number) {
+		const first = bi === 0;
+		const last = bi === blocks.length - 1;
+		const moveAll = (dir: -1 | 1) => () => moveBlock(kind, parentId, ex.id, dir);
+		if (!block.superset) {
+			return [
+				{ text: 'Move up', label: `Move ${ex.name} up`, icon: UP_ICON, disabled: first, run: moveAll(-1) },
+				{ text: 'Move down', label: `Move ${ex.name} down`, icon: DOWN_ICON, disabled: last, run: moveAll(1) }
+			];
+		}
+		const within = (dir: -1 | 1) => () => moveWithinSuperset(kind, parentId, ex.id, dir);
+		return [
+			{
+				text: 'Up in superset',
+				label: `Move ${ex.name} up in superset`,
+				icon: UP_ICON,
+				disabled: ei === 0,
+				run: within(-1)
+			},
+			{
+				text: 'Down in superset',
+				label: `Move ${ex.name} down in superset`,
+				icon: DOWN_ICON,
+				disabled: ei === block.items.length - 1,
+				run: within(1)
+			},
+			{
+				text: 'Move superset up',
+				label: 'Move superset up',
+				icon: UP_ICON,
+				disabled: first,
+				run: moveAll(-1)
+			},
+			{
+				text: 'Move superset down',
+				label: 'Move superset down',
+				icon: DOWN_ICON,
+				disabled: last,
+				run: moveAll(1)
+			}
+		];
+	}
+
 	/** Run a menu action and close the menu. */
 	function pick(action: () => unknown) {
 		menuFor = null;
@@ -172,7 +220,6 @@
 		else menu.scrollIntoView({ block: 'nearest' });
 	}
 
-	/** Focuses and selects the name field as it appears. */
 	/** Workout sets are checked off as they are performed; only checked sets count. */
 	const checkable = $derived(kind === 'workout');
 </script>
@@ -232,7 +279,8 @@
 								{#if collapsed}
 									<span class="fold-summary" transition:fade={{ duration: foldMs }}>
 										<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
-										{ex.sets.length === 1 ? '1 set' : `${ex.sets.length} sets`}
+										{ex.sets.length}
+										{plural(ex.sets.length, 'set')}
 									</span>
 								{/if}
 								<svg class="chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
@@ -289,63 +337,17 @@
 										Add set
 									</button>
 								{/if}
-								{#if block.superset}
+								{#each moves(ex, block, bi, ei) as m (m.text)}
 									<button
 										role="menuitem"
-										aria-label="Move {ex.name} up in superset"
-										disabled={ei === 0}
-										onclick={() => pick(() => moveWithinSuperset(kind, parentId, ex.id, -1))}
+										aria-label={m.label}
+										disabled={m.disabled}
+										onclick={() => pick(m.run)}
 									>
-										<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6" /></svg>
-										Up in superset
+										<svg viewBox="0 0 24 24" aria-hidden="true"><path d={m.icon} /></svg>
+										{m.text}
 									</button>
-									<button
-										role="menuitem"
-										aria-label="Move {ex.name} down in superset"
-										disabled={ei === block.items.length - 1}
-										onclick={() => pick(() => moveWithinSuperset(kind, parentId, ex.id, 1))}
-									>
-										<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6" /></svg>
-										Down in superset
-									</button>
-									<button
-										role="menuitem"
-										aria-label="Move superset up"
-										disabled={bi === 0}
-										onclick={() => pick(() => moveBlock(kind, parentId, ex.id, -1))}
-									>
-										<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6" /></svg>
-										Move superset up
-									</button>
-									<button
-										role="menuitem"
-										aria-label="Move superset down"
-										disabled={bi === blocks.length - 1}
-										onclick={() => pick(() => moveBlock(kind, parentId, ex.id, 1))}
-									>
-										<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6" /></svg>
-										Move superset down
-									</button>
-								{:else}
-									<button
-										role="menuitem"
-										aria-label="Move {ex.name} up"
-										disabled={bi === 0}
-										onclick={() => pick(() => moveBlock(kind, parentId, ex.id, -1))}
-									>
-										<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6" /></svg>
-										Move up
-									</button>
-									<button
-										role="menuitem"
-										aria-label="Move {ex.name} down"
-										disabled={bi === blocks.length - 1}
-										onclick={() => pick(() => moveBlock(kind, parentId, ex.id, 1))}
-									>
-										<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6" /></svg>
-										Move down
-									</button>
-								{/if}
+								{/each}
 								{#if ei === 0 && bi > 0}
 									<button role="menuitem" onclick={() => pick(() => linkToAbove(kind, parentId, ex.id))}>
 										<svg viewBox="0 0 24 24" aria-hidden="true"
@@ -537,7 +539,7 @@
 												<svg viewBox="0 0 24 24" aria-hidden="true">
 													<circle cx="12" cy="13" r="8" /><path d="M12 9v4l2.5 2.5M10 2.5h4" />
 												</svg>
-												{restLabel(set.rest_seconds)}
+												{durationLabel(set.rest_seconds)}
 											</span>
 											<select
 												aria-label="Rest after set {si + 1}"
@@ -546,7 +548,7 @@
 													updateSet(kind, set.id, { rest_seconds: Number(e.currentTarget.value) })}
 											>
 												{#each restOptions(set.rest_seconds) as sec (sec)}
-													<option value={sec}>{sec === 0 ? 'No rest' : restLabel(sec)}</option>
+													<option value={sec}>{sec === 0 ? 'No rest' : durationLabel(sec)}</option>
 												{/each}
 											</select>
 										</label>
@@ -584,6 +586,7 @@
 	{:else if picking}
 		<p>No exercise with that name.</p>
 	{/if}
+	<svg class="plus" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
 	<input
 		aria-label="Find exercise"
 		placeholder="Add exercise"

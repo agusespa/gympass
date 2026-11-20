@@ -1,8 +1,9 @@
 <script lang="ts">
 	import type { Workout } from '#lib/db.ts';
-	import { duration, durationLabel, kg, longDate, setLabel, shortDate } from '#lib/format.ts';
+	import { addDays, isoDate, parseIso, today } from '#lib/dates.ts';
+	import { duration, durationLabel, kg, kg1, longDate, plural, setLabel, shortDate } from '#lib/format.ts';
 	import { live } from '#lib/live.svelte.ts';
-	import { getWeeklyGoal, listWorkouts, today } from '#lib/repo.ts';
+	import { getWeeklyGoal, listWorkouts } from '#lib/repo.ts';
 	import {
 		behindGoal,
 		exerciseStats,
@@ -17,22 +18,9 @@
 	import { syncNeedsAttention } from '#lib/sync.svelte.ts';
 	import WeeklyChart from '#lib/WeeklyChart.svelte';
 
-	const workouts = live(
-		() => null,
-		() => listWorkouts(),
-		[] as Workout[]
-	);
-	const history = live(
-		() => null,
-		() => loadHistory(),
-		{ workoutDates: [], performances: [] } as History
-	);
-
-	const goal = live(
-		() => null,
-		() => getWeeklyGoal(),
-		0
-	);
+	const workouts = live(listWorkouts, [] as Workout[]);
+	const history = live(loadHistory, { workoutDates: [], performances: [] } as History);
+	const goal = live(getWeeklyGoal, 0);
 
 	const todayIso = today();
 	const stats = $derived(summary(history.current, todayIso, goal.current));
@@ -43,22 +31,18 @@
 	const records = $derived(recentRecords(exercises, todayIso).slice(0, 5));
 
 	/** Records from the last two weeks get a "New" badge. */
-	const newSince = (() => {
-		const d = new Date();
-		d.setDate(d.getDate() - 14);
-		return iso(d);
-	})();
+	const newSince = addDays(todayIso, -14);
 
 	function recordText(r: RecentRecord): string {
 		const s = r.record.set;
 		if (r.kind === 'reps') return `${s.reps} reps`;
 		if (r.kind === 'time') return durationLabel(s.duration_seconds);
-		if (r.kind === 'e1rm') return `${kg(Math.round(r.record.value * 10) / 10)} kg est. 1RM`;
+		if (r.kind === 'e1rm') return `${kg1(r.record.value)} kg est. 1RM`;
 		return `${kg(s.weight_kg)} kg × ${s.reps}`;
 	}
 
 	function exerciseLine(x: ExerciseStats): string {
-		const sessions = `${x.sessions} ${x.sessions === 1 ? 'session' : 'sessions'}`;
+		const sessions = `${x.sessions} ${plural(x.sessions, 'session')}`;
 		const h = x.heaviest?.set;
 		if (h?.weight_kg) return `${sessions} · best ${setLabel(h, x.timed)}`;
 		if (x.timed)
@@ -70,11 +54,7 @@
 	const exerciseHref = (key: string) => `/exercises/${encodeURIComponent(key)}`;
 	let selected = $state(todayIso);
 	// First day of the month on screen.
-	let month = $state(new Date(Number(todayIso.slice(0, 4)), Number(todayIso.slice(5, 7)) - 1, 1));
-
-	function iso(d: Date): string {
-		return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-	}
+	let month = $state(parseIso(`${todayIso.slice(0, 7)}-01`));
 
 	const byDate = $derived.by(() => {
 		const map = new Map<string, Workout[]>();
@@ -91,7 +71,7 @@
 		const lead = (month.getDay() + 6) % 7;
 		const days = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
 		const out: (string | null)[] = Array(lead).fill(null);
-		for (let d = 1; d <= days; d++) out.push(iso(new Date(month.getFullYear(), month.getMonth(), d)));
+		for (let d = 1; d <= days; d++) out.push(isoDate(new Date(month.getFullYear(), month.getMonth(), d)));
 		return out;
 	});
 
@@ -132,7 +112,7 @@
 	</div>
 	<div>
 		<dt>Streak</dt>
-		<dd data-testid="stat-streak">{stats.streakWeeks} {stats.streakWeeks === 1 ? 'wk' : 'wks'}</dd>
+		<dd data-testid="stat-streak">{stats.streakWeeks} {plural(stats.streakWeeks, 'wk')}</dd>
 	</div>
 	<div>
 		<dt>Avg / week</dt>
@@ -147,7 +127,7 @@
 		<button class="nav" aria-label="Previous month" onclick={() => shift(-1)}>‹</button>
 		<div class="title">
 			<strong>{monthLabel}</strong>
-			<span class="muted">{monthCount} {monthCount === 1 ? 'workout' : 'workouts'}</span>
+			<span class="muted">{monthCount} {plural(monthCount, 'workout')}</span>
 		</div>
 		<button class="nav" aria-label="Next month" onclick={() => shift(1)}>›</button>
 	</div>
@@ -165,7 +145,7 @@
 					class:today={d === todayIso}
 					class:selected={d === selected}
 					aria-pressed={d === selected}
-					aria-label="{longDate(d)}{count ? `, ${count} ${count === 1 ? 'workout' : 'workouts'}` : ''}"
+					aria-label="{longDate(d)}{count ? `, ${count} ${plural(count, 'workout')}` : ''}"
 					onclick={() => (selected = d)}
 				>
 					{Number(d.slice(8))}
@@ -240,10 +220,24 @@
 {/if}
 
 <style>
+	/* Stays at the top while scrolling, on the same frosted bar as the other screens' top bar. */
 	.title-row {
+		position: sticky;
+		top: 0;
+		z-index: 5;
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
+		margin: calc(-1 * (env(safe-area-inset-top) + 1.6rem)) -1rem 0.75rem;
+		padding: calc(env(safe-area-inset-top) + 1.6rem) 1rem 0.5rem;
+		background: var(--bar);
+		-webkit-backdrop-filter: var(--bar-filter);
+		backdrop-filter: var(--bar-filter);
+		border-bottom: 1px solid var(--border);
+	}
+
+	.title-row .large-title {
+		margin: 0;
 	}
 
 	.settings {

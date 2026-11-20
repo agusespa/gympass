@@ -2,10 +2,7 @@ package api
 
 import (
 	"context"
-	"errors"
-	"log"
 	"net/http"
-	"net/url"
 	"strconv"
 	"time"
 
@@ -36,32 +33,17 @@ type listTotals struct {
 func listWorkoutsHandler(s *store.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
-		out, err := listWorkouts(r.Context(), s, q)
+		limit, err := queryLimit(q.Get("limit"))
+		var out workoutList
+		if err == nil {
+			out, err = workoutRange(r.Context(), s, q.Get("from"), q.Get("to"), limit, q.Get("cursor"))
+		}
 		if err != nil {
-			writeListError(w, "list workouts", err)
+			writeError(w, "list workouts", err)
 			return
 		}
 		writeJSON(w, http.StatusOK, out)
 	}
-}
-
-func listWorkouts(ctx context.Context, s *store.Store, q url.Values) (workoutList, error) {
-	limit, err := queryLimit(q.Get("limit"))
-	if err != nil {
-		return workoutList{}, err
-	}
-	return workoutRange(ctx, s, q.Get("from"), q.Get("to"), limit, q.Get("cursor"))
-}
-
-// writeListError answers a failed list request: 400 for bad parameters.
-func writeListError(w http.ResponseWriter, what string, err error) {
-	var pe paramError
-	if errors.As(err, &pe) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": pe.Error()})
-		return
-	}
-	log.Printf("%s: %v", what, err)
-	writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
 }
 
 // workoutRange lists one page of the finished workouts dated from..to
@@ -133,15 +115,13 @@ func workoutAfter(key, after []string) bool {
 
 func getWorkoutHandler(s *store.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		snap, ok, err := s.Workout(r.Context(), r.PathValue("id"))
-		if err != nil {
-			log.Printf("get workout: %v", err)
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
-			return
-		}
 		// Running, discarded and deleted workouts are not part of the read API.
-		if !ok || snap.Deleted || snap.FinishedAt == nil {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		snap, ok, err := s.FinishedWorkout(r.Context(), r.PathValue("id"))
+		if err == nil && !ok {
+			err = store.ErrNotFound
+		}
+		if err != nil {
+			writeError(w, "get workout", err)
 			return
 		}
 		writeJSON(w, http.StatusOK, webhook.FromSnapshot(snap))

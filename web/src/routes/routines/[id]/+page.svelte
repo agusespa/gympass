@@ -3,6 +3,7 @@
 	import { page } from '$app/state';
 	import ConfirmButton from '#lib/ConfirmButton.svelte';
 	import ExerciseEditor from '#lib/ExerciseEditor.svelte';
+	import NameInput from '#lib/NameInput.svelte';
 	import TopBar from '#lib/TopBar.svelte';
 	import { live } from '#lib/live.svelte.ts';
 	import { deleteRoutine, getRoutine, updateRoutine } from '#lib/repo.ts';
@@ -24,14 +25,10 @@
 {#if routine.current}
 	<TopBar title="Edit routine" fallback="/" />
 	<div class="page-details">
-		<input
-			class="page-name"
-			aria-label="Routine name"
+		<NameInput
+			label="Routine name"
 			value={routine.current.name}
-			onchange={(e) => {
-				const v = e.currentTarget.value.trim();
-				if (v) updateRoutine(id, { name: v });
-			}}
+			onsave={(name) => updateRoutine(id, { name })}
 		/>
 	</div>
 

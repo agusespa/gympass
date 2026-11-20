@@ -4,9 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"strings"
 	"time"
-	"unicode"
 )
 
 // The webhook outbox holds one row per finished workout that has to be sent
@@ -27,39 +25,6 @@ type PendingWebhook struct {
 	DueAt     int64 // ms; pass back to the Mark* methods
 	Attempts  int
 	Sent      bool // an earlier version was delivered
-}
-
-// WorkoutSnapshot is a workout with its live exercises and sets, in order.
-type WorkoutSnapshot struct {
-	ID         string
-	Name       string
-	Date       string
-	StartedAt  int64  // ms
-	FinishedAt *int64 // ms
-	Deleted    bool
-	Exercises  []ExerciseSnapshot
-}
-
-type ExerciseSnapshot struct {
-	Name       string
-	SupersetID *string
-	Sets       []SetSnapshot
-}
-
-type SetSnapshot struct {
-	Reps        int64
-	WeightKg    float64
-	Warmup      bool
-	RestSeconds int64
-	// DurationSeconds is how long a timed set lasted; 0 for sets counted in reps.
-	DurationSeconds int64
-}
-
-func (s *Store) nowMs() int64 {
-	if s.now != nil {
-		return s.now().UnixMilli()
-	}
-	return time.Now().UnixMilli()
 }
 
 // scheduleWebhooks queues a send for every finished workout touched by the
@@ -148,70 +113,4 @@ func (s *Store) RetryWebhook(ctx context.Context, p PendingWebhook, after time.D
 		"UPDATE webhook_outbox SET due_at = ?, attempts = attempts + 1 WHERE workout_id = ? AND due_at = ?",
 		s.nowMs()+after.Milliseconds(), p.WorkoutID, p.DueAt)
 	return err
-}
-
-// Workout returns the current state of a workout, or ok=false if it is unknown.
-func (s *Store) Workout(ctx context.Context, id string) (w WorkoutSnapshot, ok bool, err error) {
-	var finished sql.NullInt64
-	var deleted int64
-	err = s.db.QueryRowContext(ctx, "SELECT id, name, date, started_at, finished_at, deleted FROM workouts WHERE id = ?", id).
-		Scan(&w.ID, &w.Name, &w.Date, &w.StartedAt, &finished, &deleted)
-	if errors.Is(err, sql.ErrNoRows) {
-		return w, false, nil
-	}
-	if err != nil {
-		return w, false, err
-	}
-	if finished.Valid {
-		w.FinishedAt = &finished.Int64
-	}
-	w.Deleted = deleted == 1
-
-	rs, err := s.db.QueryContext(ctx, `SELECT e.id, e.exercise_id, e.superset_id, s.reps, s.weight_kg, s.warmup, s.rest_seconds, s.duration_seconds
-FROM workout_exercises e
-LEFT JOIN sets s ON s.workout_exercise_id = e.id AND s.deleted = 0 AND s.done = 1
-WHERE e.workout_id = ? AND e.deleted = 0
-ORDER BY e.position, e.id, s.position, s.id`, id)
-	if err != nil {
-		return w, false, err
-	}
-	defer func() { _ = rs.Close() }()
-	lastID := ""
-	for rs.Next() {
-		var exID, exerciseID string
-		var superset sql.NullString
-		var reps, warmup, rest, duration sql.NullInt64
-		var weight sql.NullFloat64
-		if err := rs.Scan(&exID, &exerciseID, &superset, &reps, &weight, &warmup, &rest, &duration); err != nil {
-			return w, false, err
-		}
-		if exID != lastID {
-			ex := ExerciseSnapshot{Name: exerciseName(exerciseID), Sets: []SetSnapshot{}}
-			if superset.Valid {
-				ex.SupersetID = &superset.String
-			}
-			w.Exercises = append(w.Exercises, ex)
-			lastID = exID
-		}
-		if reps.Valid {
-			ex := &w.Exercises[len(w.Exercises)-1]
-			ex.Sets = append(ex.Sets, SetSnapshot{
-				Reps: reps.Int64, WeightKg: weight.Float64, Warmup: warmup.Int64 == 1, RestSeconds: rest.Int64,
-				DurationSeconds: duration.Int64,
-			})
-		}
-	}
-	return w, true, rs.Err()
-}
-
-// ExerciseKey is how the API matches an exercise name to the catalogue:
-// trimmed and lowercased one rune at a time.
-func ExerciseKey(name string) string {
-	return strings.ToLower(TrimName(name))
-}
-
-// TrimName strips leading and trailing white space: Unicode White_Space plus
-// U+FEFF, the same set as the client's trimName (JS \s plus U+0085).
-func TrimName(name string) string {
-	return strings.TrimFunc(name, func(r rune) bool { return unicode.IsSpace(r) || r == '\uFEFF' })
 }

@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"slices"
 	"sort"
+	"strings"
+	"unicode"
 )
 
 // catalog.json lists every exercise there is; the app imports the same file
@@ -53,4 +55,16 @@ func Exercises() []Exercise {
 	out := slices.Clone(catalog)
 	sort.Slice(out, func(i, j int) bool { return ExerciseKey(out[i].Name) < ExerciseKey(out[j].Name) })
 	return out
+}
+
+// ExerciseKey is how the API matches an exercise name to the catalogue:
+// trimmed and lowercased one rune at a time.
+func ExerciseKey(name string) string {
+	return strings.ToLower(TrimName(name))
+}
+
+// TrimName strips leading and trailing white space: Unicode White_Space plus
+// U+FEFF, the same set as the client's trimName (JS \s plus U+0085).
+func TrimName(name string) string {
+	return strings.TrimFunc(name, func(r rune) bool { return unicode.IsSpace(r) || r == '\uFEFF' })
 }

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Workout } from '#lib/db.ts';
 	import { goto } from '$app/navigation';
+	import { plural } from '#lib/format.ts';
 	import { live } from '#lib/live.svelte.ts';
 	import {
 		createRoutine,
@@ -11,17 +12,8 @@
 		type RoutineSummary
 	} from '#lib/repo.ts';
 
-	const routines = live(
-		() => null,
-		() => listRoutines(),
-		[] as RoutineSummary[]
-	);
-
-	const running = live(
-		() => null,
-		() => listRunningWorkouts(),
-		[] as Workout[]
-	);
+	const routines = live(listRoutines, [] as RoutineSummary[]);
+	const running = live(listRunningWorkouts, [] as Workout[]);
 
 	const todayLabel = new Date().toLocaleDateString(undefined, {
 		weekday: 'long',
@@ -100,7 +92,7 @@
 						<span class="meta">
 							{#if r.exercise_count > 0}
 								<b>{r.exercise_count}</b>
-								{r.exercise_count === 1 ? 'exercise' : 'exercises'}
+								{plural(r.exercise_count, 'exercise')}
 							{:else}
 								No exercises yet
 							{/if}
