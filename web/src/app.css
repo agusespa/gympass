@@ -173,6 +173,16 @@ button.danger {
 	padding: 0.25rem 0;
 }
 
+/* In the top bar: small enough that the bar stays slim. */
+.page-name.compact {
+	font-size: 1.15rem;
+	font-weight: 600;
+	min-height: 0;
+	height: 32px;
+	padding: 0;
+	text-overflow: ellipsis;
+}
+
 .page-actions {
 	margin-top: 1.25rem;
 }

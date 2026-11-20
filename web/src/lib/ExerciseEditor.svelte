@@ -1121,7 +1121,19 @@
 	}
 
 	.add-exercise {
+		position: relative;
 		margin-top: 1.25rem;
+	}
+
+	/* Inside the box at its left; bottom-anchored because the matches list sits above it. */
+	.add-exercise .plus {
+		position: absolute;
+		left: 0.9rem;
+		bottom: 14px;
+		width: 20px;
+		height: 20px;
+		color: var(--muted);
+		pointer-events: none;
 	}
 
 	.add-exercise input {
@@ -1129,7 +1141,7 @@
 		background: var(--surface);
 		border-color: transparent;
 		border-radius: 12px;
-		padding: 0 1rem;
+		padding: 0 1rem 0 2.6rem;
 	}
 
 	.add-exercise ul {

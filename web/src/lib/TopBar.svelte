@@ -6,6 +6,7 @@
 	 * Sticky screen header with a back button; `fallback` is used when there is no history to go back to.
 	 * `action` renders on the right (e.g. a Finish button). `back={false}` hides the back button.
 	 * `progress` (0 to 1) draws a line that far along the bar's bottom edge.
+	 * `center` sits between the title and `action`, taking the room left (e.g. a running workout's name).
 	 * Children render under the row, inside the bar, so they stay on screen too (e.g. a workout's name).
 	 */
 	let {
@@ -14,6 +15,7 @@
 		titleLabel,
 		back: showBack = true,
 		action,
+		center,
 		progress,
 		children
 	}: {
@@ -23,6 +25,7 @@
 		fallback: string;
 		back?: boolean;
 		action?: Snippet;
+		center?: Snippet;
 		progress?: number;
 		children?: Snippet;
 	} = $props();
@@ -41,13 +44,16 @@
 			</button>
 		{/if}
 		<!-- No whitespace around the text, so the timer reads exactly "0:42". -->
-		<span class="title" role={titleLabel ? 'timer' : undefined} aria-label={titleLabel}
+		<span class="title" class:shrink={center} role={titleLabel ? 'timer' : undefined} aria-label={titleLabel}
 			>{#if titleLabel && title}<svg class="clock" viewBox="0 0 24 24" aria-hidden="true"
 					><circle cx="12" cy="13.5" r="7.5" /><path
 						d="M12 13.5V10M10 2.5h4M12 2.5V6M18.5 6.5l1.5-1.5"
 					/></svg
 				>{/if}{title}</span
 		>
+		{#if center}
+			<span class="center">{@render center()}</span>
+		{/if}
 		{#if action}
 			<span class="action">{@render action()}</span>
 		{/if}
@@ -83,7 +89,12 @@
 	}
 
 	.below {
-		padding: 0.25rem 0 0.4rem;
+		padding: 0 0 0.15rem;
+	}
+
+	/* Children that render nothing (e.g. a running workout's) leave no gap. */
+	.below:empty {
+		display: none;
 	}
 
 	/* iOS-style back chevron: no background, tinted like a link. */
@@ -119,6 +130,18 @@
 		font-weight: 500;
 		/* Digits keep their width so a ticking clock doesn't jitter. */
 		font-variant-numeric: tabular-nums;
+	}
+
+	/* Just as wide as the clock, leaving the rest of the row to `center`. */
+	.title.shrink {
+		flex: none;
+	}
+
+	.center {
+		flex: 1;
+		display: flex;
+		min-width: 0;
+		margin: 0 0.5rem 0 0.75rem;
 	}
 
 	.clock {

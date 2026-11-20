@@ -82,10 +82,20 @@
 				<button class="primary finish" onclick={() => goto(`/workouts/${id}/finish`)}>Finish</button>
 			{/if}
 		{/snippet}
-		<!-- Inside the bar, so the name stays on screen while scrolling through the sets. -->
-		<NameInput label="Workout name" value={w.name} onsave={(name) => updateWorkout(id, { name })} />
-		<!-- A running workout is always today; the date is only editable once it is in history. -->
+		<!-- Running: the name shares the clock's row so the bar stays one line; a long name gets "…". -->
+		{#snippet center()}
+			{#if running}
+				<NameInput
+					compact
+					label="Workout name"
+					value={w.name}
+					onsave={(name) => updateWorkout(id, { name })}
+				/>
+			{/if}
+		{/snippet}
+		<!-- Finished: name and date under the back button. A running workout is always today. -->
 		{#if !running}
+			<NameInput compact label="Workout name" value={w.name} onsave={(name) => updateWorkout(id, { name })} />
 			<input
 				class="date"
 				type="date"
