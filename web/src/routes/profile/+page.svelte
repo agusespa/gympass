@@ -245,7 +245,8 @@
 		place-items: center;
 		width: 44px;
 		height: 44px;
-		margin: -0.5rem -0.5rem 0.5rem 0;
+		/* Negative margins keep the 44px tap target without making the row taller. */
+		margin: -0.5rem -0.5rem -0.5rem 0;
 		color: var(--accent);
 		position: relative;
 	}
