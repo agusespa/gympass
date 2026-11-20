@@ -82,8 +82,8 @@
 				<button class="primary finish" onclick={() => goto(`/workouts/${id}/finish`)}>Finish</button>
 			{/if}
 		{/snippet}
-		<!-- Running: the name shares the clock's row so the bar stays one line; a long name gets "…". -->
-		{#snippet center()}
+		<!-- Running: the name comes first on the clock's row so the bar stays one line; a long name gets "…". -->
+		{#snippet lead()}
 			{#if running}
 				<NameInput
 					compact
