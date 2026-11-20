@@ -5,7 +5,7 @@
 	import ExerciseEditor from '#lib/ExerciseEditor.svelte';
 	import NameInput from '#lib/NameInput.svelte';
 	import RoutineIcon from '#lib/RoutineIcon.svelte';
-	import { ROUTINE_ICONS } from '#lib/routine-icons.ts';
+	import { SPLITS, type Split } from '#lib/splits.ts';
 	import TopBar from '#lib/TopBar.svelte';
 	import { live } from '#lib/live.svelte.ts';
 	import { deleteRoutine, getRoutine, updateRoutine } from '#lib/repo.ts';
@@ -34,19 +34,35 @@
 		/>
 	</div>
 
-	<div class="icons" role="group" aria-label="Icon">
-		{#each [{ id: '', label: 'Default' } as const, ...ROUTINE_ICONS] as opt (opt.id)}
-			<button
-				class="icon-option"
-				aria-label="{opt.label} icon"
-				aria-pressed={routine.current.icon === opt.id}
-				onclick={() => updateRoutine(id, { icon: opt.id })}
+	<!-- The split picks the routine's icon; a custom one is named here too. -->
+	<section class="split">
+		<span class="tile"><RoutineIcon split={routine.current.split} /></span>
+		<label class="field">
+			<span class="field-label">Split</span>
+			<select
+				aria-label="Split"
+				value={routine.current.split}
+				onchange={(e) => {
+					const split = e.currentTarget.value as Split | '';
+					updateRoutine(id, { split, split_name: split === 'custom' ? routine.current!.split_name : '' });
+				}}
 			>
-				<span class="tile"><RoutineIcon icon={opt.id} /></span>
-				{opt.label}
-			</button>
-		{/each}
-	</div>
+				<option value="">None</option>
+				{#each SPLITS as s (s.id)}
+					<option value={s.id}>{s.label}</option>
+				{/each}
+			</select>
+		</label>
+		{#if routine.current.split === 'custom'}
+			<input
+				class="custom-name"
+				aria-label="Split name"
+				placeholder="Split name, e.g. Arms"
+				value={routine.current.split_name}
+				onchange={(e) => updateRoutine(id, { split_name: e.currentTarget.value.trim() })}
+			/>
+		{/if}
+	</section>
 
 	{#key id}
 		<ExerciseEditor kind="routine" parentId={id} />
@@ -63,50 +79,54 @@
 {/if}
 
 <style>
-	/* One scrolling row, so the exercises stay close to the top. */
-	.icons {
-		display: flex;
-		gap: 0.4rem;
-		margin: 0 -1rem 1rem;
-		padding: 0 1rem 0.25rem;
-		overflow-x: auto;
-		scrollbar-width: none;
-	}
-
-	.icon-option {
-		flex: none;
-		display: flex;
-		flex-direction: column;
+	.split {
+		display: grid;
+		grid-template-columns: auto 1fr;
 		align-items: center;
-		gap: 0.3rem;
-		width: 64px;
-		min-height: 0;
-		padding: 0;
-		background: none;
-		color: var(--muted);
-		font-size: 0.7rem;
-		font-weight: 500;
-		line-height: 1.15;
-		text-align: center;
+		gap: 0.6rem 0.75rem;
+		margin: 0.9rem 0 1rem;
+		padding: 0.6rem 0.75rem;
+		border-radius: 14px;
+		background: var(--surface);
 	}
 
 	.tile {
-		width: 52px;
-		height: 52px;
-		padding: 6px;
-		border-radius: 14px;
-		background: var(--surface);
-		color: var(--text);
+		width: 44px;
+		height: 44px;
+		padding: 5px;
+		border-radius: 12px;
+		background: color-mix(in srgb, var(--accent) 15%, transparent);
+		color: var(--accent);
 	}
 
-	.icon-option[aria-pressed='true'] {
-		color: var(--accent);
+	.field {
+		display: flex;
+		flex-direction: column;
+		gap: 0.1rem;
+		min-width: 0;
+	}
+
+	.field-label {
+		font-size: 0.75rem;
+		font-weight: 600;
+		color: var(--muted);
+	}
+
+	/* Reads as a value with a chevron, not a form box. */
+	select {
+		appearance: none;
+		width: 100%;
+		min-height: 28px;
+		padding: 0 1.4rem 0 0;
+		border: none;
+		background: transparent
+			url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 10l5 5 5-5'/%3E%3C/svg%3E")
+			right center / 18px no-repeat;
+		font-size: 1.05rem;
 		font-weight: 600;
 	}
 
-	.icon-option[aria-pressed='true'] .tile {
-		background: color-mix(in srgb, var(--accent) 18%, transparent);
-		box-shadow: inset 0 0 0 2px var(--accent);
-		color: var(--accent);
+	.custom-name {
+		grid-column: 1 / -1;
 	}
 </style>

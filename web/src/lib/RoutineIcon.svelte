@@ -1,17 +1,18 @@
 <script lang="ts">
-	import { HIGHLIGHTS, type BodyPart, type RoutineIcon } from './routine-icons.ts';
+	import { HIGHLIGHTS, type BodyPart, type Split } from './splits.ts';
 
-	/** A routine's icon: a figure with the trained parts lit, or a dumbbell when none is chosen. */
-	let { icon }: { icon: RoutineIcon | '' } = $props();
+	/** A routine's icon from its split: a figure with the trained parts lit, or a dumbbell for a custom or unset split. */
+	let { split }: { split: Split | '' } = $props();
 
-	const lit = $derived(new Set<BodyPart>(icon ? HIGHLIGHTS[icon] : []));
+	const parts = $derived(split ? HIGHLIGHTS[split] : undefined);
+	const lit = $derived(new Set<BodyPart>(parts ?? []));
 	const fromBehind = $derived(lit.has('back'));
 	const op = (part: BodyPart) => (lit.has(part) ? 1 : 0.25);
 </script>
 
-{#if icon}
+{#if parts}
 	<svg class="figure" viewBox="0 0 24 24" aria-hidden="true">
-		<circle cx="12" cy="3.6" r="2.1" opacity={icon === 'full' ? 1 : 0.25} />
+		<circle cx="12" cy="3.6" r="2.1" opacity={split === 'full' ? 1 : 0.25} />
 		<g opacity={op('shoulders')}>
 			<ellipse cx="7.4" cy="7.9" rx="1.7" ry="1.5" />
 			<ellipse cx="16.6" cy="7.9" rx="1.7" ry="1.5" />

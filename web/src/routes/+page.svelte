@@ -4,6 +4,7 @@
 	import { plural } from '#lib/format.ts';
 	import { live } from '#lib/live.svelte.ts';
 	import RoutineIcon from '#lib/RoutineIcon.svelte';
+	import { splitLabel } from '#lib/splits.ts';
 	import {
 		createRoutine,
 		createWorkout,
@@ -79,10 +80,12 @@
 		{#each routines.current as r (r.id)}
 			<li style="--h: {hue(r.name)}">
 				<a href="/routines/{r.id}">
-					<span class="avatar" aria-hidden="true"><RoutineIcon icon={r.icon} /></span>
+					<span class="avatar" aria-hidden="true"><RoutineIcon split={r.split} /></span>
 					<span class="info">
 						<span class="name">{r.name}</span>
 						<span class="meta">
+							{#if splitLabel(r.split, r.split_name)}{splitLabel(r.split, r.split_name)} ·
+							{/if}
 							{#if r.exercise_count > 0}
 								<b>{r.exercise_count}</b>
 								{plural(r.exercise_count, 'exercise')}

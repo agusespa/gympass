@@ -84,8 +84,10 @@ var tables = []table{
 	}, indexes: []string{"workout_exercise_id"}},
 	{name: "routines", cols: []column{
 		{name: "name", typ: colText},
-		// One of RoutineIcons, or "" for the default icon.
-		{name: "icon", typ: colText},
+		// The split it trains: one of RoutineSplits, or "" when not chosen.
+		{name: "split", typ: colText},
+		// The split's name when split is "custom"; "" otherwise.
+		{name: "split_name", typ: colText},
 	}},
 	{name: "routine_exercises", cols: []column{
 		{name: "routine_id", typ: colRef},

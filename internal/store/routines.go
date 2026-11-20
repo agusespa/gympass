@@ -16,14 +16,17 @@ import (
 type Routine struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
-	// Icon is one of RoutineIcons, or "" for the default icon.
-	Icon      string            `json:"icon"`
+	// Split is the split it trains, one of RoutineSplits, or "" when not
+	// chosen. The app draws its icon from it.
+	Split string `json:"split"`
+	// SplitName names a "custom" split; it is cleared for any other split.
+	SplitName string            `json:"split_name"`
 	Exercises []RoutineExercise `json:"exercises"`
 }
 
-// RoutineIcons are the body-part icons a routine can show, by the split it
-// trains. The app draws them (web/src/lib/routine-icons.ts mirrors this list).
-var RoutineIcons = []string{"full", "upper", "lower", "push", "pull", "chest", "back", "shoulders", "arms", "core"}
+// RoutineSplits are the splits a routine can train (web/src/lib/splits.ts
+// mirrors this list). "custom" is named by SplitName.
+var RoutineSplits = []string{"full", "upper", "lower", "push", "pull", "custom"}
 
 type RoutineExercise struct {
 	ID string `json:"id"`
@@ -183,8 +186,14 @@ func validateRoutine(r *Routine) error {
 	if r.Name, err = text("name", r.Name); err != nil {
 		return err
 	}
-	if r.Icon != "" && !slices.Contains(RoutineIcons, r.Icon) {
-		return invalid("icon must be one of %s, or empty", strings.Join(RoutineIcons, ", "))
+	if r.Split != "" && !slices.Contains(RoutineSplits, r.Split) {
+		return invalid("split must be one of %s, or empty", strings.Join(RoutineSplits, ", "))
+	}
+	r.SplitName = strings.TrimSpace(r.SplitName)
+	if r.Split != "custom" {
+		r.SplitName = ""
+	} else if utf8.RuneCountInString(r.SplitName) > maxTextLen {
+		return invalid("split_name must be at most %d characters", maxTextLen)
 	}
 	if len(r.Exercises) > maxRoutineExercises {
 		return invalid("at most %d exercises", maxRoutineExercises)
@@ -249,9 +258,9 @@ func validateRoutine(r *Routine) error {
 
 // storedRoutine is a routine's live rows as they are in the database.
 type storedRoutine struct {
-	id, name, icon string
-	updatedAt      int64
-	exercises      []storedExercise
+	id, name, split, splitName string
+	updatedAt                  int64
+	exercises                  []storedExercise
 }
 
 type storedExercise struct {
@@ -275,7 +284,7 @@ type storedSet struct {
 }
 
 func (c *storedRoutine) routine() Routine {
-	r := Routine{ID: c.id, Name: c.name, Icon: c.icon, Exercises: make([]RoutineExercise, 0, len(c.exercises))}
+	r := Routine{ID: c.id, Name: c.name, Split: c.split, SplitName: c.splitName, Exercises: make([]RoutineExercise, 0, len(c.exercises))}
 	for _, e := range c.exercises {
 		ex := RoutineExercise{ID: e.id, ExerciseID: e.exerciseID, Name: e.name, SupersetID: e.supersetID, Sets: make([]RoutineSet, 0, len(e.sets))}
 		for _, st := range e.sets {
@@ -292,8 +301,8 @@ func (c *storedRoutine) routine() Routine {
 // loadRoutine returns nil if the routine is missing or deleted.
 func loadRoutine(ctx context.Context, tx *sql.Tx, id string) (*storedRoutine, error) {
 	c := &storedRoutine{id: id}
-	err := tx.QueryRowContext(ctx, "SELECT name, icon, updated_at FROM routines WHERE id = ? AND deleted = 0", id).
-		Scan(&c.name, &c.icon, &c.updatedAt)
+	err := tx.QueryRowContext(ctx, "SELECT name, split, split_name, updated_at FROM routines WHERE id = ? AND deleted = 0", id).
+		Scan(&c.name, &c.split, &c.splitName, &c.updatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -371,8 +380,8 @@ func resolveExercises(r *Routine) error {
 }
 
 func (w *rowWriter) plan(cur *storedRoutine, r Routine) error {
-	if cur.updatedAt == 0 || cur.name != r.Name || cur.icon != r.Icon {
-		w.add("routines", Row{"id": r.ID, "updated_at": w.stamp(cur.updatedAt), "deleted": false, "name": r.Name, "icon": r.Icon})
+	if cur.updatedAt == 0 || cur.name != r.Name || cur.split != r.Split || cur.splitName != r.SplitName {
+		w.add("routines", Row{"id": r.ID, "updated_at": w.stamp(cur.updatedAt), "deleted": false, "name": r.Name, "split": r.Split, "split_name": r.SplitName})
 	}
 
 	oldEx := map[string]*storedExercise{}

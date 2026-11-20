@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie';
-import type { RoutineIcon } from './routine-icons.ts';
+import type { Split } from './splits.ts';
 
 /** Fields every synced record has. Mirrors internal/store/schema.go. */
 export interface Synced {
@@ -74,8 +74,10 @@ export interface RoutineSet extends SetRow {
 
 export interface Routine extends Synced {
 	name: string;
-	/** A body-part icon (routine-icons.ts), or '' for the default one. */
-	icon: RoutineIcon | '';
+	/** The split it trains (splits.ts), or '' when not chosen. Its icon follows it. */
+	split: Split | '';
+	/** The name of a custom split; '' for any other. */
+	split_name: string;
 }
 
 /** User settings: one row with id SETTINGS_ID, so every device edits the same row. */

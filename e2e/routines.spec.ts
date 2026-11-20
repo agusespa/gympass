@@ -46,10 +46,10 @@ test('create a routine from scratch, start it from the list, delete it', async (
 	await page.goto('/');
 	await page.getByRole('button', { name: 'New routine' }).click();
 	await setText(page.getByLabel('Routine name'), `Arms ${id}`);
-	const icons = page.getByRole('group', { name: 'Icon' });
-	await expect(icons.getByRole('button', { name: 'Default icon' })).toHaveAttribute('aria-pressed', 'true');
-	await icons.getByRole('button', { name: 'Arms icon' }).click();
-	await expect(icons.getByRole('button', { name: 'Arms icon' })).toHaveAttribute('aria-pressed', 'true');
+	const split = page.getByLabel('Split', { exact: true });
+	await expect(split).toHaveValue('');
+	await split.selectOption('Custom');
+	await setText(page.getByLabel('Split name'), 'Arms');
 	await addExercise(page, 'Barbell Curl');
 	await setText(exercise(page, 'Barbell Curl').getByLabel('Reps set 1'), '12');
 
@@ -68,8 +68,10 @@ test('create a routine from scratch, start it from the list, delete it', async (
 		.click();
 	await expect(page).toHaveURL('/');
 	const routine = page.getByRole('list').getByRole('link', { name: `Arms ${id}` });
+	await expect(page.getByRole('list').getByText('Arms ·')).toBeVisible();
 	await routine.click();
-	await expect(icons.getByRole('button', { name: 'Arms icon' })).toHaveAttribute('aria-pressed', 'true');
+	await expect(split).toHaveValue('custom');
+	await expect(page.getByLabel('Split name')).toHaveValue('Arms');
 	await page.getByRole('button', { name: 'Delete routine' }).click();
 	await page
 		.getByRole('dialog', { name: 'Delete routine?' })

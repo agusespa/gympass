@@ -240,7 +240,7 @@ func TestReopenKeepsData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, _, err := s.Sync(context.Background(), 0, map[string][]Row{"routines": {{"id": "r1", "updated_at": int64(5), "deleted": false, "name": "Legs", "icon": ""}}}); err != nil {
+	if _, _, _, err := s.Sync(context.Background(), 0, map[string][]Row{"routines": {{"id": "r1", "updated_at": int64(5), "deleted": false, "name": "Legs", "split": "", "split_name": ""}}}); err != nil {
 		t.Fatal(err)
 	}
 	_ = s.Close()

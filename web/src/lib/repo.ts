@@ -282,14 +282,17 @@ export function getRoutine(id: string): Promise<Routine | undefined> {
 }
 
 export async function createRoutine(name = 'New routine'): Promise<string> {
-	const r = fresh({ name: cleanName(name), icon: '' as const });
+	const r = fresh({ name: cleanName(name), split: '' as const, split_name: '' });
 	await write(async () => {
 		await db.routines.add(r);
 	});
 	return r.id;
 }
 
-export async function updateRoutine(id: string, changes: Partial<Pick<Routine, 'name' | 'icon'>>) {
+export async function updateRoutine(
+	id: string,
+	changes: Partial<Pick<Routine, 'name' | 'split' | 'split_name'>>
+) {
 	if (changes.name !== undefined) changes = { ...changes, name: cleanName(changes.name) };
 	await write(() => patch(db.routines, id, changes));
 }
@@ -349,7 +352,7 @@ async function copyExercises(from: Kind, fromId: string, to: Kind, toId: string)
 export async function saveWorkoutAsRoutine(workoutId: string): Promise<string> {
 	const w = await getWorkout(workoutId);
 	if (!w) throw new Error('workout not found');
-	const r = fresh({ name: w.name, icon: '' as const });
+	const r = fresh({ name: w.name, split: '' as const, split_name: '' });
 	await write(async () => {
 		await db.routines.add(r);
 		await copyExercises('workout', workoutId, 'routine', r.id);
