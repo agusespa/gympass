@@ -7,7 +7,7 @@
 	import { MAX_WEEKLY_GOAL } from '#lib/limits.ts';
 	import { live } from '#lib/live.svelte.ts';
 	import { getWeeklyGoal, setWeeklyGoal } from '#lib/repo.ts';
-	import { LAST_SYNCED_KEY, sync, syncNow, type SyncStatus } from '#lib/sync.svelte.ts';
+	import { LAST_SYNCED_KEY, sync, syncNeedsAttention, syncNow, type SyncStatus } from '#lib/sync.svelte.ts';
 
 	const goal = live(getWeeklyGoal, 0);
 	const lastSynced = live(async () => Number((await db.meta.get(LAST_SYNCED_KEY))?.value ?? 0), 0);
@@ -26,6 +26,13 @@
 		'auth-expired': 'Login expired',
 		error: 'Sync failed'
 	};
+
+	// Refused changes leave the status idle, which would otherwise read "Up to date".
+	const status = $derived(
+		sync.rejected > 0 && sync.status === 'idle' ? 'Changes refused' : statusText[sync.status]
+	);
+	const attention = $derived(syncNeedsAttention());
+	const changes = (n: number) => (n === 1 ? '1 change is' : `${n} changes are`);
 
 	function ago(ms: number): string {
 		if (!ms) return 'Never';
@@ -159,11 +166,13 @@
 	Weeks that fall short show in red on your profile, and the streak counts weeks you hit it.
 </p>
 
-<h2 class="group">Sync</h2>
+<h2 class="group">
+	Sync{#if attention}<span class="sync-dot" aria-hidden="true"></span>{/if}
+</h2>
 <div class="card rows">
 	<div class="row">
 		<span>Status</span>
-		<span class="muted" data-testid="sync-status">{statusText[sync.status]}</span>
+		<span class={attention ? 'danger' : 'muted'} data-testid="sync-status">{status}</span>
 	</div>
 	<div class="row">
 		<span>Last synced</span>
@@ -186,13 +195,21 @@
 		>
 	{/if}
 </div>
-<p class="muted note">
+<p class="muted note" class:alert={attention} data-testid="sync-note">
 	{#if sync.status === 'auth-expired'}
 		Your login has expired. Your changes are kept on this phone and sync once you log in again.
-	{:else if sync.rejected > 0}
-		The server refused {sync.rejected === 1 ? 'a change' : 'some changes'}. {sync.rejected === 1
-			? "It's"
-			: "They're"} kept on this phone and sent again on every sync.
+	{:else if attention}
+		<!-- Refused changes and an offline or failed sync can happen together; say both. -->
+		{#if sync.rejected > 0}
+			The server refused {sync.rejected === 1 ? 'a change' : 'some changes'}. {sync.rejected === 1
+				? "It's"
+				: "They're"} kept on this phone and sent again on every sync.
+		{/if}
+		{#if sync.pending > 0 && sync.status === 'offline'}
+			You're offline. {changes(sync.pending)} waiting on this phone and will sync once you're back online.
+		{:else if sync.pending > 0 && sync.status === 'error'}
+			The last sync failed. {changes(sync.pending)} waiting on this phone; tap Sync now to try again.
+		{/if}
 	{:else}
 		Everything is kept on this phone too, so you can train offline and sync later.
 	{/if}
@@ -249,6 +266,21 @@
 
 	.danger {
 		color: var(--danger);
+	}
+
+	/* Same dot as the Profile tab and settings gear, so it's clear which section they point to. */
+	.sync-dot {
+		display: inline-block;
+		width: 8px;
+		height: 8px;
+		margin-left: 0.4rem;
+		border-radius: 50%;
+		background: var(--danger);
+		vertical-align: 0.1em;
+	}
+
+	.note.alert {
+		color: var(--text);
 	}
 
 	.stepper {
